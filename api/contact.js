@@ -41,9 +41,9 @@ module.exports = async (req, res) => {
     if (body.action === "create") {
       const subject = clip(body.subject, 80), text = clip(body.body, 4000);
       if (!subject || !text) return fail(res, 400, "件名と内容を入れてください。");
-      const since = new Date(Date.now() - 864e5).toISOString();
+      const since = new Date(Date.now() - 5 * 60e3).toISOString(); // at most 5 new inquiries per 5 minutes
       const recent = await rest("inquiries?select=id&user_id=eq." + uid + "&created_at=gte." + since, { service: true });
-      if (recent && recent.length >= 5) return fail(res, 429, "お問い合わせは1日5件までです。時間をおいて送ってください。");
+      if (recent && recent.length >= 5) return fail(res, 429, "新しいお問い合わせは5分間に5件までです。少し待ってから送ってください。");
       let team = null;
       if (/^[0-9a-f-]{36}$/i.test(String(body.teamId || ""))) {
         const t = await rest("team_members?select=display_name,teams(name,plan)&team_id=eq." + body.teamId + "&user_id=eq." + uid, { token: auth.token });
