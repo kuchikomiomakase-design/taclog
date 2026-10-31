@@ -92,6 +92,7 @@ Supabase の **Authentication → Providers → Google** をオンにします�
 | `DISCORD_BOT_TOKEN` | Botのトークン(**秘密**) |
 | `DISCORD_CONTACT_CHANNEL_ID` | 「お問い合わせ」チャンネルのID |
 | `DISCORD_REPORT_CHANNEL_ID` | 「成果」チャンネルのID |
+| `DISCORD_SIGNUP_CHANNEL_ID` | 「申し込み」チャンネルのID(有料プランの登録・変更・解約を通知) |
 | `CRON_SECRET` | 長いランダムな文字列(月末報告の呼び出しを守る合言葉) |
 | `MONTHLY_FIXED_COST_JPY` | 毎月の固定費(円)。ドメイン代やサーバー代など。例:`1500` |
 | `USD_JPY` | ドル→円の換算レート。例:`155` |
