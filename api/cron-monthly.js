@@ -1,6 +1,6 @@
 // GET /api/cron-monthly   (run by Vercel Cron every day at 23:00 JST; posts only on the last day of the month)
 // Posts this month's results to the Discord "成果" channel: teams, sign-ups, revenue, costs and the difference.
-// Manual test: /api/cron-monthly?force=1 with header  Authorization: Bearer <CRON_SECRET>
+// Manual test: open /api/cron-monthly?force=1&secret=<CRON_SECRET> in a browser
 const { send, fail, rest, stripe, discord, env } = require("./_lib");
 
 const yen = (n) => "¥" + Math.round(n || 0).toLocaleString("ja-JP");
@@ -44,9 +44,11 @@ async function stripeMonth(start, end) {
 
 module.exports = async (req, res) => {
   const secret = env("CRON_SECRET");
-  if (!secret || req.headers.authorization !== "Bearer " + secret) return fail(res, 401, "unauthorized");
+  const url = new URL(req.url, "http://x");
+  // Vercel Cron sends the secret in the Authorization header; a manual test can pass ?secret=... in the browser.
+  if (!secret || (req.headers.authorization !== "Bearer " + secret && url.searchParams.get("secret") !== secret)) return fail(res, 401, "unauthorized");
   try {
-    const url = new URL(req.url, "http://x"), force = url.searchParams.get("force") === "1";
+    const force = url.searchParams.get("force") === "1";
     const { start, end, label, lastDay } = monthRange(new Date());
     if (!lastDay && !force) return send(res, 200, { skipped: "not the last day of the month" });
 
