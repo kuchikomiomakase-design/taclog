@@ -126,7 +126,8 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
       h("span", { class: "pill warn", id: "st_" + encodeURIComponent(v.name) }, "未分析"))));
     const go = h("button", { class: "btn primary", type: "button" }, fresh.length > 1 ? "新しい録画 " + Math.min(fresh.length, 10) + "本を分析する" : "この録画を分析する");
     const stop = h("button", { class: "btn", type: "button", hidden: true }, "止める");
-    const note = h("p", { class: "small muted" }, "分析中はこのページを開いたままにしてください。3時間の録画で数分かかります。マップはあとで試合一覧から設定できます。");
+    const delOn = await TLFolder.getDeleteAfter();
+    const note = h("p", { class: "small muted" }, "分析中はこのページを開いたままにしてください。3時間の録画で数分かかります。マップはあとで試合一覧から設定できます。" + (delOn ? "分析が終わった録画は、このパソコンから自動で削除します(YouTubeのアーカイブは残ります)。" : ""));
     body.append(h("p", {}, "新しい録画が " + fresh.length + " 本あります。"), list, h("div", { class: "row" }, go, stop), note);
     let stopped = false;
     stop.onclick = () => { stopped = true; window.ANALYZER && ANALYZER.stop(); };
@@ -146,7 +147,10 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
           await ANALYZER.saveLast({ date: dateOf(v.mtime), opp: "", map: "", yt: "" });
           await TLFolder.markDone(APP.team.id, v);
           set("保存しました", "win");
-          if (delAfter) { try { await TLFolder.remove(hd, v.name); } catch (e) {} }
+          if (delAfter) {
+            if (!(await TLFolder.permission(hd, true, "readwrite"))) set("保存しました(削除は許可されませんでした)", "warn");
+            else { try { await TLFolder.remove(hd, v.name); set("保存して削除しました", "win"); } catch (e) { set("保存しました(削除できませんでした)", "warn"); } }
+          }
         } catch (e) { set(TL.errText(e).slice(0, 40), "loss"); if (String(e.message || "").includes("analysis limit")) break; }
       }
       folderBusy = false; go.disabled = false; stop.hidden = true; loadMatches();

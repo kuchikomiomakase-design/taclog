@@ -41,7 +41,7 @@ window.TLFolder = (function () {
   async function isDone(teamId, v) { return (await doneList()).includes(key(teamId, v)); }
   async function markDone(teamId, v) { const d = await doneList(); d.push(key(teamId, v)); await set("done", d.slice(-1000)); }
   async function remove(h, name) { await h.removeEntry(name); }
-  async function getDeleteAfter() { return !!(await get("deleteAfter")); }
+  async function getDeleteAfter() { const v = await get("deleteAfter"); return v === undefined ? true : !!v; } // on by default
   async function setDeleteAfter(v) { await set("deleteAfter", !!v); }
 
   return { supported, link, unlink, handle, permission, videos, isDone, markDone, remove, getDeleteAfter, setDeleteAfter };
