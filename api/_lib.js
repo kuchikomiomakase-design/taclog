@@ -55,7 +55,7 @@ async function membership(teamId, auth) {
   return rows && rows[0] ? rows[0] : null;
 }
 
-async function claude({ content, maxTokens = 4000 }) {
+async function claude({ content, maxTokens = 4000, teamId = null, kind = "other" }) {
   const key = env("ANTHROPIC_API_KEY");
   if (!key) { const e = new Error("AIの設定(ANTHROPIC_API_KEY)がまだ入っていません。"); e.status = 503; throw e; }
   const r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -67,8 +67,27 @@ async function claude({ content, maxTokens = 4000 }) {
   if (!r.ok) {
     const e = new Error((data.error && data.error.message) || "AI error"); e.status = r.status === 429 ? 429 : 502; e.code = r.status === 429 ? "rate_limited" : "upstream_error"; throw e;
   }
+  logUsage(teamId, kind, data.usage).catch(() => {});
   return (data.content || []).filter((c) => c.type === "text").map((c) => c.text).join("");
 }
+// Records token usage so the monthly report can show AI costs. Never blocks the user's request on failure.
+async function logUsage(teamId, kind, u) {
+  if (!u || !SERVICE()) return;
+  const inT = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0), outT = u.output_tokens || 0;
+  const cost = inT / 1e6 * Number(env("AI_INPUT_USD_PER_MTOK", "2")) + outT / 1e6 * Number(env("AI_OUTPUT_USD_PER_MTOK", "10"));
+  await rest("ai_usage", { method: "POST", service: true, body: { team_id: teamId, kind, input_tokens: inT, output_tokens: outT, cost_usd: Number(cost.toFixed(6)) } });
+}
+
+// ---- Discord (bot over REST; no always-on connection needed) ----
+async function discord(path, { method = "GET", body } = {}) {
+  const token = env("DISCORD_BOT_TOKEN");
+  if (!token) { const e = new Error("Discordの設定がまだ入っていません。"); e.status = 503; throw e; }
+  const r = await fetch("https://discord.com/api/v10/" + path, { method, headers: { authorization: "Bot " + token, "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const text = await r.text(); let data = null; try { data = text ? JSON.parse(text) : null; } catch (e) { data = text; }
+  if (!r.ok) { const e = new Error("discord " + r.status + " " + ((data && data.message) || "")); e.status = 502; throw e; }
+  return data;
+}
+const noPing = { parse: [] }; // never mention @everyone etc. from user-written text
 
 function parseJSON(t) {
   t = String(t || "").trim();
@@ -107,4 +126,4 @@ function verifyStripe(raw, header, secret) {
 
 const PLAN_LIMITS = { free: { questions: 20, days: 14 }, team: { questions: 300, days: 36500 }, org: { questions: 100000, days: 36500 } };
 
-module.exports = { env, send, fail, readBody, readRaw, getUser, rest, membership, claude, parseJSON, stripe, verifyStripe, PLAN_LIMITS };
+module.exports = { env, send, fail, readBody, readRaw, getUser, rest, membership, claude, parseJSON, stripe, verifyStripe, discord, noPing, PLAN_LIMITS };

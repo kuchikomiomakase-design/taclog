@@ -14,7 +14,7 @@ module.exports = async (req, res) => {
     if (images.some((b) => typeof b !== "string" || b.length > 3_500_000)) return fail(res, 400, "画像が大きすぎます。");
     const content = images.map((data) => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data } }));
     content.push({ type: "text", text: prompt + "\n\nReply with the JSON only." });
-    const text = await claude({ content, maxTokens: 8000 });
+    const text = await claude({ content, maxTokens: 8000, teamId: body.teamId, kind: "vision" });
     send(res, 200, { text });
   } catch (e) {
     fail(res, e.status || 500, e.status ? e.message : "読み取りに失敗しました。", e.code);

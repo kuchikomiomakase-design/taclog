@@ -31,7 +31,7 @@
   function footer() {
     const el = $("footer"); if (!el) return;
     el.className = "site";
-    el.innerHTML = '<span><a href="/legal/terms">利用規約</a> ・ <a href="/legal/privacy">プライバシーポリシー</a> ・ <a href="/legal/tokushoho">特定商取引法に基づく表記</a> ・ <a href="/pricing">料金</a></span>' +
+    el.innerHTML = '<span><a href="/legal/terms">利用規約</a> ・ <a href="/legal/privacy">プライバシーポリシー</a> ・ <a href="/legal/tokushoho">特定商取引法に基づく表記</a> ・ <a href="/pricing">料金</a> ・ <a href="/app#contact">お問い合わせ</a></span>' +
       "<span>TacLogはRiot Gamesが承認・後援するものではなく、Riot Gamesまたはその関係者の見解を反映するものではありません。VALORANTはRiot Games, Inc.の商標または登録商標です。</span>";
   }
 

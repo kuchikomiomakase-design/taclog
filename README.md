@@ -78,6 +78,35 @@ Supabase の **Authentication → Providers → Google** をオンにします�
 
 最初は Stripe の**テストモード**の鍵で試し、問題なければ本番の鍵に入れ替えます。
 
+### 7. お問い合わせとDiscordの通知
+1. Supabase の SQL Editor で `supabase/002_contact_and_reports.sql` を実行する
+2. https://discord.com/developers/applications で「New Application」を作る(名前は TacLog など)
+3. 左の「Bot」で「Reset Token」を押してトークンをコピーし、同じ画面の **Message Content Intent をオン** にして保存
+4. 左の「OAuth2 → URL Generator」で、Scopes は `bot`、Bot Permissions は次の5つにチェックし、下に出たURLを開いて自分のサーバーに招待する
+   `View Channels` / `Send Messages` / `Create Public Threads` / `Send Messages in Threads` / `Read Message History`
+5. Discordの「ユーザー設定 → 詳細設定 → 開発者モード」をオンにし、「お問い合わせ」と「成果」のチャンネルを右クリック →「チャンネルIDをコピー」
+6. Vercel の Environment Variables に追加して、もう一度 Deploy
+
+| 名前 | 値 |
+|---|---|
+| `DISCORD_BOT_TOKEN` | Botのトークン(**秘密**) |
+| `DISCORD_CONTACT_CHANNEL_ID` | 「お問い合わせ」チャンネルのID |
+| `DISCORD_REPORT_CHANNEL_ID` | 「成果」チャンネルのID |
+| `CRON_SECRET` | 長いランダムな文字列(月末報告の呼び出しを守る合言葉) |
+| `MONTHLY_FIXED_COST_JPY` | 毎月の固定費(円)。ドメイン代やサーバー代など。例:`1500` |
+| `USD_JPY` | ドル→円の換算レート。例:`155` |
+
+**使い方**:問い合わせが来ると「お問い合わせ」チャンネルに投稿され、問い合わせごとにスレッドができます。スレッドに書き込むと、相手のアプリの「お問い合わせ」画面に返信として届きます(相手が画面を開いたとき、または1分ごとに取り込みます)。「!完了」と書き込むと対応済みになります。
+
+### 8. 月末の成果報告
+`vercel.json` の設定で、毎日23時(日本時間)に `/api/cron-monthly` が動き、**月の最終日だけ**「成果」チャンネルに次を投稿します。
+申し込みチーム数(今月の増加・有料チーム数)/ 登録者数 / 売り上げ(Stripe)/ 出費(AIの利用量から計算した概算 + 決済手数料 + 固定費)/ 差額
+
+すぐに試したいときは、次のように送ると、月末でなくても投稿されます(`CRON_SECRET` は自分で決めた値)。
+```
+curl -H "Authorization: Bearer (CRON_SECRET)" "https://taclog-one.vercel.app/api/cron-monthly?force=1"
+```
+
 ## 料金プランと制限
 
 | | 無料 | チーム | コーチ・組織 |
@@ -91,6 +120,7 @@ Supabase の **Authentication → Providers → Google** をオンにします�
 
 ## まだ作っていないもの
 - お知らせの送信(設定の保存までは動きます)
+- お問い合わせの返信が届いたときの、メールでの通知
 - Riotアカウント連携(Riot の承認後に追加)
 - Googleドライブ・YouTubeチャンネル連携
 - 公開前に、`legal/` の下書きの [ ] の部分を埋めて、内容を確認してください

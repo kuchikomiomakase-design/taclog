@@ -39,6 +39,11 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
 .stats4 div{background:var(--surface);padding:10px 12px;display:grid;gap:2px}
 .stats4 .k{font-size:12px;color:var(--muted)} .stats4 .v{font:700 18px var(--f-mono);font-variant-numeric:tabular-nums}
 .editgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.thread2{display:grid;gap:8px}
+.msg{max-width:85%;padding:10px 14px;border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.7}
+.msg.user{justify-self:end;background:var(--accent);color:var(--accent-ink);border-radius:12px 12px 4px 12px}
+.msg.staff{justify-self:start;background:var(--raise);border:1px solid var(--line);border-radius:12px 12px 12px 4px}
+.msg small{display:block;opacity:.75;font-size:11px;margin-top:4px}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--new);margin-left:6px;vertical-align:middle;box-shadow:0 0 8px rgba(240,138,36,.8)}
 @media (max-width:640px){.stats4{grid-template-columns:repeat(2,minmax(0,1fr))}.editgrid{grid-template-columns:1fr 1fr}}
 @media (prefers-reduced-motion:reduce){.post.new{animation:none}}
@@ -122,6 +127,20 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
     <div class="spread"><div style="display:grid;gap:4px"><h2>試合チャンネル</h2><p class="small muted">分析した試合が新しい順に並びます。日付・相手・マップ・YouTubeのURLは、ここで入れたり直したりできます。新しく読み込んだ試合はオレンジ色に光ります。</p></div>
       <button class="btn small" type="button" id="seenAll" hidden>すべて確認済みにする</button></div>
     <div id="feed" style="display:grid;gap:14px"></div>
+  </div>
+
+  <!-- CONTACT -->
+  <div id="view-contact" style="display:grid;gap:14px" hidden>
+    <div style="display:grid;gap:4px"><h2>お問い合わせ</h2><p class="small muted">使い方の質問、不具合、ご要望など、なんでも送ってください。返事はこの画面に届きます。</p></div>
+    <section class="card">
+      <h3>新しく問い合わせる</h3>
+      <form id="cForm" style="display:grid;gap:12px" autocomplete="off">
+        <label for="cSubject">件名<input id="cSubject" required maxlength="80" placeholder="例:録画フォルダが連携できない"></label>
+        <label for="cBody">内容<textarea id="cBody" required maxlength="4000" rows="5" placeholder="どの画面で、何をしたら、どうなったかを書いてもらえると早く解決できます。"></textarea></label>
+        <div class="row"><button class="btn primary" type="submit" id="cSend">送信する</button><span class="small muted" id="cMsg"></span></div>
+      </form>
+    </section>
+    <div id="cList" style="display:grid;gap:14px"></div>
   </div>
 
   <!-- MATCHES -->

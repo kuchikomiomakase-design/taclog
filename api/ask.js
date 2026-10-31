@@ -45,7 +45,7 @@ module.exports = async (req, res) => {
       dataText(matches) + "\n\n" + (history ? "これまでの会話:\n" + history + "\n\n" : "") + "質問: " + question + "\n\n" +
       "返答はJSONのみ: {\"answer\":\"答えの文章\",\"chart\":null または {\"title\":\"グラフの題\",\"unit\":\"%\",\"bars\":[{\"label\":\"ラベル\",\"value\":数値}]},\"scenes\":[{\"match\":\"試合のmatch=の値\",\"round\":ラウンド番号,\"note\":\"短い説明\"}]}。グラフが役立つ質問ではchartを入れる。scenesは根拠になったラウンドを最大5件。";
 
-    const text = await claude({ content: [{ type: "text", text: prompt.slice(0, 240000) }], maxTokens: 3000 });
+    const text = await claude({ content: [{ type: "text", text: prompt.slice(0, 240000) }], maxTokens: 3000, teamId: body.teamId, kind: "ask" });
     const ans = parseJSON(text) || { answer: text, chart: null, scenes: [] };
 
     await rest("usage?on_conflict=team_id,month", { method: "POST", service: true, prefer: "resolution=merge-duplicates", body: { team_id: body.teamId, month, questions: used + 1, analyses: u && u[0] ? u[0].analyses : 0 } });

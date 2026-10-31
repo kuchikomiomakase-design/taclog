@@ -10,18 +10,19 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   const sideJa = (s) => s === "attack" ? "アタック" : s === "defense" ? "ディフェンス" : "?";
   const PLAN_JA = { free: "無料", team: "チーム", org: "コーチ・組織" };
   const status = (t) => { const s = $("status"); s.hidden = !t; s.textContent = t || ""; };
-  const VIEWS = ["analyze", "channel", "ask", "matches", "settings"];
+  const VIEWS = ["analyze", "channel", "ask", "matches", "contact", "settings"];
 
   function route() {
     const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "analyze";
     VIEWS.forEach((k) => { $("view-" + k).hidden = k !== v; });
     document.querySelectorAll(".nav a").forEach((a) => a.setAttribute("aria-current", a.getAttribute("href") === "#" + v ? "page" : "false"));
     if (v === "settings") renderSettings();
+    if (v === "contact") loadContact();
     if (v === "analyze" && APP.team) renderFolder();
   }
 
   function renderHeader() {
-    TL.header([{ href: "#analyze", label: "録画を分析" }, { href: "#channel", label: "チャンネル" }, { href: "#ask", label: "AIに質問" }, { href: "#matches", label: "試合一覧" }, { href: "#settings", label: "設定" }]);
+    TL.header([{ href: "#analyze", label: "録画を分析" }, { href: "#channel", label: "チャンネル" }, { href: "#ask", label: "AIに質問" }, { href: "#matches", label: "試合一覧" }, { href: "#contact", label: "お問い合わせ" }, { href: "#settings", label: "設定" }]);
     updateBadge();
     if (APP.teams.length > 1) {
       const sel = h("select", { class: "teamsel", "aria-label": "チームを切り替える" }, APP.teams.map((t) => h("option", { value: t.id }, t.name)));
@@ -123,6 +124,43 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
           h("label", { for: id("map") }, "マップ", map), h("label", { for: id("yt") }, "YouTubeのURL", yt)),
         h("div", { class: "row" }, save, ok, msg));
     }));
+  }
+
+  /* ---------- contact ---------- */
+  let contactData = [];
+  const readKey = () => "taclog.contactRead";
+  function contactUnread() { let r = 0; try { r = Number(localStorage.getItem(readKey()) || 0); } catch (e) {} return contactData.filter((i) => i.last_staff_at && new Date(i.last_staff_at).getTime() > r).length; }
+  function contactBadge() {
+    const a = document.querySelector('.nav a[href="#contact"]'); if (!a) return;
+    const n = contactUnread();
+    a.replaceChildren(document.createTextNode("お問い合わせ"), ...(n ? [h("span", { class: "dot", "aria-label": "新しい返信 " + n + "件" })] : []));
+  }
+  async function loadContact() {
+    try { const r = await TL.api("/api/contact", { action: "list" }); contactData = r.inquiries || []; } catch (e) { $("cMsg").textContent = TL.errText(e); return; }
+    if (location.hash === "#contact") { try { localStorage.setItem(readKey(), String(Date.now())); } catch (e) {} }
+    renderContact(); contactBadge();
+  }
+  function renderContact() {
+    const box = $("cList");
+    if (!contactData.length) { box.replaceChildren(h("div", { class: "empty" }, h("strong", {}, "まだお問い合わせはありません"), h("span", {}, "上のフォームから送ると、ここにやりとりが表示されます。"))); return; }
+    box.replaceChildren(...contactData.map((i) => {
+      const reply = h("textarea", { rows: "2", maxlength: "4000", placeholder: "返信を書く", "aria-label": "返信" });
+      const btn = h("button", { class: "btn small primary", type: "button" }, "返信する");
+      btn.onclick = async () => { const t = reply.value.trim(); if (!t) return; btn.disabled = true; try { await TL.api("/api/contact", { action: "reply", inquiryId: i.id, body: t }); reply.value = ""; await loadContact(); } catch (e) { status(TL.errText(e)); } btn.disabled = false; };
+      const waiting = !i.messages.some((m) => m.author === "staff");
+      return h("article", { class: "card" },
+        h("div", { class: "spread" }, h("strong", {}, i.subject), h("span", { class: "pill " + (i.status === "closed" ? "win" : waiting ? "warn" : "") }, i.status === "closed" ? "対応済み" : waiting ? "返信待ち" : "やりとり中")),
+        h("div", { class: "thread2" }, i.messages.map((m) => h("div", { class: "msg " + m.author }, m.body, h("small", {}, (m.author === "staff" ? "TacLog運営 ・ " : "") + new Date(m.created_at).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }))))),
+        h("div", { style: "display:grid;gap:8px" }, reply, h("div", { class: "row" }, btn)));
+    }));
+  }
+  function setupContact() {
+    $("cForm").addEventListener("submit", async (e) => {
+      e.preventDefault(); const b = $("cSend"); b.disabled = true; $("cMsg").textContent = "";
+      try { await TL.api("/api/contact", { action: "create", subject: $("cSubject").value, body: $("cBody").value, teamId: APP.team && APP.team.id }); $("cSubject").value = ""; $("cBody").value = ""; $("cMsg").textContent = "送信しました。返事はこの画面に届きます。"; await loadContact(); }
+      catch (err) { $("cMsg").textContent = TL.errText(err); }
+      b.disabled = false;
+    });
   }
 
   /* ---------- ask ---------- */
@@ -297,11 +335,12 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     renderHeader();
     $("mMap").append(...MAPS.map(([v, n]) => h("option", { value: v }, n)));
     const d = new Date(); $("mDate").value = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-    setupAsk();
+    setupAsk(); setupContact();
     $("saveTeam").onclick = async () => { const { error } = await sb.from("teams").update({ name: $("teamName").value.trim() }).eq("id", APP.team.id); status(error ? TL.errText(error) : ""); if (!error) APP.team.name = $("teamName").value.trim(); };
     $("logout").onclick = async () => { await sb.auth.signOut(); location.href = "/"; };
     window.addEventListener("hashchange", route); route();
-    setInterval(() => { if (!folderBusy && APP.team) renderFolder(); if (APP.team && !document.querySelector("#feed :focus")) loadMatches(); }, 60000); // check the folder and new matches every minute
+    loadContact();
+    setInterval(() => { if (!folderBusy && APP.team) renderFolder(); if (APP.team && !document.querySelector("#feed :focus")) loadMatches(); if (!document.querySelector("#view-contact :focus")) loadContact(); }, 60000); // check the folder and new matches every minute
     loadMatches();
     const qp = new URLSearchParams(location.search); if (qp.get("billing") === "success") status("お支払いが完了しました。プランが切り替わるまで数秒かかることがあります。");
   })();
