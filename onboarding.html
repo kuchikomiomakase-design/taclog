@@ -56,12 +56,13 @@
     <h1>OBSの設定を変えてください</h1>
     <p class="lead">配信のやり方はそのままです。配信すると、パソコンにも録画が残るようになります。配信する人だけ設定すればOKです。</p>
     <ol class="obs">
+      <li><span class="n">0</span><div><strong>録画用のフォルダ「TacLog」を作って、OBSの保存先にする</strong><div class="small muted">ビデオフォルダの中に「TacLog」フォルダを作り、設定 → 出力 →「録画ファイルのパス」で選ぶ(分析後に録画を自動で消すので、専用のフォルダにします)</div></div></li>
       <li><span class="n">1</span><div><strong>配信したら自動で録画する</strong><div class="small muted">設定 → 一般 →「出力」の欄の「配信時に自動的に録画する」にチェック</div></div></li>
       <li><span class="n">2</span><div><strong>録画品質を「配信と同じ」にする</strong><div class="small muted">設定 → 出力 →「録画品質」を「配信と同じ」に(ファイルが軽くなります)</div></div></li>
       <li><span class="n">3</span><div><strong>録画をMP4にする</strong><div class="small muted">設定 → 詳細設定 →「録画」の欄の「自動的に mp4 に再多重化する」にチェック(または、設定 → 出力 →「録画フォーマット」を「MP4」か「ハイブリッドMP4」に)</div></div></li>
     </ol>
-    <a class="btn" href="/guide-obs" target="_blank" rel="noopener" style="justify-self:start">やり方がわからない人はここへ(手順ガイド)</a>
-    <label class="check" for="obsDone"><input id="obsDone" type="checkbox"><span><strong>3つとも設定できた</strong></span></label>
+    <a class="btn" href="/guide-obs" target="_blank" rel="noopener" style="justify-self:start">やり方がわからない人はここへ(画像つき手順:フォルダの作り方・連携のしかたも)</a>
+    <label class="check" for="obsDone"><input id="obsDone" type="checkbox"><span><strong>ここまで全部設定できた</strong></span></label>
     <div style="display:grid;gap:10px;padding:16px;border-radius:12px;border:1px solid var(--line)">
       <strong>録画が保存されるフォルダを連携する</strong>
       <span class="small muted">OBSの「設定 → 出力 → 録画ファイルのパス」に出ているフォルダを選んでください。連携すると、サイトを開いたときに新しい録画を自動で見つけて分析し、<strong>分析が終わった録画はパソコンから自動で削除</strong>します(YouTubeのアーカイブは残ります)。録画はこのパソコンの中で読み取るだけで、アップロードはしません。フォルダを選ぶとき、ブラウザに「ファイルの編集を許可しますか」と聞かれたら「許可」を選んでください(削除に必要です)。</span>
@@ -69,7 +70,7 @@
       <span id="folderNote" class="small muted" hidden>この機能は、パソコン版のGoogle ChromeかMicrosoft Edgeで使えます。いまのブラウザでは使えないので、録画は分析の画面から手動で選んでください。</span>
     </div>
     <div class="row"><button class="btn ghost" type="button" data-back>戻る</button><button class="btn primary" type="button" data-next id="obsNext" disabled>次へ</button><button class="btn ghost" type="button" id="viewerSkip">配信しない(見るだけ)の人はこちら</button></div>
-    <p class="small muted" id="obsHint">「3つとも設定できた」にチェックして、録画フォルダを連携すると次へ進めます。</p>
+    <p class="small muted" id="obsHint">「ここまで全部設定できた」にチェックして、録画フォルダを連携すると次へ進めます。</p>
   </section>
 
   <section class="card" data-step="4" hidden>

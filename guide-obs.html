@@ -10,50 +10,179 @@
 <script src="/assets/config.js"></script>
 <script src="/assets/common.js"></script>
 <style>
-.shot{border-radius:10px;overflow:hidden;border:1px solid #2B3432;background:#1E2423;color:#D8E0DE;font-size:14px;display:flex;flex-wrap:wrap}
-.shot .side{flex:0 0 160px;display:flex;flex-direction:column;padding:10px 0;background:#222928;border-right:1px solid #333C3A}
-.shot .side span{padding:8px 16px}
-.shot .side .on,.shot .hl{background:#0E7C74;color:#fff;font-weight:700;outline:3px solid #F2B33D;outline-offset:-3px}
-.shot .body{flex:1 1 280px;min-width:0;padding:18px 20px;display:grid;gap:10px;align-content:start}
-.shot .field{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:10px 12px;border-radius:6px;background:#213833;outline:3px solid #F2B33D}
-.shot .val{padding:4px 8px;background:#151A19;border:1px solid #3A4442;border-radius:4px}
+/* drawn screen mocks: OBS (dark), Windows Explorer (light), browser dialog */
+.part{display:grid;gap:6px;margin-top:8px}
+.part .tag{font:700 12px var(--f-mono);letter-spacing:.12em;color:var(--accent-text)}
 .n{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font:700 17px var(--f-display);flex:none}
+.hl{outline:3px solid #F2B33D;outline-offset:-3px}
+.badge{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#F2B33D;color:#141B1A;font:700 12px var(--f-mono);flex:none}
+.obs{border-radius:10px;overflow:hidden;border:1px solid #2B3432;background:#1E2423;color:#D8E0DE;font-size:14px;display:flex;flex-wrap:wrap}
+.obs .side{flex:0 0 150px;display:flex;flex-direction:column;padding:10px 0;background:#222928;border-right:1px solid #333C3A}
+.obs .side span{padding:7px 16px}
+.obs .side .on{background:#2F5FB3;color:#fff;font-weight:700}
+.obs .body{flex:1 1 280px;min-width:0;padding:16px 18px;display:grid;gap:10px;align-content:start}
+.obs .grp{border:1px solid #3A4442;border-radius:6px;padding:12px 14px;display:grid;gap:8px}
+.obs .row2{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.obs .lbl{width:130px;color:#B9C4C1}
+.obs .val{padding:4px 8px;background:#151A19;border:1px solid #3A4442;border-radius:4px;flex:1 1 160px;min-width:0;overflow-wrap:anywhere;font-family:var(--f-mono);font-size:12px}
+.obs .btn2{padding:4px 12px;border-radius:4px;background:#3A4442;color:#fff}
+.obs .cb{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:3px;border:1px solid #6A7775;font-size:12px}
+.obs .cb.on{background:#2F5FB3;border-color:#2F5FB3;color:#fff}
+.obs .pick{background:#213833;border-radius:6px;padding:8px 10px}
+.exp{border-radius:10px;overflow:hidden;border:1px solid #CFD6D4;background:#FFFFFF;color:#1B1F1E;font-size:14px;max-width:640px}
+.exp .bar{display:flex;gap:8px;align-items:center;padding:8px 12px;background:#F3F5F4;border-bottom:1px solid #E1E6E4;font-size:13px}
+.exp .addr{flex:1;padding:4px 10px;background:#fff;border:1px solid #D5DDDA;border-radius:4px;font-family:var(--f-mono);font-size:12px}
+.exp .main{display:flex;flex-wrap:wrap;min-height:170px}
+.exp .tree{flex:0 0 170px;padding:10px 0;border-right:1px solid #E1E6E4;background:#FAFBFB}
+.exp .tree span{display:block;padding:5px 14px;color:#4A5553}
+.exp .files{flex:1 1 260px;padding:12px;display:flex;gap:16px;flex-wrap:wrap;align-content:flex-start;position:relative}
+.fold{display:grid;justify-items:center;gap:4px;width:84px;text-align:center;font-size:12px;padding:6px;border-radius:6px}
+.fold i{display:block;width:46px;height:36px;border-radius:4px 4px 6px 6px;background:#F2C14E;position:relative}
+.fold i::before{content:"";position:absolute;left:4px;top:-6px;width:20px;height:8px;border-radius:3px 3px 0 0;background:#E2AE33}
+.menu{position:absolute;right:12px;top:14px;background:#fff;border:1px solid #CFD6D4;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12);padding:6px 0;min-width:180px;font-size:13px}
+.menu span{display:flex;justify-content:space-between;gap:10px;padding:6px 14px}
+.menu .sub{position:absolute;right:calc(100% - 6px);top:42px;background:#fff;border:1px solid #CFD6D4;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12);padding:6px 0;min-width:140px}
+.dlg{max-width:440px;border-radius:12px;background:#fff;color:#1B1F1E;border:1px solid #CFD6D4;box-shadow:0 10px 30px rgba(0,0,0,.12);padding:18px 20px;display:grid;gap:12px;font-size:14px}
+.dlg .acts{display:flex;justify-content:flex-end;gap:8px}
+.dlg .acts span{padding:7px 16px;border-radius:999px;border:1px solid #CFD6D4}
+.dlg .acts .go{background:#1A73E8;border-color:#1A73E8;color:#fff;font-weight:700}
+.tl{border-radius:12px;border:1px solid var(--line);background:var(--surface);padding:16px;display:grid;gap:10px;max-width:560px}
+.tl .b{justify-self:start;padding:8px 16px;border-radius:10px;border:1px solid var(--line2);font-weight:700}
+.toc{display:flex;gap:8px;flex-wrap:wrap}
+.toc a{padding:8px 14px;border-radius:999px;border:1px solid var(--line);text-decoration:none;font-weight:700;font-size:14px;color:var(--ink2)}
+.step{display:flex;align-items:center;gap:12px}
 </style>
 </head>
 <body>
 <header id="topbar"></header>
 <main id="main" class="wrap narrow">
-  <div style="display:grid;gap:8px"><h1>OBSの設定ガイド</h1><p class="lead">上から順番にやれば終わります。画面はWindows版OBSの例で、バージョンによって表示が少し違うことがあります。</p></div>
+  <div style="display:grid;gap:10px">
+    <h1>OBSの設定ガイド</h1>
+    <p class="lead">配信する人だけがやればOKです。上から順番にやれば、10分ほどで終わります。画面はWindows版の例で、バージョンによって表示が少し違うことがあります。</p>
+    <nav class="toc" aria-label="目次"><a href="#a">A. 録画用のフォルダを作る</a><a href="#b">B. OBSの設定</a><a href="#c">C. TacLogと連携</a></nav>
+  </div>
+
+  <!-- ===== A ===== -->
+  <div class="part" id="a"><span class="tag">PART A</span><h2>録画用のフォルダ「TacLog」を作る</h2>
+    <p class="muted small">TacLogは、分析が終わった録画を自動で削除します。ほかの動画を巻き込まないように、スクリムの録画だけを入れる専用のフォルダを作ります。</p></div>
 
   <section class="card">
-    <div class="row"><span class="n">1</span><h2>「ファイル」→「設定」を開く</h2></div>
-    <p class="muted small">OBSの上のメニューの「ファイル」から「設定」を選びます。画面右下の「設定」ボタンからでも開けます。</p>
-  </section>
-
-  <section class="card">
-    <div class="row"><span class="n">2</span><h2>「一般」→「配信時に自動的に録画する」にチェック</h2></div>
-    <div class="shot" role="img" aria-label="一般の出力欄の例">
-      <div class="side"><span class="on">一般</span><span>外観</span><span>配信</span><span>出力</span><span>音声</span><span>映像</span><span>詳細設定</span></div>
-      <div class="body"><strong>出力</strong><div class="field"><span class="val">✓</span><strong>配信時に自動的に録画する</strong></div><span style="color:#93A09D;padding:0 12px">配信停止時も録画を継続する(ここはチェックしない)</span></div>
-    </div>
-  </section>
-
-  <section class="card">
-    <div class="row"><span class="n">3</span><h2>「出力」→ 録画品質と形式を変える</h2></div>
-    <div class="shot" role="img" aria-label="出力の録画欄の例">
-      <div class="side"><span>一般</span><span>配信</span><span class="on">出力</span><span>音声</span><span>映像</span><span>詳細設定</span></div>
-      <div class="body"><strong>録画</strong>
-        <div class="field"><span style="width:110px;color:#fff;font-weight:700">録画品質</span><span class="val">配信と同じ ▾</span></div>
-        <div class="field"><span style="width:110px;color:#fff;font-weight:700">録画フォーマット</span><span class="val">MP4(またはハイブリッドMP4) ▾</span></div>
-        <span style="color:#93A09D">録画ファイルのパス:分かりやすい場所ならどこでもOK</span>
+    <div class="step"><span class="n">1</span><h3>エクスプローラーで「ビデオ」フォルダを開く</h3></div>
+    <p class="small muted">タスクバーのフォルダのアイコン(エクスプローラー)を開き、左の一覧から「ビデオ」を押します。</p>
+    <div class="exp" role="img" aria-label="エクスプローラーでビデオフォルダを開いた例">
+      <div class="bar"><span>← →</span><span class="addr">PC › ビデオ</span></div>
+      <div class="main">
+        <div class="tree"><span>デスクトップ</span><span>ダウンロード</span><span>ドキュメント</span><span>ピクチャ</span><span class="hl" style="background:#E7F1EF;font-weight:700;color:#1B1F1E">ビデオ</span><span>ミュージック</span></div>
+        <div class="files"><div class="fold"><i></i>Captures</div></div>
       </div>
     </div>
-    <p class="small muted">「出力モード」が「詳細」の人は、「録画」タブの中に同じ項目があります。MKVのまま録画したい場合は、「詳細設定」→「録画」の欄の「<strong>自動的に mp4 に再多重化する</strong>」にチェックを入れると、録画が終わったときに自動でMP4になります。</p>
   </section>
 
   <section class="card">
-    <div class="row"><span class="n">4</span><h2>右下の「OK」を押す</h2></div>
-    <p class="muted small">これで設定は終わりです。次の配信から、パソコンにも録画が残ります。</p>
+    <div class="step"><span class="n">2</span><h3>何もないところで右クリック →「新規作成」→「フォルダー」</h3></div>
+    <div class="exp" role="img" aria-label="右クリックメニューから新規作成、フォルダーを選ぶ例">
+      <div class="bar"><span>← →</span><span class="addr">PC › ビデオ</span></div>
+      <div class="main">
+        <div class="tree"><span>デスクトップ</span><span>ダウンロード</span><span>ドキュメント</span><span>ピクチャ</span><span style="font-weight:700;color:#1B1F1E">ビデオ</span></div>
+        <div class="files" style="min-height:190px">
+          <div class="fold"><i></i>Captures</div>
+          <div class="menu"><span>表示</span><span>並べ替え</span><span class="hl">新規作成 <b>›</b></span><span>プロパティ</span>
+            <div class="sub"><span class="hl" style="font-weight:700">フォルダー</span><span>ショートカット</span><span>テキスト ドキュメント</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="small muted">Windows 11では、右クリックメニューの一番下の「その他のオプションを確認」から同じ項目が出てくることがあります。上のメニューの「+ 新規作成」→「フォルダー」でもOKです。</p>
+  </section>
+
+  <section class="card">
+    <div class="step"><span class="n">3</span><h3>フォルダの名前を「TacLog」にする</h3></div>
+    <p class="small muted">新しいフォルダの名前が選ばれた状態になるので、そのまま「TacLog」と入力してEnterを押します。</p>
+    <div class="exp" role="img" aria-label="新しいフォルダの名前をTacLogにした例">
+      <div class="bar"><span>← →</span><span class="addr">PC › ビデオ</span></div>
+      <div class="main"><div class="tree"><span>ピクチャ</span><span style="font-weight:700;color:#1B1F1E">ビデオ</span><span>ミュージック</span></div>
+        <div class="files"><div class="fold"><i></i>Captures</div><div class="fold hl"><i></i><span style="border:1px solid #1A73E8;padding:0 4px;background:#fff">TacLog</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== B ===== -->
+  <div class="part" id="b"><span class="tag">PART B</span><h2>OBSの設定を変える</h2>
+    <p class="muted small">OBSを開いて、上のメニューの「ファイル」→「設定」を開きます(右下の「設定」ボタンでもOK)。</p></div>
+
+  <section class="card">
+    <div class="step"><span class="n">4</span><h3>「一般」→「配信時に自動的に録画する」にチェック</h3></div>
+    <div class="obs" role="img" aria-label="一般の出力欄の例">
+      <div class="side"><span class="on">一般</span><span>外観</span><span>配信</span><span>出力</span><span>音声</span><span>映像</span><span>詳細設定</span></div>
+      <div class="body"><div class="grp"><strong>出力</strong>
+        <div class="row2 pick hl"><span class="cb on">✓</span><strong style="color:#fff">配信時に自動的に録画する</strong><span class="badge" style="margin-left:auto">4</span></div>
+        <div class="row2" style="color:#93A09D;padding:0 10px"><span class="cb"></span>配信停止時も録画を継続する(ここはチェックしない)</div>
+      </div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="step"><span class="n">5</span><h3>「出力」→「録画ファイルのパス」を TacLog フォルダにする</h3></div>
+    <p class="small muted">「録画ファイルのパス」の右の「参照」を押して、PART Aで作った「ビデオ」→「TacLog」を選び、「フォルダーの選択」を押します。あわせて「録画品質」を「配信と同じ」にすると、ファイルが軽くなります。</p>
+    <div class="obs" role="img" aria-label="出力の録画欄の例">
+      <div class="side"><span>一般</span><span>外観</span><span>配信</span><span class="on">出力</span><span>音声</span><span>映像</span><span>詳細設定</span></div>
+      <div class="body"><span style="font-size:12px;color:#93A09D">出力モード:基本</span><div class="grp"><strong>録画</strong>
+        <div class="row2 pick hl"><span class="lbl" style="color:#fff;font-weight:700">録画ファイルのパス</span><span class="val">C:/Users/(名前)/Videos/TacLog</span><span class="btn2">参照</span><span class="badge">5</span></div>
+        <div class="row2"><span class="lbl">録画品質</span><span class="val" style="font-family:inherit">配信と同じ ▾</span></div>
+        <div class="row2"><span class="lbl">録画フォーマット</span><span class="val" style="font-family:inherit">ハイブリッドMP4 ▾(MKVでもOK)</span></div>
+      </div></div>
+    </div>
+    <p class="small muted">「出力モード」が「詳細」の人は、「録画」タブの中に同じ項目があります。</p>
+  </section>
+
+  <section class="card">
+    <div class="step"><span class="n">6</span><h3>「詳細設定」→「自動的に mp4 に再多重化する」にチェック</h3></div>
+    <p class="small muted">録画の形式がMKVのままでも、録画が終わったときに自動でMP4に変換されて、TacLogで確実に読み込めるようになります。</p>
+    <div class="obs" role="img" aria-label="詳細設定の録画欄の例">
+      <div class="side"><span>一般</span><span>外観</span><span>配信</span><span>出力</span><span>音声</span><span>映像</span><span class="on">詳細設定</span></div>
+      <div class="body"><div class="grp"><strong>録画</strong>
+        <div class="row2"><span class="lbl">ファイル名書式設定</span><span class="val">%CCYY-%MM-%DD %hh-%mm-%ss</span></div>
+        <div class="row2" style="padding:0 10px"><span class="cb"></span>ファイルが存在する場合は上書きする</div>
+        <div class="row2 pick hl"><span class="cb on">✓</span><strong style="color:#fff">自動的に mp4 に再多重化する</strong><span class="badge" style="margin-left:auto">6</span></div>
+      </div></div>
+    </div>
+    <p class="small muted">最後に右下の「適用」→「OK」を押せば、OBSの設定は終わりです。</p>
+  </section>
+
+  <!-- ===== C ===== -->
+  <div class="part" id="c"><span class="tag">PART C</span><h2>TacLogと録画フォルダを連携する</h2>
+    <p class="muted small">パソコン版のGoogle ChromeかMicrosoft Edgeで、TacLogを開いてください。</p></div>
+
+  <section class="card">
+    <div class="step"><span class="n">7</span><h3>「録画フォルダを選ぶ」を押す</h3></div>
+    <p class="small muted">初期設定の「OBSの設定」の画面、またはアプリの「録画を分析」の画面にあります。</p>
+    <div class="tl" role="img" aria-label="TacLogの録画フォルダを選ぶボタンの例"><strong>録画が保存されるフォルダを連携する</strong><span class="small muted">OBSの「録画ファイルのパス」に出ているフォルダを選んでください。</span><span class="b hl">録画フォルダを選ぶ</span></div>
+  </section>
+
+  <section class="card">
+    <div class="step"><span class="n">8</span><h3>「ビデオ」→「TacLog」を選んで「フォルダーの選択」</h3></div>
+    <div class="exp" role="img" aria-label="フォルダを選ぶ画面でTacLogを選ぶ例">
+      <div class="bar"><span>フォルダーの選択</span><span class="addr">PC › ビデオ › TacLog</span></div>
+      <div class="main" style="min-height:150px"><div class="tree"><span>ピクチャ</span><span style="font-weight:700;color:#1B1F1E">ビデオ</span><span class="hl" style="background:#E7F1EF;font-weight:700;color:#1B1F1E;margin-left:12px">TacLog</span></div>
+        <div class="files" style="align-content:flex-end;justify-content:flex-end"><span style="padding:6px 16px;border-radius:4px;background:#1A73E8;color:#fff;font-weight:700" class="hl">フォルダーの選択</span><span style="padding:6px 16px;border-radius:4px;border:1px solid #CFD6D4">キャンセル</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="step"><span class="n">9</span><h3>ブラウザの確認で「許可」を押す(2回出ることがあります)</h3></div>
+    <p class="small muted">1回目は「ファイルを見ること」、2回目は「分析が終わった録画を削除すること」の許可です。どちらも許可してください。</p>
+    <div class="grid">
+      <div class="dlg" role="img" aria-label="ファイルの表示を許可する確認の例"><strong>taclog-one.vercel.app に「TacLog」のファイルの表示を許可しますか?</strong><span class="small" style="color:#4A5553">サイトがフォルダ内のファイルを見られるようになります</span><div class="acts"><span>キャンセル</span><span class="go hl">ファイルを表示</span></div></div>
+      <div class="dlg" role="img" aria-label="ファイルの編集を許可する確認の例"><strong>taclog-one.vercel.app に「TacLog」のファイルの編集を許可しますか?</strong><span class="small" style="color:#4A5553">分析が終わった録画を削除するために使います</span><div class="acts"><span>キャンセル</span><span class="go hl">ファイルを編集</span></div></div>
+    </div>
+    <p class="small muted">ボタンの文字はブラウザによって「許可」「変更を保存」などになっていることがあります。</p>
+  </section>
+
+  <section class="card">
+    <div class="step"><span class="n">10</span><h3>「連携しました」と出たら完了</h3></div>
+    <p class="small muted">これで準備はすべて終わりです。次の配信から、配信を終えてTacLogを開くと、新しい録画が自動で表示されます。「分析する」を押すと、読み取って保存し、終わった録画はパソコンから削除されます(YouTubeのアーカイブは残ります)。</p>
+    <div class="notice">ブラウザを開き直したときは、安全のため「録画フォルダを読み込む」を1回押す必要があります。ブラウザに「毎回許可する」のような選択肢が出たら、それを選ぶと次から押さなくてよくなります。</div>
   </section>
 </main>
 <footer id="footer"></footer>
