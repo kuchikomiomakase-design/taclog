@@ -17,7 +17,7 @@
     return e;
   };
 
-  const LOGO = '<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="7" fill="var(--accent)"></rect><circle cx="14" cy="14" r="6.5" fill="none" stroke="var(--accent-ink)" stroke-width="2"></circle><path d="M14 4v5M14 19v5M4 14h5M19 14h5" stroke="var(--accent-ink)" stroke-width="2" stroke-linecap="round"></path></svg>';
+  const LOGO = '<svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect x="1.5" y="1.5" width="27" height="27" rx="4" fill="none" stroke="var(--ink)" stroke-width="2"></rect><path d="M8 10.5h14M15 10.5v12" stroke="var(--accent)" stroke-width="3.2" stroke-linecap="round"></path><circle cx="22.5" cy="21" r="3" fill="var(--loss)"></circle></svg>';
 
   function header(links) {
     const el = $("topbar"); if (!el) return;

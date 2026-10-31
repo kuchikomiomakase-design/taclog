@@ -3,75 +3,122 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>TacLog | スクリムをAIで振り返る</title>
-<meta name="description" content="スクリムの録画を読み取って、ラウンドごとの勝敗・ファーストキル・設置タイミングを記録。チームの傾向をAIに質問できます。">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=JetBrains+Mono:wght@500&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<title>TacLog | スクリムの反省会を、数字で</title>
+<meta name="description" content="配信した録画を読み込むだけで、ラウンドごとの勝ち負け・ファーストキル・設置の秒数とサイトを記録。チームの傾向をAIに聞けます。">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=IBM+Plex+Mono:wght@500;600&family=Yomogi&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
 <link rel="stylesheet" href="/assets/style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="/assets/config.js"></script>
 <script src="/assets/common.js"></script>
 <style>
-.hero{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:32px;align-items:center;padding-block:24px}
-.hero h1{font-size:clamp(30px,6vw,46px)}
-.hero h1 em{font-style:normal;color:var(--accent-text)}
-.demo{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:12px}
-.q{justify-self:end;max-width:90%;padding:10px 14px;border-radius:14px 14px 4px 14px;background:var(--accent);color:var(--accent-ink);font-size:14px}
-.bars{display:grid;gap:6px;padding:12px;border-radius:10px;background:var(--raise)}
-.bar{display:grid;grid-template-columns:96px 1fr 40px;gap:8px;align-items:center;font-size:12px}
-.bar i{display:block;height:12px;border-radius:3px;background:var(--accent)}
-.bar i.lo{background:var(--line2)}
-.feat{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
-.feat .card h3{font-size:17px}
-.flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;counter-reset:s}
-.flow .card{position:relative}
-.flow .n{font:700 26px var(--f-display);color:var(--accent-text)}
-@media (max-width:760px){.hero,.feat,.flow{grid-template-columns:1fr}}
+.hero{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:40px;align-items:center;padding-block:28px 12px}
+.hero h1{font-size:clamp(30px,4.6vw,46px);line-height:1.3;word-break:keep-all;overflow-wrap:anywhere}
+.hero .lead{font-size:16.5px}
+/* scrim sheet */
+.sheet{position:relative;background:var(--surface);border:1px solid var(--line2);border-radius:4px;padding:22px 22px 18px;box-shadow:0 1px 0 var(--line),6px 8px 0 color-mix(in srgb,var(--ink) 6%,transparent);transform:rotate(.6deg)}
+.sheet h3{font-family:var(--f-hand);font-weight:400;font-size:19px}
+.sheet .meta{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.score{font:600 26px var(--f-mono);letter-spacing:.02em}
+.strip{display:grid;grid-template-columns:repeat(12,minmax(0,1fr)) 10px repeat(12,minmax(0,1fr));gap:3px}
+.stripwrap{position:relative;padding-top:50px}
+.strip .r{display:grid;gap:3px;justify-items:center}
+.strip .sq{width:100%;aspect-ratio:1;max-width:100%;border-radius:2px;display:grid;place-items:center;font:600 9px var(--f-mono);color:#fff}
+.strip .W{background:var(--win)} .strip .L{background:var(--loss)}
+.strip .fk{width:7px;height:7px;border-radius:50%}
+.strip .fk.us{background:var(--ink)} .strip .fk.them{border:1.5px solid var(--ink);box-sizing:border-box}
+.strip .n{font:500 9px var(--f-mono);color:var(--muted)}
+.strip .gap{border-left:2px dashed var(--line2);margin:0 4px}
+.note{position:absolute;font-family:var(--f-hand);font-size:15px;line-height:1.35;color:var(--accent);white-space:nowrap}
+.note.red{color:var(--loss)}
+.sheet .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px}
+.sheet .legend span{display:inline-flex;align-items:center;gap:5px}
+.tally{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin-top:14px;border-top:1px solid var(--line)}
+.tally div{padding:10px 8px 0;display:grid;gap:2px}
+.tally div+div{border-left:1px solid var(--line)}
+.tally .k{font-size:12px;color:var(--muted)} .tally .v{font:600 20px var(--f-mono)} .tally .s{font:500 12px var(--f-mono);color:var(--muted)}
+.ex{position:absolute;right:14px;top:-12px}
+/* questions */
+.qa{display:grid;gap:0;border-top:2px solid var(--ink)}
+.qa .row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;padding:16px 4px;border-bottom:1px solid var(--line);align-items:baseline}
+.qa .q{font-weight:700;font-size:16px}
+.qa .a{font:500 14px var(--f-mono);color:var(--ink2)}
+.qa .a b{color:var(--ink);font-weight:600}
+/* flow */
+.flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.flow .st{flex:1 1 170px;padding:18px 18px 16px;display:grid;gap:4px;position:relative}
+.flow .st+.st{border-left:1px solid var(--line)}
+.flow .st .who{font:600 11px var(--f-mono);letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.flow .st b{font-size:16px}
+.flow .st.auto{background:color-mix(in srgb,var(--accent-soft) 60%,var(--surface))}
+.flow .st.auto .who{color:var(--accent-text)}
+/* promises */
+.promise{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px}
+.promise div{display:grid;gap:6px;padding-top:14px;border-top:3px solid var(--ink)}
+.promise b{font-size:16px}
+.end{display:grid;gap:14px;justify-items:start;padding:28px 0 8px}
+.end h2{font-family:var(--f-display);font-weight:400;font-size:clamp(24px,4.5vw,32px);word-break:keep-all;overflow-wrap:anywhere}
+@media (max-width:860px){.hero{grid-template-columns:1fr}.sheet{transform:none}.qa .row2{grid-template-columns:1fr;gap:4px}.promise{grid-template-columns:1fr}}
+@media (max-width:480px){.note{display:none}.stripwrap{padding-top:8px}}
 </style>
 </head>
 <body>
 <header id="topbar"></header>
-<main id="main" class="wrap">
+<main id="main" class="wrap" style="max-width:1080px;gap:56px">
+
   <section class="hero">
-    <div style="display:grid;gap:18px">
-      <span class="pill mute" style="justify-self:start">VALORANT対応・先行公開中</span>
-      <h1>スクリムの振り返りを、<em>AIに聞くだけ</em>に。</h1>
-      <p class="lead">いつも通り配信して、録画を読み込むだけ。ラウンドごとの勝敗、ファーストキル、設置のタイミングとサイトを自動で記録します。「アセントのアタックの取得率は?」と聞けば、グラフと根拠の場面つきで答えます。</p>
+    <div style="display:grid;gap:20px">
+      <span class="tape" style="justify-self:start">VALORANT対応 ・ 先行公開中</span>
+      <h1>「なんで負けた？」を、<br><span class="mark">数字で</span>話そう。</h1>
+      <p class="lead">配信した録画を読み込むだけで、ラウンドごとの勝ち負け、ファーストキル、設置した秒数とサイトが全部残ります。あとはAIに「アセントのアタック、何%取れてる?」と聞くだけ。</p>
       <div class="row"><a class="btn primary" href="/signup">無料ではじめる</a><a class="btn" href="/pricing">料金を見る</a></div>
-      <p class="small muted">クレジットカードの登録は不要です。チームで月2本まで無料で分析できます。</p>
+      <p class="small muted">クレジットカード不要。チームで月2本まで無料で分析できます。</p>
     </div>
-    <div class="demo" aria-label="質問と回答の例">
-      <div class="q">ファーストキルを取ったラウンドの勝率は?</div>
-      <p style="font-size:14px">直近8スクリムでは、ファーストキルを取ったラウンドの勝率は<strong>71%</strong>、取られたラウンドは<strong>32%</strong>でした。特にディフェンスで最初に倒されると、勝率が大きく下がっています。</p>
-      <div class="bars">
-        <strong class="small">ファーストキルとラウンド勝率(例)</strong>
-        <div class="bar"><span>取った</span><i style="width:71%"></i><span class="mono">71%</span></div>
-        <div class="bar"><span>取られた</span><i class="lo" style="width:32%"></i><span class="mono">32%</span></div>
+
+    <figure class="sheet" style="margin:0" aria-label="スクリムシートの例:アセントで13対11、ラウンドごとの勝ち負けとファーストキル">
+      <span class="tape ex">例</span>
+      <div class="meta"><h3>10/28 スクリム ・ アセント</h3><span class="score">13<span class="muted" style="font-size:18px"> − </span>11</span></div>
+      <div class="stripwrap">
+        <span class="note" style="left:0;top:2px">↓ ピストルとれた</span>
+        <span class="note red" style="left:21%;top:24px">↓ 6〜9で4連敗。B守りのリテイク</span>
+        <div class="strip" id="strip"></div>
       </div>
-      <span class="small muted">※画面は例です</span>
+      <div class="legend"><span><i class="fk us" style="width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block"></i>ファーストキルを取った</span><span><i style="width:8px;height:8px;border-radius:50%;border:1.5px solid var(--ink);display:inline-block;box-sizing:border-box"></i>取られた</span><span><i style="width:10px;height:10px;background:var(--win);display:inline-block;border-radius:2px"></i>勝ち</span><span><i style="width:10px;height:10px;background:var(--loss);display:inline-block;border-radius:2px"></i>負け</span></div>
+      <div class="tally">
+        <div><span class="k">アタック(前半)</span><span class="v">58%</span><span class="s">7 / 12</span></div>
+        <div><span class="k">ディフェンス(後半)</span><span class="v">50%</span><span class="s">6 / 12</span></div>
+        <div><span class="k">ファーストキル</span><span class="v">67%</span><span class="s">16 / 24</span></div>
+      </div>
+    </figure>
+  </section>
+
+  <section style="display:grid;gap:18px">
+    <div style="display:grid;gap:6px"><h2>反省会で、毎回出てくる質問</h2><p class="muted small">そのまま聞けば、ためた試合から集計して答えます(下の数字は例です)。</p></div>
+    <div class="qa">
+      <div class="row2"><span class="q">ファーストラウンドの取得率は?</span><span class="a">1・13ラウンド目 → <b>9 / 16</b>(56%)</span></div>
+      <div class="row2"><span class="q">ファーストキルの取得率は?</span><span class="a">直近8スクリム → <b>98 / 181</b>(54%)</span></div>
+      <div class="row2"><span class="q">ファーストキルを取ったラウンドの勝率は?</span><span class="a">取った <b>71%</b> / 取られた <b>32%</b></span></div>
+      <div class="row2"><span class="q">この1週間のアセント、アタックで何%取れてる?</span><span class="a">3試合 → <b>22 / 34</b>(65%)</span></div>
     </div>
   </section>
 
-  <section style="display:grid;gap:14px">
-    <h2>チームでよく聞かれる数字が、すぐ出る</h2>
-    <div class="feat">
-      <div class="card"><h3>ファーストキル</h3><p class="muted small">ラウンドごとに、最初のキルを誰が取ったか・取られたかを記録。取得率と、そのときのラウンド勝率が分かります。</p></div>
-      <div class="card"><h3>マップ×攻守の取得率</h3><p class="muted small">「この1週間のアセントのアタック」のように、期間・マップ・攻守でしぼって集計します。</p></div>
-      <div class="card"><h3>設置タイミングとサイト</h3><p class="muted small">何秒に、どのサイトに設置したか。早い設置と遅い設置で勝率がどう違うかも見られます。</p></div>
-    </div>
-  </section>
-
-  <section style="display:grid;gap:14px">
-    <h2>使い方は3ステップ</h2>
+  <section style="display:grid;gap:18px">
+    <div style="display:grid;gap:6px"><h2>やることは、いつもの配信だけ</h2><p class="muted small">最初にOBSの設定を少し変えておけば、あとはTacLogが勝手にやります。</p></div>
     <div class="flow">
-      <div class="card"><span class="n">1</span><h3>いつも通り配信する</h3><p class="muted small">OBSの設定を最初に3か所変えるだけ。配信のやり方は変わりません。</p></div>
-      <div class="card"><span class="n">2</span><h3>録画を読み込む</h3><p class="muted small">録画はあなたのパソコンの中で読み取ります。動画をアップロードする必要はありません。</p></div>
-      <div class="card"><span class="n">3</span><h3>メンバー全員で質問する</h3><p class="muted small">結果はチームで共有。誰でも、スマホからでも質問できます。</p></div>
+      <div class="st"><span class="who">あなた</span><b>いつも通り配信</b><span class="small muted">スクリムが終わったら配信を止める</span></div>
+      <div class="st auto"><span class="who">TacLog</span><b>録画を見つけて読み取る</b><span class="small muted">TacLogを開いておくと、新しい録画を自動で分析</span></div>
+      <div class="st auto"><span class="who">TacLog</span><b>保存して、録画は削除</b><span class="small muted">パソコンの容量は増えない。YouTubeのアーカイブは残る</span></div>
+      <div class="st"><span class="who">チーム全員</span><b>結果を見て、AIに聞く</b><span class="small muted">スマホからでもOK</span></div>
     </div>
   </section>
 
-  <section class="card" style="text-align:center;justify-items:center">
-    <h2>まずは1本、無料で試してみてください</h2>
-    <p class="muted">自分のチームの振り返り専用のサービスです。相手チームを調べる機能はありません。</p>
+  <section class="promise">
+    <div><b>録画はアップロードしない</b><span class="small muted">読み取りはあなたのパソコンの中。保存するのは結果の数字だけです。</span></div>
+    <div><b>自分たちの振り返り専用</b><span class="small muted">相手チームを調べる機能はありません。スクリム相手にも安心して使えます。</span></div>
+    <div><b>チーム単位の料金</b><span class="small muted">無料から始めて、毎週スクリムするなら月1,980円。5人で割れば1人400円。</span></div>
+  </section>
+
+  <section class="end">
+    <h2>次のスクリムから、記録を残そう。</h2>
     <a class="btn primary" href="/signup">無料ではじめる</a>
   </section>
 </main>
@@ -80,6 +127,11 @@
 TL.header([{href:"/pricing",label:"料金"},{href:"/login",label:"ログイン"},{href:"/signup",label:"無料ではじめる"}]);
 TL.footer();
 TL.session().then(s=>{if(s){const n=document.querySelector(".nav");n.replaceChildren(TL.h("a",{href:"/app"},"アプリを開く"))}});
+// example match: 24 rounds, W/L and who took the first kill
+const R="WWLWWLLLLWWW|WLWLLWLWLLWW".split(""),F="uutuutttuuuu|uututtutuuuu".split("");
+const strip=document.getElementById("strip");let n=0;
+R.forEach((r,i)=>{if(r==="|"){strip.append(TL.h("span",{class:"gap","aria-hidden":"true"}));return}n++;
+  strip.append(TL.h("div",{class:"r"},TL.h("span",{class:"sq "+r,title:"第"+n+"ラウンド "+(r==="W"?"勝ち":"負け")}),TL.h("span",{class:"fk "+(F[i]==="u"?"us":"them")}),TL.h("span",{class:"n"},String(n))))});
 </script>
 </body>
 </html>
