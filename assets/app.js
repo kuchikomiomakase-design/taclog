@@ -10,7 +10,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   const sideJa = (s) => s === "attack" ? "アタック" : s === "defense" ? "ディフェンス" : "?";
   const PLAN_JA = { free: "無料", team: "チーム", org: "コーチ・組織" };
   const status = (t) => { const s = $("status"); s.hidden = !t; s.textContent = t || ""; };
-  const VIEWS = ["analyze", "ask", "matches", "settings"];
+  const VIEWS = ["analyze", "channel", "ask", "matches", "settings"];
 
   function route() {
     const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "analyze";
@@ -21,7 +21,8 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   }
 
   function renderHeader() {
-    TL.header([{ href: "#analyze", label: "録画を分析" }, { href: "#ask", label: "AIに質問" }, { href: "#matches", label: "試合一覧" }, { href: "#settings", label: "設定" }]);
+    TL.header([{ href: "#analyze", label: "録画を分析" }, { href: "#channel", label: "チャンネル" }, { href: "#ask", label: "AIに質問" }, { href: "#matches", label: "試合一覧" }, { href: "#settings", label: "設定" }]);
+    updateBadge();
     if (APP.teams.length > 1) {
       const sel = h("select", { class: "teamsel", "aria-label": "チームを切り替える" }, APP.teams.map((t) => h("option", { value: t.id }, t.name)));
       sel.value = APP.team.id; sel.onchange = () => { TL.setTeam(sel.value); location.reload(); };
@@ -33,7 +34,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   async function loadMatches() {
     const { data, error } = await sb.from("matches").select("*").eq("team_id", APP.team.id).order("date", { ascending: false }).order("created_at", { ascending: false });
     if (error) { status(TL.errText(error)); return; }
-    APP.matches = data || []; renderMatches();
+    APP.matches = data || []; renderMatches(); renderChannel();
   }
   APP.reloadMatches = loadMatches;
 
@@ -59,6 +60,68 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
             h("span", { class: "small muted" }, rs.length + "ラウンド ・ 最初は" + sideJa(m.start_side) + (fkAll ? " ・ FK取得 " + fkUs + "/" + fkAll : ""))),
           m.comps && m.comps.left && m.comps.left.length ? h("span", { class: "small muted" }, "構成:" + m.comps.left.join(" / ")) : null),
         canDel ? del : h("span"));
+    }));
+  }
+
+  /* ---------- channel ---------- */
+  const seenKey = () => "taclog.seen." + APP.team.id;
+  function seenSet() { try { return new Set(JSON.parse(localStorage.getItem(seenKey()) || "[]")); } catch (e) { return new Set(); } }
+  function markSeen(ids) { const s = seenSet(); ids.forEach((i) => s.add(i)); try { localStorage.setItem(seenKey(), JSON.stringify([...s].slice(-2000))); } catch (e) {} }
+  function firstVisitInit() { try { if (localStorage.getItem(seenKey()) == null) markSeen(APP.matches.filter((m) => Date.now() - new Date(m.created_at).getTime() > 864e5).map((m) => m.id)); } catch (e) {} }
+  const isNew = (m, seen) => !seen.has(m.id);
+  function updateBadge() {
+    const a = document.querySelector('.nav a[href="#channel"]'); if (!a || !APP.team) return;
+    const seen = seenSet(), n = APP.matches.filter((m) => isNew(m, seen)).length;
+    a.replaceChildren(document.createTextNode("チャンネル"), ...(n ? [h("span", { class: "dot", "aria-label": "新しい試合 " + n + "件" })] : []));
+  }
+  const pct = (a, b) => b ? Math.round(a / b * 100) + "%" : "—";
+  function renderChannel() {
+    const feed = $("feed"); if (!feed || !APP.team) return;
+    firstVisitInit();
+    const seen = seenSet(), ms = APP.matches, newCount = ms.filter((m) => isNew(m, seen)).length;
+    $("seenAll").hidden = !newCount; $("seenAll").onclick = () => { markSeen(ms.map((m) => m.id)); renderChannel(); };
+    updateBadge();
+    if (!ms.length) { feed.replaceChildren(h("div", { class: "empty" }, h("strong", {}, "まだ試合がありません"), h("span", {}, "録画を分析すると、ここに投稿のように流れてきます。"))); return; }
+    feed.replaceChildren(...ms.map((m) => {
+      const rs = m.rounds || [], fresh = isNew(m, seen);
+      const w = rs.filter((r) => r.win === true).length, l = rs.filter((r) => r.win === false).length;
+      const att = rs.filter((r) => r.side === "attack" && r.win != null), def = rs.filter((r) => r.side === "defense" && r.win != null);
+      const fk = rs.filter((r) => r.fk === "us" || r.fk === "them"), fkUs = fk.filter((r) => r.fk === "us");
+      const missing = !m.map || !m.date;
+      const id = (k) => "c_" + k + "_" + m.id;
+      const date = h("input", { type: "date", id: id("date"), value: m.date || "" });
+      const opp = h("input", { id: id("opp"), maxlength: "40", placeholder: "例:練習相手A", value: m.opp || "" });
+      const map = h("select", { id: id("map") }, h("option", { value: "" }, "マップを選ぶ"), MAPS.map(([v, n]) => h("option", { value: v }, n))); map.value = m.map || "";
+      const yt = h("input", { id: id("yt"), type: "url", placeholder: "https://www.youtube.com/watch?v=...", value: m.yt || "" });
+      const msg = h("span", { class: "small muted" });
+      const save = h("button", { class: "btn small primary", type: "button" }, "保存");
+      save.onclick = async () => {
+        save.disabled = true;
+        const patch = { date: date.value || null, opp: opp.value.trim(), map: map.value, yt: yt.value.trim() };
+        const { error } = await sb.from("matches").update(patch).eq("id", m.id);
+        save.disabled = false;
+        if (error) { msg.textContent = TL.errText(error); return; }
+        Object.assign(m, patch); markSeen([m.id]); renderMatches(); renderChannel();
+      };
+      const ok = h("button", { class: "btn small ghost", type: "button", hidden: !fresh }, "確認した");
+      ok.onclick = () => { markSeen([m.id]); renderChannel(); };
+      return h("article", { class: "post" + (fresh ? " new" : ""), id: "post_" + m.id },
+        h("div", { class: "spread" },
+          h("div", { class: "row" }, fresh ? h("span", { class: "newbadge" }, "NEW") : null,
+            h("strong", { style: "font-size:17px" }, (m.date ? fmtDate(m.date) : "日付未設定") + (m.opp ? " vs " + m.opp : "")),
+            h("span", { class: "pill " + (m.map ? "mute" : "warn") }, m.map ? mapName(m.map) : "マップ未設定"),
+            h("span", { class: "pill " + (w > l ? "win" : w < l ? "loss" : "mute") }, w + "−" + l)),
+          h("span", { class: "small muted" }, "読み込み:" + new Date(m.created_at).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }))),
+        h("div", { class: "stats4" },
+          h("div", {}, h("span", { class: "k" }, "アタック取得率"), h("span", { class: "v" }, pct(att.filter((r) => r.win).length, att.length))),
+          h("div", {}, h("span", { class: "k" }, "ディフェンス取得率"), h("span", { class: "v" }, pct(def.filter((r) => r.win).length, def.length))),
+          h("div", {}, h("span", { class: "k" }, "ファーストキル取得率"), h("span", { class: "v" }, pct(fkUs.length, fk.length))),
+          h("div", {}, h("span", { class: "k" }, "ファーストラウンド"), h("span", { class: "v" }, [1, 13].map((n) => { const r = rs.find((x) => x.n === n); return r ? (r.win === true ? "○" : r.win === false ? "×" : "?") : "-"; }).join(" ")))),
+        missing ? h("p", { class: "small", style: "color:var(--warn);font-weight:700;margin:0" }, "日付とマップを入れると、マップごとの集計に使えるようになります。") : null,
+        h("div", { class: "editgrid" },
+          h("label", { for: id("date") }, "日付", date), h("label", { for: id("opp") }, "相手(メモ用)", opp),
+          h("label", { for: id("map") }, "マップ", map), h("label", { for: id("yt") }, "YouTubeのURL", yt)),
+        h("div", { class: "row" }, save, ok, msg));
     }));
   }
 
@@ -238,7 +301,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     $("saveTeam").onclick = async () => { const { error } = await sb.from("teams").update({ name: $("teamName").value.trim() }).eq("id", APP.team.id); status(error ? TL.errText(error) : ""); if (!error) APP.team.name = $("teamName").value.trim(); };
     $("logout").onclick = async () => { await sb.auth.signOut(); location.href = "/"; };
     window.addEventListener("hashchange", route); route();
-    setInterval(() => { if (!folderBusy && APP.team) renderFolder(); }, 60000); // check the folder every minute
+    setInterval(() => { if (!folderBusy && APP.team) renderFolder(); if (APP.team && !document.querySelector("#feed :focus")) loadMatches(); }, 60000); // check the folder and new matches every minute
     loadMatches();
     const qp = new URLSearchParams(location.search); if (qp.get("billing") === "success") status("お支払いが完了しました。プランが切り替わるまで数秒かかることがあります。");
   })();

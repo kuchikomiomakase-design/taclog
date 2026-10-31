@@ -30,6 +30,18 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
 .matchrow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
 .member{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border-radius:10px;background:var(--raise)}
 .teamsel{width:auto;padding:6px 10px;font-size:14px}
+:root{--new:#F08A24;--new-soft:rgba(240,138,36,.16)}
+.post{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:14px;transition:box-shadow .3s,border-color .3s}
+.post.new{border-color:var(--new);box-shadow:0 0 0 3px var(--new-soft),0 0 22px rgba(240,138,36,.35);animation:glow 1.8s ease-in-out infinite}
+@keyframes glow{0%,100%{box-shadow:0 0 0 3px var(--new-soft),0 0 10px rgba(240,138,36,.25)}50%{box-shadow:0 0 0 4px var(--new-soft),0 0 26px rgba(240,138,36,.55)}}
+.newbadge{display:inline-flex;align-items:center;gap:4px;font:700 12px var(--f-body);padding:3px 10px;border-radius:999px;background:var(--new);color:#fff}
+.stats4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.stats4 div{background:var(--surface);padding:10px 12px;display:grid;gap:2px}
+.stats4 .k{font-size:12px;color:var(--muted)} .stats4 .v{font:700 18px var(--f-mono);font-variant-numeric:tabular-nums}
+.editgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--new);margin-left:6px;vertical-align:middle;box-shadow:0 0 8px rgba(240,138,36,.8)}
+@media (max-width:640px){.stats4{grid-template-columns:repeat(2,minmax(0,1fr))}.editgrid{grid-template-columns:1fr 1fr}}
+@media (prefers-reduced-motion:reduce){.post.new{animation:none}}
 @media (max-width:640px){.preview{grid-template-columns:1fr}}
 </style>
 </head>
@@ -103,6 +115,13 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
       <input id="q" placeholder="例:アセントのアタックで、設置は残り何秒あたりが多い?" maxlength="300">
       <button type="submit" class="btn primary" id="askBtn">送信</button>
     </form>
+  </div>
+
+  <!-- CHANNEL -->
+  <div id="view-channel" style="display:grid;gap:14px" hidden>
+    <div class="spread"><div style="display:grid;gap:4px"><h2>試合チャンネル</h2><p class="small muted">分析した試合が新しい順に並びます。日付・相手・マップ・YouTubeのURLは、ここで入れたり直したりできます。新しく読み込んだ試合はオレンジ色に光ります。</p></div>
+      <button class="btn small" type="button" id="seenAll" hidden>すべて確認済みにする</button></div>
+    <div id="feed" style="display:grid;gap:14px"></div>
   </div>
 
   <!-- MATCHES -->
