@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>TacLog</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=JetBrains+Mono:wght@500&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="/assets/config.js"></script>
+<script src="/assets/common.js"></script>
+<style>
+.stepno{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font:700 14px var(--f-mono);flex:none}
+.stephead{display:flex;align-items:center;gap:10px}
+.preview{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:14px;align-items:start}
+canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#000;display:block}
+.prog{height:10px;border-radius:5px;background:var(--raise);border:1px solid var(--line);overflow:hidden}
+.prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.thread{display:grid;gap:14px}
+.bubble{justify-self:end;max-width:85%;padding:10px 14px;border-radius:14px 14px 4px 14px;background:var(--accent);color:var(--accent-ink);overflow-wrap:anywhere}
+.answer{padding:16px 18px;border-radius:12px;background:var(--surface);border:1px solid var(--line);display:grid;gap:12px;overflow-wrap:anywhere}
+.answer p{line-height:1.9;white-space:pre-wrap}
+.bars{display:grid;gap:8px;padding:12px;border-radius:10px;background:var(--raise)}
+.barrow{display:grid;grid-template-columns:minmax(80px,150px) 1fr 70px;gap:10px;align-items:center;font-size:13px}
+.track{height:16px;border-radius:4px;background:var(--line);overflow:hidden}
+.track i{display:block;height:100%;background:var(--accent)}
+.scene{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px}
+.ask{display:flex;gap:8px;align-items:center;padding:8px;border-radius:12px;background:var(--surface);border:1px solid var(--line2)}
+.ask input{border:0;background:transparent}
+.matchrow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.member{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border-radius:10px;background:var(--raise)}
+.teamsel{width:auto;padding:6px 10px;font-size:14px}
+@media (max-width:640px){.preview{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header id="topbar"></header>
+<main id="main" class="wrap">
+  <div id="status" class="notice" hidden></div>
+
+  <!-- ANALYZE -->
+  <div id="view-analyze" style="display:grid;gap:16px" hidden>
+    <section class="card">
+      <div class="stephead"><span class="stepno">1</span><h2>録画ファイルを選ぶ</h2></div>
+      <p class="small muted">スクリムの録画(MP4がおすすめ)を選んでください。ファイルはこのパソコンの中で読み取るだけで、アップロードはしません。</p>
+      <label for="file">動画ファイル<input id="file" type="file" accept="video/*,.mkv"></label>
+      <p class="small muted" id="fileInfo"></p>
+    </section>
+    <section class="card">
+      <div class="stephead"><span class="stepno">2</span><h2>試合の情報</h2></div>
+      <div class="grid">
+        <label for="mDate">日付<input id="mDate" type="date"></label>
+        <label for="mOpp">相手チーム(メモ用)<input id="mOpp" maxlength="40" placeholder="例:練習相手A"></label>
+        <label for="mMap">マップ<select id="mMap"></select></label>
+        <label for="mSide">最初の攻守(自動で判定できなかったときだけ使います)<select id="mSide"><option value="attack">アタック</option><option value="defense">ディフェンス</option></select></label>
+        <label for="mYt" style="grid-column:1/-1">YouTubeアーカイブのURL(任意・あとで場面に飛べます)<input id="mYt" type="url" placeholder="https://www.youtube.com/watch?v=..."></label>
+      </div>
+      <p class="small muted">画面の左側のスコアを自分のチームとして扱います(自分の視点の配信なら左が自チームです)。</p>
+    </section>
+    <section class="card">
+      <div class="stephead"><span class="stepno">3</span><h2>読み取る場所を確認</h2></div>
+      <p class="small muted">右の切り抜きに、スコアと残り時間が入っているか確認してください。ずれていたらスライダーで調整します。</p>
+      <div class="preview">
+        <canvas id="frameCv" class="frame" width="640" height="360" aria-label="動画のプレビュー"></canvas>
+        <div style="display:grid;gap:10px">
+          <canvas id="tileCv" class="tile" width="300" height="60" aria-label="読み取る部分の切り抜き"></canvas>
+          <label for="cw">切り抜きの幅 <span class="mono" id="cwV"></span><input id="cw" type="range" min="14" max="50" value="26"></label>
+          <label for="ch">切り抜きの高さ <span class="mono" id="chV"></span><input id="ch" type="range" min="4" max="16" value="8"></label>
+          <label for="ct">上からの位置 <span class="mono" id="ctV"></span><input id="ct" type="range" min="0" max="10" value="0"></label>
+          <label for="pv">プレビューの位置 <span class="mono" id="pvV"></span><input id="pv" type="range" min="1" max="99" value="30"></label>
+        </div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="stephead"><span class="stepno">4</span><h2>分析する</h2></div>
+      <label for="iv" style="max-width:340px">読み取る間隔<select id="iv"><option value="5">5秒ごと(正確・時間がかかる)</option><option value="8" selected>8秒ごと(おすすめ)</option><option value="12">12秒ごと(速い)</option></select></label>
+      <p class="small muted" id="estimate"></p>
+      <div class="row"><button type="button" class="btn primary" id="go" disabled>分析を始める</button><button type="button" class="btn" id="stop" hidden>止める</button></div>
+      <div id="progBox" hidden style="display:grid;gap:6px"><div class="prog"><i id="progBar"></i></div><span class="small muted" id="progText"></span></div>
+      <div id="result" hidden style="display:grid;gap:12px"></div>
+    </section>
+  </div>
+
+  <!-- ASK -->
+  <div id="view-ask" style="display:grid;gap:16px" hidden>
+    <section class="card">
+      <div class="spread"><h2>AIに質問</h2><span class="small muted" id="qScope"></span></div>
+      <span class="small muted">質問テンプレ(押すと入力欄に入ります。〈 〉を書きかえてください)</span>
+      <div class="chips" id="tpls"></div>
+    </section>
+    <div class="thread" id="thread"><div class="empty"><strong>まだ質問していません</strong><span>分析した試合のデータをもとに答えます。</span></div></div>
+    <form class="ask" id="askForm" autocomplete="off">
+      <label for="q" style="position:absolute;left:-9999px">質問</label>
+      <input id="q" placeholder="例:アセントのアタックで、設置は残り何秒あたりが多い?" maxlength="300">
+      <button type="submit" class="btn primary" id="askBtn">送信</button>
+    </form>
+  </div>
+
+  <!-- MATCHES -->
+  <div id="view-matches" style="display:grid;gap:12px" hidden>
+    <h2>試合一覧</h2>
+    <div id="mList" style="display:grid;gap:10px"></div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="view-settings" style="display:grid;gap:16px" hidden>
+    <section class="card">
+      <h2>チーム</h2>
+      <div class="grid">
+        <label for="teamName">チーム名<input id="teamName" maxlength="40"></label>
+        <div style="display:grid;gap:6px"><span class="small muted">プラン</span><div class="row"><strong id="planName"></strong><span class="small muted" id="usageText"></span></div></div>
+      </div>
+      <div class="row"><button class="btn small" type="button" id="saveTeam">チーム名を保存</button></div>
+      <div class="row" id="billingRow"></div>
+    </section>
+    <section class="card">
+      <h2>メンバー</h2>
+      <p class="small muted">メンバーはログインして、分析結果を見たりAIに質問したりできます。「配信する」をオンにした人は、OBSの設定をしておけば誰でも録画を分析できます。</p>
+      <div id="members" style="display:grid;gap:8px"></div>
+      <div id="inviteBox" style="display:grid;gap:10px"></div>
+    </section>
+    <section class="card">
+      <h2>連携しているアカウント</h2>
+      <div id="links" style="display:grid;gap:8px"></div>
+    </section>
+    <section class="card">
+      <h2>お知らせ</h2>
+      <p class="small muted">いらないものはチェックを外してください。</p>
+      <label class="check" for="nArrived"><input id="nArrived" type="checkbox"><span><strong>分析が保存されたらお知らせ</strong></span></label>
+      <label class="check" for="nMissing"><input id="nMissing" type="checkbox"><span><strong>しばらく分析されていないときにお知らせ</strong></span></label>
+      <label class="check" for="nReport"><input id="nReport" type="checkbox"><span><strong>週ごとのまとめ</strong></span></label>
+      <span class="small muted" id="prefsSaved"></span>
+    </section>
+    <section class="card">
+      <h2>アカウント</h2>
+      <p class="small muted" id="meMail"></p>
+      <div class="row"><button class="btn" type="button" id="logout">ログアウト</button><a class="btn ghost" href="/onboarding?step=3">初期設定をもう一度見る</a></div>
+    </section>
+  </div>
+</main>
+<footer id="footer"></footer>
+<script src="/assets/app.js"></script>
+<script src="/assets/analyze.js"></script>
+</body>
+</html>

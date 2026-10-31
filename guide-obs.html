@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>OBSの設定ガイド | TacLog</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=JetBrains+Mono:wght@500&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="/assets/config.js"></script>
+<script src="/assets/common.js"></script>
+<style>
+.shot{border-radius:10px;overflow:hidden;border:1px solid #2B3432;background:#1E2423;color:#D8E0DE;font-size:14px;display:flex;flex-wrap:wrap}
+.shot .side{flex:0 0 160px;display:flex;flex-direction:column;padding:10px 0;background:#222928;border-right:1px solid #333C3A}
+.shot .side span{padding:8px 16px}
+.shot .side .on,.shot .hl{background:#0E7C74;color:#fff;font-weight:700;outline:3px solid #F2B33D;outline-offset:-3px}
+.shot .body{flex:1 1 280px;min-width:0;padding:18px 20px;display:grid;gap:10px;align-content:start}
+.shot .field{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:10px 12px;border-radius:6px;background:#213833;outline:3px solid #F2B33D}
+.shot .val{padding:4px 8px;background:#151A19;border:1px solid #3A4442;border-radius:4px}
+.n{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font:700 17px var(--f-display);flex:none}
+</style>
+</head>
+<body>
+<header id="topbar"></header>
+<main id="main" class="wrap narrow">
+  <div style="display:grid;gap:8px"><h1>OBSの設定ガイド</h1><p class="lead">上から順番にやれば終わります。画面はWindows版OBSの例で、バージョンによって表示が少し違うことがあります。</p></div>
+
+  <section class="card">
+    <div class="row"><span class="n">1</span><h2>「ファイル」→「設定」を開く</h2></div>
+    <p class="muted small">OBSの上のメニューの「ファイル」から「設定」を選びます。画面右下の「設定」ボタンからでも開けます。</p>
+  </section>
+
+  <section class="card">
+    <div class="row"><span class="n">2</span><h2>「詳細設定」→「配信時に自動的に録画」にチェック</h2></div>
+    <div class="shot" role="img" aria-label="詳細設定の録画欄の例">
+      <div class="side"><span>一般</span><span>配信</span><span>出力</span><span>音声</span><span>映像</span><span class="on">詳細設定</span></div>
+      <div class="body"><strong>録画</strong><div class="field"><span class="val">✓</span><strong>配信時に自動的に録画</strong></div><span style="color:#93A09D;padding:0 12px">配信停止時も録画を継続する(ここはチェックしない)</span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row"><span class="n">3</span><h2>「出力」→ 録画品質と形式を変える</h2></div>
+    <div class="shot" role="img" aria-label="出力の録画欄の例">
+      <div class="side"><span>一般</span><span>配信</span><span class="on">出力</span><span>音声</span><span>映像</span><span>詳細設定</span></div>
+      <div class="body"><strong>録画</strong>
+        <div class="field"><span style="width:110px;color:#fff;font-weight:700">録画品質</span><span class="val">配信と同じ ▾</span></div>
+        <div class="field"><span style="width:110px;color:#fff;font-weight:700">録画フォーマット</span><span class="val">MP4(またはハイブリッドMP4) ▾</span></div>
+        <span style="color:#93A09D">録画ファイルのパス:分かりやすい場所ならどこでもOK</span>
+      </div>
+    </div>
+    <p class="small muted">「出力モード」が「詳細」の人は、「録画」タブの中に同じ項目があります。MKVで録画している場合は、OBSの「ファイル」→「録画の再多重化」でMP4に変換できます。</p>
+  </section>
+
+  <section class="card">
+    <div class="row"><span class="n">4</span><h2>右下の「OK」を押す</h2></div>
+    <p class="muted small">これで設定は終わりです。次の配信から、パソコンにも録画が残ります。</p>
+  </section>
+</main>
+<footer id="footer"></footer>
+<script>TL.header([]);TL.footer();</script>
+</body>
+</html>

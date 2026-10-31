@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>チームへの招待 | TacLog</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=JetBrains+Mono:wght@500&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="/assets/config.js"></script>
+<script src="/assets/common.js"></script>
+</head>
+<body>
+<header id="topbar"></header>
+<main id="main" class="wrap narrow" style="max-width:520px">
+  <section class="card" id="box">
+    <h1>チームへの招待</h1>
+    <p class="muted" id="info">招待を確認しています…</p>
+  </section>
+</main>
+<footer id="footer"></footer>
+<script>
+TL.header([]);TL.footer();
+const tok=new URLSearchParams(location.search).get("t")||"";
+(async()=>{
+  if(!TL.sb){TL.notConfigured();return}
+  const s=await TL.requireLogin();if(!s)return;
+  const box=TL.$("box"),info=TL.$("info");
+  const{data,error}=await TL.sb.rpc("invite_info",{tok});
+  const row=data&&data[0];
+  if(error||!row||!row.valid){info.textContent=TL.errText("invalid invite");return}
+  info.textContent="「"+row.team_name+"」に招待されています。チーム内で表示する名前を入れて参加してください。";
+  const f=TL.h("form",{style:"display:grid;gap:14px"});
+  const name=TL.h("input",{id:"dn",required:true,maxlength:"30",placeholder:"例:さびきゅー(ゲーム内の名前がおすすめ)"});
+  f.append(TL.h("label",{for:"dn"},"表示名",name),TL.h("button",{class:"btn primary",type:"submit"},"チームに参加する"));
+  const msg=TL.h("div",{hidden:true});box.append(f,msg);
+  f.addEventListener("submit",async e=>{e.preventDefault();const b=f.querySelector("button");b.disabled=true;
+    const{data:tid,error:err}=await TL.sb.rpc("accept_invite",{tok,my_name:name.value.trim()});
+    if(err){msg.hidden=false;msg.className="notice";msg.textContent=TL.errText(err);b.disabled=false;return}
+    TL.setTeam(tid);location.href="/app"});
+})();
+</script>
+</body>
+</html>

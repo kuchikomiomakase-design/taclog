@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>TacLog | スクリムをAIで振り返る</title>
+<meta name="description" content="スクリムの録画を読み取って、ラウンドごとの勝敗・ファーストキル・設置タイミングを記録。チームの傾向をAIに質問できます。">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=JetBrains+Mono:wght@500&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="/assets/config.js"></script>
+<script src="/assets/common.js"></script>
+<style>
+.hero{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:32px;align-items:center;padding-block:24px}
+.hero h1{font-size:clamp(30px,6vw,46px)}
+.hero h1 em{font-style:normal;color:var(--accent-text)}
+.demo{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:12px}
+.q{justify-self:end;max-width:90%;padding:10px 14px;border-radius:14px 14px 4px 14px;background:var(--accent);color:var(--accent-ink);font-size:14px}
+.bars{display:grid;gap:6px;padding:12px;border-radius:10px;background:var(--raise)}
+.bar{display:grid;grid-template-columns:96px 1fr 40px;gap:8px;align-items:center;font-size:12px}
+.bar i{display:block;height:12px;border-radius:3px;background:var(--accent)}
+.bar i.lo{background:var(--line2)}
+.feat{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.feat .card h3{font-size:17px}
+.flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;counter-reset:s}
+.flow .card{position:relative}
+.flow .n{font:700 26px var(--f-display);color:var(--accent-text)}
+@media (max-width:760px){.hero,.feat,.flow{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header id="topbar"></header>
+<main id="main" class="wrap">
+  <section class="hero">
+    <div style="display:grid;gap:18px">
+      <span class="pill mute" style="justify-self:start">VALORANT対応・先行公開中</span>
+      <h1>スクリムの振り返りを、<em>AIに聞くだけ</em>に。</h1>
+      <p class="lead">いつも通り配信して、録画を読み込むだけ。ラウンドごとの勝敗、ファーストキル、設置のタイミングとサイトを自動で記録します。「アセントのアタックの取得率は?」と聞けば、グラフと根拠の場面つきで答えます。</p>
+      <div class="row"><a class="btn primary" href="/signup">無料ではじめる</a><a class="btn" href="/pricing">料金を見る</a></div>
+      <p class="small muted">クレジットカードの登録は不要です。チームで月2本まで無料で分析できます。</p>
+    </div>
+    <div class="demo" aria-label="質問と回答の例">
+      <div class="q">ファーストキルを取ったラウンドの勝率は?</div>
+      <p style="font-size:14px">直近8スクリムでは、ファーストキルを取ったラウンドの勝率は<strong>71%</strong>、取られたラウンドは<strong>32%</strong>でした。特にディフェンスで最初に倒されると、勝率が大きく下がっています。</p>
+      <div class="bars">
+        <strong class="small">ファーストキルとラウンド勝率(例)</strong>
+        <div class="bar"><span>取った</span><i style="width:71%"></i><span class="mono">71%</span></div>
+        <div class="bar"><span>取られた</span><i class="lo" style="width:32%"></i><span class="mono">32%</span></div>
+      </div>
+      <span class="small muted">※画面は例です</span>
+    </div>
+  </section>
+
+  <section style="display:grid;gap:14px">
+    <h2>チームでよく聞かれる数字が、すぐ出る</h2>
+    <div class="feat">
+      <div class="card"><h3>ファーストキル</h3><p class="muted small">ラウンドごとに、最初のキルを誰が取ったか・取られたかを記録。取得率と、そのときのラウンド勝率が分かります。</p></div>
+      <div class="card"><h3>マップ×攻守の取得率</h3><p class="muted small">「この1週間のアセントのアタック」のように、期間・マップ・攻守でしぼって集計します。</p></div>
+      <div class="card"><h3>設置タイミングとサイト</h3><p class="muted small">何秒に、どのサイトに設置したか。早い設置と遅い設置で勝率がどう違うかも見られます。</p></div>
+    </div>
+  </section>
+
+  <section style="display:grid;gap:14px">
+    <h2>使い方は3ステップ</h2>
+    <div class="flow">
+      <div class="card"><span class="n">1</span><h3>いつも通り配信する</h3><p class="muted small">OBSの設定を最初に3か所変えるだけ。配信のやり方は変わりません。</p></div>
+      <div class="card"><span class="n">2</span><h3>録画を読み込む</h3><p class="muted small">録画はあなたのパソコンの中で読み取ります。動画をアップロードする必要はありません。</p></div>
+      <div class="card"><span class="n">3</span><h3>メンバー全員で質問する</h3><p class="muted small">結果はチームで共有。誰でも、スマホからでも質問できます。</p></div>
+    </div>
+  </section>
+
+  <section class="card" style="text-align:center;justify-items:center">
+    <h2>まずは1本、無料で試してみてください</h2>
+    <p class="muted">自分のチームの振り返り専用のサービスです。相手チームを調べる機能はありません。</p>
+    <a class="btn primary" href="/signup">無料ではじめる</a>
+  </section>
+</main>
+<footer id="footer"></footer>
+<script>
+TL.header([{href:"/pricing",label:"料金"},{href:"/login",label:"ログイン"},{href:"/signup",label:"無料ではじめる"}]);
+TL.footer();
+TL.session().then(s=>{if(s){const n=document.querySelector(".nav");n.replaceChildren(TL.h("a",{href:"/app"},"アプリを開く"))}});
+</script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>はじめての設定 | TacLog</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=JetBrains+Mono:wght@500&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="/assets/config.js"></script>
+<script src="/assets/common.js"></script>
+<style>
+.obs{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+.obs li{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-radius:10px;background:var(--raise)}
+.obs .n{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-weight:700;flex:none}
+</style>
+</head>
+<body>
+<header id="topbar"></header>
+<main id="main" class="wrap narrow">
+  <div style="--n:5;display:grid;gap:8px">
+    <div class="steps" id="bars"><span></span><span></span><span></span><span></span><span></span></div>
+    <div class="steplabels" id="labels"><span>チーム</span><span>Riot連携</span><span>OBSの設定</span><span>お知らせ</span><span>完了</span></div>
+  </div>
+
+  <section class="card" data-step="1">
+    <h1>チームを作りましょう</h1>
+    <p class="lead">あとでメンバーを招待すると、全員で分析結果を見たりAIに質問したりできます。招待されて参加する方は、届いた招待リンクを開いてください。</p>
+    <form id="teamForm" style="display:grid;gap:14px">
+      <label for="teamName">チーム名<input id="teamName" required maxlength="40" placeholder="例:Kawasaki Owls"></label>
+      <label for="myName">あなたの表示名<input id="myName" required maxlength="30" placeholder="例:トンパ(ゲーム内の名前がおすすめ)"></label>
+      <div class="row"><button class="btn primary" type="submit">チームを作る</button></div>
+    </form>
+    <div id="teamMsg" hidden></div>
+  </section>
+
+  <section class="card" data-step="2" hidden>
+    <h1>Riotアカウントとつなぐ</h1>
+    <p class="lead">VALORANTの分析を使うには、Riotのルールにより、プレイヤー本人がRiotアカウントでログインして、データの利用に同意する必要があります。</p>
+    <div class="notice" style="display:grid;gap:4px">
+      <strong>つなぐと、次のことに同意したことになります</strong>
+      <span>・あなたのRiotアカウントの情報と、分析した試合のデータが、TacLogで使われます</span>
+      <span>・分析結果は、あなたのチームのメンバーに表示されます</span>
+      <span>・連携はあとから設定画面でいつでも解除できます</span>
+    </div>
+    <label class="check" for="agree"><input id="agree" type="checkbox"><span><strong>上の内容に同意します</strong></span></label>
+    <div class="row">
+      <button class="btn primary" type="button" id="riotBtn" disabled>Riotアカウントでつなぐ</button>
+      <button class="btn ghost" type="button" data-next>あとでつなぐ</button>
+    </div>
+    <p class="small muted">Riot連携は、TacLogがRiotの審査で承認されたあとに使えるようになります。それまでは「あとでつなぐ」で進めてください。</p>
+  </section>
+
+  <section class="card" data-step="3" hidden>
+    <h1>OBSの設定を変えてください</h1>
+    <p class="lead">配信のやり方はそのままです。配信すると、パソコンにも録画が残るようになります。配信する人だけ設定すればOKです。</p>
+    <ol class="obs">
+      <li><span class="n">1</span><div><strong>配信したら自動で録画する</strong><div class="small muted">設定 → 詳細設定 →「配信時に自動的に録画」にチェック</div></div></li>
+      <li><span class="n">2</span><div><strong>録画品質を「配信と同じ」にする</strong><div class="small muted">設定 → 出力 →「録画品質」を「配信と同じ」に(ファイルが軽くなります)</div></div></li>
+      <li><span class="n">3</span><div><strong>録画の形式をMP4にする</strong><div class="small muted">設定 → 出力 →「録画フォーマット」を「MP4」か「ハイブリッドMP4」に</div></div></li>
+    </ol>
+    <a class="btn" href="/guide-obs" target="_blank" rel="noopener" style="justify-self:start">やり方がわからない人はここへ(手順ガイド)</a>
+    <label class="check" for="obsDone"><input id="obsDone" type="checkbox"><span><strong>3つとも設定できた</strong><span class="small muted">配信しない人は、チェックしてそのまま進めてください</span></span></label>
+    <div class="row"><button class="btn ghost" type="button" data-back>戻る</button><button class="btn primary" type="button" data-next id="obsNext" disabled>次へ</button></div>
+  </section>
+
+  <section class="card" data-step="4" hidden>
+    <h1>お知らせを受け取りますか?</h1>
+    <p class="lead">いらないものはチェックを外してください。あとから設定画面でいつでも変えられます。</p>
+    <label class="check" for="nArrived"><input id="nArrived" type="checkbox" checked><span><strong>分析が保存されたらお知らせ</strong><span class="small muted">誰かが録画を分析したことが分かります</span></span></label>
+    <label class="check" for="nMissing"><input id="nMissing" type="checkbox" checked><span><strong>しばらく分析されていないときにお知らせ</strong><span class="small muted">スクリムの分析を忘れていないか知らせます</span></span></label>
+    <label class="check" for="nReport"><input id="nReport" type="checkbox" checked><span><strong>週ごとのまとめ</strong><span class="small muted">1週間の取得率などをまとめて届けます</span></span></label>
+    <div class="row"><button class="btn ghost" type="button" data-back>戻る</button><button class="btn primary" type="button" id="prefsSave">設定を終える</button></div>
+  </section>
+
+  <section class="card" data-step="5" hidden>
+    <h1>準備できました</h1>
+    <p class="lead">スクリムが終わったら、アプリの「録画を分析」から録画ファイルを選ぶだけです。</p>
+    <div style="display:grid;gap:10px;padding:16px;border-radius:12px;border:1px solid var(--line)">
+      <strong>メンバーを招待しましょう</strong>
+      <span class="small muted">このリンクを送ると、メンバーがアカウントを作ってチームに参加できます(14日間有効)。</span>
+      <div class="row"><input id="inviteUrl" readonly style="flex:1 1 260px" aria-label="招待リンク"><button class="btn" type="button" id="copyInvite">コピー</button></div>
+    </div>
+    <div class="row"><a class="btn primary" href="/app">アプリを開く</a></div>
+  </section>
+</main>
+<footer id="footer"></footer>
+<script>
+TL.header([]);TL.footer();
+let step=1,teamId=null;
+function show(n){step=n;document.querySelectorAll("[data-step]").forEach(s=>s.hidden=Number(s.dataset.step)!==n);
+  document.querySelectorAll("#bars span").forEach((b,i)=>b.classList.toggle("on",i<n));
+  document.querySelectorAll("#labels span").forEach((b,i)=>b.style.fontWeight=i===n-1?"700":"400");window.scrollTo(0,0)}
+document.querySelectorAll("[data-next]").forEach(b=>b.onclick=()=>show(step+1));
+document.querySelectorAll("[data-back]").forEach(b=>b.onclick=()=>show(Math.max(2,step-1)));
+TL.$("agree").onchange=()=>{};
+TL.$("obsDone").onchange=e=>TL.$("obsNext").disabled=!e.target.checked;
+(async()=>{
+  if(!TL.sb){TL.notConfigured();return}
+  const s=await TL.requireLogin();if(!s)return;
+  const teams=await TL.myTeams();
+  const qs=new URLSearchParams(location.search);
+  if(teams.length&&!qs.get("step")){location.href="/app";return}
+  if(teams.length){teamId=TL.currentTeam(teams).id;show(Number(qs.get("step"))||2)}else show(1);
+})();
+TL.$("teamForm").addEventListener("submit",async e=>{e.preventDefault();const b=e.target.querySelector("button");b.disabled=true;
+  const{data,error}=await TL.sb.rpc("create_team",{team_name:TL.$("teamName").value.trim(),my_name:TL.$("myName").value.trim()});
+  if(error){const m=TL.$("teamMsg");m.hidden=false;m.className="notice";m.textContent=TL.errText(error);b.disabled=false;return}
+  teamId=data;TL.setTeam(teamId);show(2)});
+TL.$("prefsSave").onclick=async()=>{const b=TL.$("prefsSave");b.disabled=true;const s=await TL.session();
+  await TL.sb.from("notification_prefs").upsert({team_id:teamId,user_id:s.user.id,arrived:TL.$("nArrived").checked,missing:TL.$("nMissing").checked,report:TL.$("nReport").checked});
+  try{const{data}=await TL.sb.rpc("create_invite",{t:teamId});if(data)TL.$("inviteUrl").value=location.origin+"/invite?t="+data}catch(e){}
+  if(!TL.$("inviteUrl").value)TL.$("inviteUrl").value="設定画面から招待リンクを作れます";
+  b.disabled=false;show(5)};
+TL.$("copyInvite").onclick=()=>{const v=TL.$("inviteUrl").value;navigator.clipboard.writeText(v).then(()=>TL.$("copyInvite").textContent="コピーしました").catch(()=>TL.$("inviteUrl").select())};
+</script>
+</body>
+</html>

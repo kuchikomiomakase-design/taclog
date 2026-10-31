@@ -189,5 +189,12 @@ create policy prefs_rw on notification_prefs for all using (user_id = auth.uid()
 drop policy if exists usage_read on usage;
 create policy usage_read on usage for select using (is_member(team_id));
 
--- teams のプラン変更(plan / stripe_*)は、サーバー(service role)からだけ行います。
-revoke update (plan, stripe_customer_id, stripe_subscription_id) on teams from authenticated;
+-- 書き換えてよい列だけを許可します(プランや役割は、利用者からは変えられないようにする)。
+-- プラン(plan / stripe_*)の変更は、サーバー(service role)からだけ行います。
+revoke update on teams from authenticated, anon;
+grant update (name) on teams to authenticated;
+revoke update on team_members from authenticated, anon;
+grant update (display_name, can_stream) on team_members to authenticated;
+revoke update on matches from authenticated, anon;
+grant update (map, opp, yt, date) on matches to authenticated;
+revoke insert on teams, team_members, invites, matches, usage from authenticated, anon;
