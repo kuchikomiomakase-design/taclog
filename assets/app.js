@@ -99,6 +99,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   let folderBusy = false;
   const dateOf = (ms) => { const d = new Date(ms); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
   async function renderFolder() {
+    if (folderBusy) return;
     const body = $("folderBody"), name = $("folderName");
     body.replaceChildren(); name.textContent = "";
     if (!TLFolder.supported) { body.append(h("p", { class: "small muted" }, "録画フォルダの自動読み取りは、パソコン版のGoogle ChromeかMicrosoft Edgeで使えます。下の「手動で選んで分析する」から録画を選んでください。")); return; }
@@ -120,7 +121,8 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     for (const v of vids) if (!v.recording && !(await TLFolder.isDone(APP.team.id, v))) fresh.push(v);
     const recNow = vids.filter((v) => v.recording);
     if (recNow.length) body.append(h("p", { class: "small muted" }, "録画中のファイルがあります(" + recNow[0].name + ")。配信が終わってから分析できます。"));
-    if (!fresh.length) { body.append(h("div", { class: "empty" }, h("strong", {}, "新しい録画はありません"), h("span", {}, "配信が終わったら、このページを開くと自動で見つかります。"))); return; }
+    const autoOn = await TLFolder.getAuto();
+    if (!fresh.length) { body.append(h("div", { class: "empty" }, h("strong", {}, "新しい録画はありません"), h("span", {}, autoOn ? "このページを開いている間は、1分ごとにフォルダを確認して、新しい録画ができたら自動で分析します。" : "配信が終わったら、このページを開くと自動で見つかります。"))); return; }
     const list = h("div", { style: "display:grid;gap:8px" });
     fresh.slice(0, 10).forEach((v) => list.append(h("div", { class: "member" }, h("div", { style: "display:grid;gap:2px;min-width:0" }, h("strong", { style: "overflow-wrap:anywhere" }, v.name), h("span", { class: "small muted" }, new Date(v.mtime).toLocaleString("ja-JP") + " ・ " + Math.round(v.size / 1048576) + "MB")),
       h("span", { class: "pill warn", id: "st_" + encodeURIComponent(v.name) }, "未分析"))));
@@ -129,8 +131,9 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     const delOn = await TLFolder.getDeleteAfter();
     const note = h("p", { class: "small muted" }, "分析中はこのページを開いたままにしてください。3時間の録画で数分かかります。マップはあとで試合一覧から設定できます。" + (delOn ? "分析が終わった録画は、このパソコンから自動で削除します(YouTubeのアーカイブは残ります)。" : ""));
     body.append(h("p", {}, "新しい録画が " + fresh.length + " 本あります。"), list, h("div", { class: "row" }, go, stop), note);
+    if (autoOn) body.append(h("p", { class: "small", style: "color:var(--accent-text);font-weight:700" }, "自動で分析を始めます…"));
     let stopped = false;
-    stop.onclick = () => { stopped = true; window.ANALYZER && ANALYZER.stop(); };
+    stop.onclick = () => { stopped = true; autoPaused = true; window.ANALYZER && ANALYZER.stop(); };
     go.onclick = async () => {
       if (folderBusy) return; folderBusy = true; stopped = false; go.disabled = true; stop.hidden = false;
       const delAfter = await TLFolder.getDeleteAfter();
@@ -154,8 +157,12 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
         } catch (e) { set(TL.errText(e).slice(0, 40), "loss"); if (String(e.message || "").includes("analysis limit")) break; }
       }
       folderBusy = false; go.disabled = false; stop.hidden = true; loadMatches();
+      document.title = "✓ 分析が終わりました | TacLog"; setTimeout(() => { document.title = "TacLog"; }, 60000);
+      if (!stopped) setTimeout(renderFolder, 2000);
     };
+    if (autoOn && !autoPaused) setTimeout(() => { if (!folderBusy && !go.disabled) go.click(); }, 1500);
   }
+  let autoPaused = false;
 
   /* ---------- settings ---------- */
   async function renderSettings() {
@@ -198,6 +205,8 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
       : h("div", { class: "row" }, fh ? h("span", { class: "pill win" }, "連携ずみ:" + fh.name) : null,
           h("button", { class: "btn small", type: "button", onclick: async () => { try { await TLFolder.link(); renderSettings(); } catch (e) {} } }, fh ? "選び直す" : "連携する"),
           fh ? h("button", { class: "btn small ghost", type: "button", onclick: async () => { await TLFolder.unlink(); renderSettings(); } }, "解除") : null);
+    $("autoAn").checked = await TLFolder.getAuto();
+    $("autoAn").onchange = async () => { await TLFolder.setAuto($("autoAn").checked); autoPaused = false; };
     $("delAfter").checked = await TLFolder.getDeleteAfter();
     $("delAfter").onchange = async () => { await TLFolder.setDeleteAfter($("delAfter").checked); const hd = await TLFolder.handle(); if (hd && $("delAfter").checked) await TLFolder.permission(hd, true, "readwrite"); };
     $("links").replaceChildren(
@@ -229,6 +238,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     $("saveTeam").onclick = async () => { const { error } = await sb.from("teams").update({ name: $("teamName").value.trim() }).eq("id", APP.team.id); status(error ? TL.errText(error) : ""); if (!error) APP.team.name = $("teamName").value.trim(); };
     $("logout").onclick = async () => { await sb.auth.signOut(); location.href = "/"; };
     window.addEventListener("hashchange", route); route();
+    setInterval(() => { if (!folderBusy && APP.team) renderFolder(); }, 60000); // check the folder every minute
     loadMatches();
     const qp = new URLSearchParams(location.search); if (qp.get("billing") === "success") status("お支払いが完了しました。プランが切り替わるまで数秒かかることがあります。");
   })();

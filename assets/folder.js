@@ -43,6 +43,8 @@ window.TLFolder = (function () {
   async function remove(h, name) { await h.removeEntry(name); }
   async function getDeleteAfter() { const v = await get("deleteAfter"); return v === undefined ? true : !!v; } // on by default
   async function setDeleteAfter(v) { await set("deleteAfter", !!v); }
+  async function getAuto() { const v = await get("autoAnalyze"); return v === undefined ? true : !!v; } // on by default
+  async function setAuto(v) { await set("autoAnalyze", !!v); }
 
-  return { supported, link, unlink, handle, permission, videos, isDone, markDone, remove, getDeleteAfter, setDeleteAfter };
+  return { supported, link, unlink, handle, permission, videos, isDone, markDone, remove, getDeleteAfter, setDeleteAfter, getAuto, setAuto };
 })();
