@@ -17,6 +17,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     VIEWS.forEach((k) => { $("view-" + k).hidden = k !== v; });
     document.querySelectorAll(".nav a").forEach((a) => a.setAttribute("aria-current", a.getAttribute("href") === "#" + v ? "page" : "false"));
     if (v === "settings") renderSettings();
+    if (v === "analyze" && APP.team) renderFolder();
   }
 
   function renderHeader() {
@@ -93,6 +94,65 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     });
   }
 
+
+  /* ---------- recording folder ---------- */
+  let folderBusy = false;
+  const dateOf = (ms) => { const d = new Date(ms); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+  async function renderFolder() {
+    const body = $("folderBody"), name = $("folderName");
+    body.replaceChildren(); name.textContent = "";
+    if (!TLFolder.supported) { body.append(h("p", { class: "small muted" }, "録画フォルダの自動読み取りは、パソコン版のGoogle ChromeかMicrosoft Edgeで使えます。下の「手動で選んで分析する」から録画を選んでください。")); return; }
+    const hd = await TLFolder.handle();
+    if (!hd) {
+      body.append(h("p", { class: "small muted" }, "OBSの録画が保存されるフォルダを連携すると、ここに新しい録画が自動で出てきます。"),
+        h("div", { class: "row" }, h("button", { class: "btn primary", type: "button", onclick: async () => { try { await TLFolder.link(); renderFolder(); } catch (e) {} } }, "録画フォルダを連携する")));
+      return;
+    }
+    name.textContent = "フォルダ:" + hd.name;
+    if (!(await TLFolder.permission(hd, false))) {
+      body.append(h("p", { class: "small muted" }, "安全のため、ブラウザを開き直すたびにフォルダを読む許可が必要です。"),
+        h("div", { class: "row" }, h("button", { class: "btn primary", type: "button", onclick: async () => { if (await TLFolder.permission(hd, true)) renderFolder(); } }, "録画フォルダを読み込む")));
+      return;
+    }
+    let vids = [];
+    try { vids = await TLFolder.videos(hd); } catch (e) { body.append(h("p", { class: "notice" }, "フォルダを読めませんでした。設定画面から連携し直してください。")); return; }
+    const fresh = [];
+    for (const v of vids) if (!v.recording && !(await TLFolder.isDone(APP.team.id, v))) fresh.push(v);
+    const recNow = vids.filter((v) => v.recording);
+    if (recNow.length) body.append(h("p", { class: "small muted" }, "録画中のファイルがあります(" + recNow[0].name + ")。配信が終わってから分析できます。"));
+    if (!fresh.length) { body.append(h("div", { class: "empty" }, h("strong", {}, "新しい録画はありません"), h("span", {}, "配信が終わったら、このページを開くと自動で見つかります。"))); return; }
+    const list = h("div", { style: "display:grid;gap:8px" });
+    fresh.slice(0, 10).forEach((v) => list.append(h("div", { class: "member" }, h("div", { style: "display:grid;gap:2px;min-width:0" }, h("strong", { style: "overflow-wrap:anywhere" }, v.name), h("span", { class: "small muted" }, new Date(v.mtime).toLocaleString("ja-JP") + " ・ " + Math.round(v.size / 1048576) + "MB")),
+      h("span", { class: "pill warn", id: "st_" + encodeURIComponent(v.name) }, "未分析"))));
+    const go = h("button", { class: "btn primary", type: "button" }, fresh.length > 1 ? "新しい録画 " + Math.min(fresh.length, 10) + "本を分析する" : "この録画を分析する");
+    const stop = h("button", { class: "btn", type: "button", hidden: true }, "止める");
+    const note = h("p", { class: "small muted" }, "分析中はこのページを開いたままにしてください。3時間の録画で数分かかります。マップはあとで試合一覧から設定できます。");
+    body.append(h("p", {}, "新しい録画が " + fresh.length + " 本あります。"), list, h("div", { class: "row" }, go, stop), note);
+    let stopped = false;
+    stop.onclick = () => { stopped = true; window.ANALYZER && ANALYZER.stop(); };
+    go.onclick = async () => {
+      if (folderBusy) return; folderBusy = true; stopped = false; go.disabled = true; stop.hidden = false;
+      const delAfter = await TLFolder.getDeleteAfter();
+      for (const v of fresh.slice(0, 10)) {
+        if (stopped) break;
+        const st = document.getElementById("st_" + encodeURIComponent(v.name));
+        const set = (t, cls) => { if (st) { st.textContent = t; st.className = "pill " + cls; } };
+        set("分析中…", "");
+        try {
+          $("manualBox").open = true;
+          await ANALYZER.loadFile(v.file);
+          const ok = await ANALYZER.runAnalysis();
+          if (!ok) { set(stopped ? "止めました" : "分析できませんでした", "loss"); continue; }
+          await ANALYZER.saveLast({ date: dateOf(v.mtime), opp: "", map: "", yt: "" });
+          await TLFolder.markDone(APP.team.id, v);
+          set("保存しました", "win");
+          if (delAfter) { try { await TLFolder.remove(hd, v.name); } catch (e) {} }
+        } catch (e) { set(TL.errText(e).slice(0, 40), "loss"); if (String(e.message || "").includes("analysis limit")) break; }
+      }
+      folderBusy = false; go.disabled = false; stop.hidden = true; loadMatches();
+    };
+  }
+
   /* ---------- settings ---------- */
   async function renderSettings() {
     const t = APP.team, isAdmin = t.role === "admin";
@@ -129,7 +189,15 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     // linked accounts
     const ids = (APP.me.identities || []).map((i) => i.provider);
     const row = (name, desc, state) => h("div", { class: "member" }, h("div", { style: "display:grid;gap:2px;min-width:0" }, h("strong", {}, name), h("span", { class: "small muted" }, desc)), state);
+    const fh = TLFolder.supported ? await TLFolder.handle() : null;
+    const folderState = !TLFolder.supported ? h("span", { class: "pill mute" }, "このブラウザでは使えません")
+      : h("div", { class: "row" }, fh ? h("span", { class: "pill win" }, "連携ずみ:" + fh.name) : null,
+          h("button", { class: "btn small", type: "button", onclick: async () => { try { await TLFolder.link(); renderSettings(); } catch (e) {} } }, fh ? "選び直す" : "連携する"),
+          fh ? h("button", { class: "btn small ghost", type: "button", onclick: async () => { await TLFolder.unlink(); renderSettings(); } }, "解除") : null);
+    $("delAfter").checked = await TLFolder.getDeleteAfter();
+    $("delAfter").onchange = async () => { await TLFolder.setDeleteAfter($("delAfter").checked); const hd = await TLFolder.handle(); if (hd && $("delAfter").checked) await TLFolder.permission(hd, true, "readwrite"); };
     $("links").replaceChildren(
+      row("録画フォルダ", "OBSの録画が保存されるフォルダ。このパソコンのブラウザに記憶されます", folderState),
       row("Google", "ログインに使えます", ids.includes("google") ? h("span", { class: "pill win" }, "つながっています") : h("button", { class: "btn small", type: "button", onclick: () => sb.auth.linkIdentity ? sb.auth.linkIdentity({ provider: "google", options: { redirectTo: location.origin + "/app#settings" } }) : null }, "つなぐ")),
       row("Riotアカウント", "VALORANTの分析に必要です(Riotの承認後に使えるようになります)", h("span", { class: "pill mute" }, "準備中")),
       row("YouTubeチャンネル", "分析し忘れた配信に気づけるようになります", h("span", { class: "pill mute" }, "準備中")));

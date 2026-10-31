@@ -40,6 +40,13 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
 
   <!-- ANALYZE -->
   <div id="view-analyze" style="display:grid;gap:16px" hidden>
+    <section class="card" id="folderCard">
+      <div class="spread"><h2>新しい録画</h2><span class="small muted" id="folderName"></span></div>
+      <div id="folderBody" style="display:grid;gap:10px"></div>
+    </section>
+    <details class="card" id="manualBox">
+      <summary style="cursor:pointer;font-weight:700">録画ファイルを手動で選んで、細かく設定して分析する</summary>
+    <div style="display:grid;gap:16px;margin-top:8px">
     <section class="card">
       <div class="stephead"><span class="stepno">1</span><h2>録画ファイルを選ぶ</h2></div>
       <p class="small muted">スクリムの録画(MP4がおすすめ)を選んでください。ファイルはこのパソコンの中で読み取るだけで、アップロードはしません。</p>
@@ -79,6 +86,8 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
       <div id="progBox" hidden style="display:grid;gap:6px"><div class="prog"><i id="progBar"></i></div><span class="small muted" id="progText"></span></div>
       <div id="result" hidden style="display:grid;gap:12px"></div>
     </section>
+    </div>
+    </details>
   </div>
 
   <!-- ASK -->
@@ -120,8 +129,9 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
       <div id="inviteBox" style="display:grid;gap:10px"></div>
     </section>
     <section class="card">
-      <h2>連携しているアカウント</h2>
+      <h2>連携</h2>
       <div id="links" style="display:grid;gap:8px"></div>
+      <label class="check" for="delAfter"><input id="delAfter" type="checkbox"><span><strong>分析が終わった録画を、このパソコンから削除する</strong><span class="small muted">パソコンの容量を空けたいとき用です。YouTubeのアーカイブは消えません。</span></span></label>
     </section>
     <section class="card">
       <h2>お知らせ</h2>
@@ -139,6 +149,7 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
   </div>
 </main>
 <footer id="footer"></footer>
+<script src="/assets/folder.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/analyze.js"></script>
 </body>

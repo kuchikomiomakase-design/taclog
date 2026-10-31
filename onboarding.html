@@ -9,6 +9,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="/assets/config.js"></script>
 <script src="/assets/common.js"></script>
+<script src="/assets/folder.js"></script>
 <style>
 .obs{margin:0;padding:0;list-style:none;display:grid;gap:10px}
 .obs li{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-radius:10px;background:var(--raise)}
@@ -60,8 +61,15 @@
       <li><span class="n">3</span><div><strong>録画の形式をMP4にする</strong><div class="small muted">設定 → 出力 →「録画フォーマット」を「MP4」か「ハイブリッドMP4」に</div></div></li>
     </ol>
     <a class="btn" href="/guide-obs" target="_blank" rel="noopener" style="justify-self:start">やり方がわからない人はここへ(手順ガイド)</a>
-    <label class="check" for="obsDone"><input id="obsDone" type="checkbox"><span><strong>3つとも設定できた</strong><span class="small muted">配信しない人は、チェックしてそのまま進めてください</span></span></label>
-    <div class="row"><button class="btn ghost" type="button" data-back>戻る</button><button class="btn primary" type="button" data-next id="obsNext" disabled>次へ</button></div>
+    <label class="check" for="obsDone"><input id="obsDone" type="checkbox"><span><strong>3つとも設定できた</strong></span></label>
+    <div style="display:grid;gap:10px;padding:16px;border-radius:12px;border:1px solid var(--line)">
+      <strong>録画が保存されるフォルダを連携する</strong>
+      <span class="small muted">OBSの「設定 → 出力 → 録画ファイルのパス」に出ているフォルダを選んでください。連携すると、サイトを開いたときに新しい録画を自動で見つけて分析します。録画はこのパソコンの中で読み取るだけで、アップロードはしません。</span>
+      <div class="row"><button class="btn" type="button" id="linkFolder">録画フォルダを選ぶ</button><span id="folderState" class="small muted"></span></div>
+      <span id="folderNote" class="small muted" hidden>この機能は、パソコン版のGoogle ChromeかMicrosoft Edgeで使えます。いまのブラウザでは使えないので、録画は分析の画面から手動で選んでください。</span>
+    </div>
+    <div class="row"><button class="btn ghost" type="button" data-back>戻る</button><button class="btn primary" type="button" data-next id="obsNext" disabled>次へ</button><button class="btn ghost" type="button" id="viewerSkip">配信しない(見るだけ)の人はこちら</button></div>
+    <p class="small muted" id="obsHint">「3つとも設定できた」にチェックして、録画フォルダを連携すると次へ進めます。</p>
   </section>
 
   <section class="card" data-step="4" hidden>
@@ -94,7 +102,13 @@ function show(n){step=n;document.querySelectorAll("[data-step]").forEach(s=>s.hi
 document.querySelectorAll("[data-next]").forEach(b=>b.onclick=()=>show(step+1));
 document.querySelectorAll("[data-back]").forEach(b=>b.onclick=()=>show(Math.max(2,step-1)));
 TL.$("agree").onchange=()=>{};
-TL.$("obsDone").onchange=e=>TL.$("obsNext").disabled=!e.target.checked;
+let folderLinked=false;
+function obsGate(){const ok=TL.$("obsDone").checked&&(folderLinked||!TLFolder.supported);TL.$("obsNext").disabled=!ok;TL.$("obsHint").hidden=ok}
+TL.$("obsDone").onchange=obsGate;
+TL.$("viewerSkip").onclick=()=>show(4);
+if(!TLFolder.supported){TL.$("linkFolder").disabled=true;TL.$("folderNote").hidden=false}
+TLFolder.handle().then(h=>{if(h){folderLinked=true;TL.$("folderState").textContent="連携ずみ:"+h.name;TL.$("linkFolder").textContent="フォルダを選び直す";obsGate()}});
+TL.$("linkFolder").onclick=async()=>{try{const h=await TLFolder.link();folderLinked=true;TL.$("folderState").textContent="連携しました:"+h.name;TL.$("linkFolder").textContent="フォルダを選び直す";obsGate()}catch(e){if(e&&e.name!=="AbortError")TL.$("folderState").textContent="連携できませんでした。もう一度試してください。"}};
 (async()=>{
   if(!TL.sb){TL.notConfigured();return}
   const s=await TL.requireLogin();if(!s)return;

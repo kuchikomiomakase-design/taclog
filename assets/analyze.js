@@ -30,13 +30,16 @@ $("iv").addEventListener("change",estimate);
 const TILE_W=300,LABEL_W=46,COLS=4,ROWS=13,PER_IMG=COLS*ROWS;
 function plan(){const iv=Number($("iv").value);const n=duration?Math.floor((duration-3)/iv):0;const imgs=Math.ceil(n/PER_IMG);const per=LIM&&LIM.images?Math.min(LIM.images.maxCount,6):6;return{iv,n,imgs,calls:Math.ceil(imgs/per),per}}
 function estimate(){if(!duration){$("estimate").textContent="";return}const p=plan();$("estimate").textContent="動画 "+fmt(duration)+" ・ "+p.n+"か所を読み取ります(AIへの問い合わせ 約"+(p.calls+1)+"回)。";}
-$("file").addEventListener("change",()=>{
-  const f=$("file").files[0];if(!f)return;fileName=f.name;$("fileInfo").textContent="読み込み中…";$("go").disabled=true;
-  video.src=URL.createObjectURL(f);
-  video.onloadedmetadata=async()=>{duration=video.duration;if(!isFinite(duration)||!video.videoWidth){$("fileInfo").textContent="この動画は読み込めませんでした。MP4形式で試してください(OBSの「録画の再多重化」でMP4にできます)。";return}
-    $("fileInfo").textContent=f.name+" ・ "+fmt(duration)+" ・ "+video.videoWidth+"×"+video.videoHeight;syncLabels();await drawPreview();$("go").disabled=false};
-  video.onerror=()=>{$("fileInfo").textContent="この動画は読み込めませんでした。MP4形式で試してください(OBSの「録画の再多重化」でMP4にできます)。"};
-});
+const BAD_FILE="この動画は読み込めませんでした。MP4形式で試してください(OBSの「録画の再多重化」でMP4にできます)。";
+let curUrl=null,curFile=null;
+function loadFile(f){return new Promise((resolve,reject)=>{
+  fileName=f.name;curFile=f;$("fileInfo").textContent="読み込み中…";$("go").disabled=true;duration=0;
+  if(curUrl)URL.revokeObjectURL(curUrl);curUrl=URL.createObjectURL(f);video.src=curUrl;
+  video.onloadedmetadata=async()=>{duration=video.duration;if(!isFinite(duration)||!video.videoWidth){$("fileInfo").textContent=BAD_FILE;reject(new Error(BAD_FILE));return}
+    $("fileInfo").textContent=f.name+" ・ "+fmt(duration)+" ・ "+video.videoWidth+"×"+video.videoHeight;syncLabels();await drawPreview();$("go").disabled=false;resolve()};
+  video.onerror=()=>{$("fileInfo").textContent=BAD_FILE;reject(new Error(BAD_FILE))};
+})}
+$("file").addEventListener("change",()=>{const f=$("file").files[0];if(f)loadFile(f).catch(()=>{})});
 
 /* ---------- analysis ---------- */
 let ctl=null,lastResult=null;
@@ -166,8 +169,8 @@ function buildRounds(samples,start){
   });
   return Object.values(segs).map(rs=>{const m=new Map();rs.forEach(r=>{if(!m.has(r.n)||m.get(r.n).win==null)m.set(r.n,r)});return[...m.values()].sort((a,b)=>a.n-b.n)});
 }
-$("go").onclick=async()=>{
-  if(!duration)return;
+async function runAnalysis(){
+  if(!duration)return false;
   ctl=new AbortController();$("go").disabled=true;$("stop").hidden=false;$("result").hidden=true;
   const p=plan(),times=[];for(let i=0;i<p.n;i++)times.push(3+i*p.iv);
   const samples=[];
@@ -201,11 +204,14 @@ $("go").onclick=async()=>{
     prog(1,"完了しました");
     lastResult={segs,comps,starts,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
     showResult();
+    return true;
   }catch(e){
     const msg=e&&e.code==="cancelled"?"止めました。":e&&e.code==="not_granted"?"AIの利用が許可されなかったため、分析できません。":e&&e.code==="rate_limited"?"AIの利用回数の上限に達しました。しばらく待ってからもう一度試してください。":e&&e.code==="images_unavailable"?"この環境では画像をAIに送れないため、分析できません。":"分析中に問題が起きました。もう一度試してください。";
     prog(0,msg);
+    return false;
   }finally{$("go").disabled=false;$("stop").hidden=true}
-};
+}
+$("go").onclick=()=>runAnalysis();
 $("stop").onclick=()=>ctl&&ctl.abort();
 
 function showResult(){
@@ -225,10 +231,16 @@ function showResult(){
   box.append(h("p",{class:"small muted",style:"margin:0"},"設置時の残り時間は、読み取り間隔の半分くらいの誤差があります。ファーストキルは2秒ごとに生存人数を見て判定し、その瞬間のキルログから取った人を読んでいます。"+(R.starts&&R.starts.every(x=>x.auto)?" 攻守は画面の表示から自動で判定しました。":" 攻守を自動で判定できなかったマップは、手順2で選んだ「最初の攻守」を使っています。")));
   const save=h("button",{type:"button",class:"btn primary"},"この結果を保存する");
   save.onclick=async()=>{save.disabled=true;try{
-    for(let si=0;si<R.segs.length;si++){const{error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:$("mDate").value,opp:$("mOpp").value.trim(),map:si===0?$("mMap").value:"",start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:$("mYt").value.trim(),file:fileName,part:si+1,comps:R.comps,rounds:R.segs[si]}});if(error)throw error}
+    await saveLast({date:$("mDate").value,opp:$("mOpp").value.trim(),map:$("mMap").value,yt:$("mYt").value.trim()});
     save.textContent="保存しました";APP.reloadMatches();box.append(h("div",{class:"row"},h("a",{class:"btn",href:"#ask"},"AIに質問する →")))}catch(e){box.append(h("div",{class:"notice"},TL.errText(e)));save.disabled=false}};
   box.append(h("div",{class:"row"},save));
 }
 
+
+async function saveLast(meta){
+  const R=lastResult;if(!R||!R.segs.length||!R.segs[0].length)throw new Error("ラウンドを見つけられませんでした。");
+  for(let si=0;si<R.segs.length;si++){const{error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:meta.date||"",opp:meta.opp||"",map:si===0?(meta.map||""):"",start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:meta.yt||"",file:fileName,part:si+1,comps:R.comps,rounds:R.segs[si]}});if(error)throw error}
+}
+window.ANALYZER={loadFile,runAnalysis,saveLast,result:()=>lastResult,stop:()=>ctl&&ctl.abort()};
 
 })();
