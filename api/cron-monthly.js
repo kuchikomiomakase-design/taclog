@@ -45,10 +45,11 @@ async function stripeMonth(start, end) {
 module.exports = async (req, res) => {
   const secret = env("CRON_SECRET");
   const url = new URL(req.url, "http://x");
-  // Vercel Cron sends the secret in the Authorization header; a manual test can pass ?secret=... in the browser.
+  // The daily GitHub Actions job sends the secret in the Authorization header; a manual test can pass ?secret=... in the browser.
   if (!secret || (req.headers.authorization !== "Bearer " + secret && url.searchParams.get("secret") !== secret)) return fail(res, 401, "unauthorized");
   try {
     const force = url.searchParams.get("force") === "1";
+    await rest("teams?select=id&limit=1", { service: true }); // daily touch so the free database is never paused for inactivity
     const { start, end, label, lastDay } = monthRange(new Date());
     if (!lastDay && !force) return send(res, 200, { skipped: "not the last day of the month" });
 

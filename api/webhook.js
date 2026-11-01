@@ -46,7 +46,7 @@ module.exports = async (req, res) => {
   if (req.method !== "POST") return fail(res, 405, "POST only");
   let raw;
   try { raw = await readRaw(req); } catch (e) { return fail(res, 400, "bad body"); }
-  if (!verifyStripe(raw, req.headers["stripe-signature"], env("STRIPE_WEBHOOK_SECRET"))) return fail(res, 400, "invalid signature");
+  if (!(await verifyStripe(raw, req.headers["stripe-signature"], env("STRIPE_WEBHOOK_SECRET")))) return fail(res, 400, "invalid signature");
   try {
     const ev = JSON.parse(raw);
     const o = ev.data && ev.data.object;

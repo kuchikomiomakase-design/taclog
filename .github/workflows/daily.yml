@@ -1,0 +1,28 @@
+# Every day at 23:00 JST:
+#  1) calls the monthly report endpoint (it posts to Discord only on the last day; it also keeps the free database awake)
+#  2) downloads a backup of all tables, encrypts it with BACKUP_PASSWORD (the repository is public) and keeps it for 30 days
+# Needs repository secrets: SITE_URL (e.g. https://taclog.pages.dev), CRON_SECRET, BACKUP_PASSWORD
+name: daily
+on:
+  schedule:
+    - cron: "0 14 * * *"
+  workflow_dispatch: {}
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Monthly report / keep database awake
+        run: curl -fsS -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" "${{ secrets.SITE_URL }}/api/cron-monthly"
+      - name: Backup (encrypted)
+        run: |
+          curl -fsS -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" "${{ secrets.SITE_URL }}/api/backup" -o backup.json
+          test -s backup.json
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in backup.json -out "backup-$(date -u +%F).json.enc" -pass env:BACKUP_PASSWORD
+          rm backup.json
+        env:
+          BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backup-${{ github.run_id }}
+          path: backup-*.json.enc
+          retention-days: 30

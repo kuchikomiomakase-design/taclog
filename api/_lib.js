@@ -1,5 +1,5 @@
-// Shared server helpers for the Vercel functions (files starting with "_" are not exposed as endpoints).
-const crypto = require("crypto");
+// Shared server helpers for the API (runs on Cloudflare Pages Functions via functions/api/[[path]].js; also works on Node/Vercel).
+// No Node-only modules: only fetch and Web Crypto, which both platforms have.
 
 const env = (k, d) => process.env[k] || d;
 const SB_URL = () => env("SUPABASE_URL");
@@ -16,10 +16,12 @@ function fail(res, status, error, code) { send(res, status, { error, code }); }
 
 async function readBody(req) {
   if (req.body && typeof req.body === "object") return req.body;
+  if (typeof req.rawBody === "string") { try { return JSON.parse(req.rawBody || "{}"); } catch (e) { return {}; } }
   const raw = await readRaw(req);
   try { return JSON.parse(raw || "{}"); } catch (e) { return {}; }
 }
 function readRaw(req) {
+  if (typeof req.rawBody === "string") return Promise.resolve(req.rawBody);
   return new Promise((resolve, reject) => {
     let data = ""; req.setEncoding("utf8");
     req.on("data", (c) => { data += c; if (data.length > 6e6) { reject(new Error("too large")); req.destroy(); } });
@@ -115,13 +117,17 @@ async function stripe(path, params, method = "POST") {
   if (!r.ok) { const e = new Error((data.error && data.error.message) || "stripe error"); e.status = 502; throw e; }
   return data;
 }
-function verifyStripe(raw, header, secret) {
+async function verifyStripe(raw, header, secret) {
   if (!header || !secret) return false;
   const parts = Object.fromEntries(header.split(",").map((p) => p.split("=")));
   const t = parts.t, sigs = header.split(",").filter((p) => p.startsWith("v1=")).map((p) => p.slice(3));
   if (!t || !sigs.length || Math.abs(Date.now() / 1000 - Number(t)) > 300) return false;
-  const expected = crypto.createHmac("sha256", secret).update(t + "." + raw, "utf8").digest("hex");
-  return sigs.some((s) => s.length === expected.length && crypto.timingSafeEqual(Buffer.from(s), Buffer.from(expected)));
+  const enc = new TextEncoder();
+  const key = await globalThis.crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await globalThis.crypto.subtle.sign("HMAC", key, enc.encode(t + "." + raw)));
+  const expected = Array.from(mac, (b) => b.toString(16).padStart(2, "0")).join("");
+  const same = (a, b) => { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
+  return sigs.some((s) => same(s, expected));
 }
 
 // 試作期間中は全プラン無制限。Riotに申請するときに false に戻す(supabase/005_restore_limits.sql と assets/config.js の TRIAL_UNLIMITED も)
