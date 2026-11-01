@@ -40,12 +40,58 @@
     })).sort((a, b) => b.rounds - a.rounds);
   }
 
+  // Fights by location (location name the game shows under the minimap): kills and deaths of each recorded player there.
+  // rows as in summarize. Returns [{agent, place, k, d}] plus team totals (agent "*").
+  function places(rows) {
+    const m = {};
+    const add = (agent, place, key) => { place = String(place || "").trim(); if (!place) return; for (const a of [agent || "不明", "*"]) { const id = a + "|" + place.toLowerCase(); (m[id] = m[id] || { agent: a, place, k: 0, d: 0 })[key]++; } };
+    rows.forEach((p) => (p.rounds || []).forEach((r) => { const kt = r.kit; if (!kt) return; (kt.kp || []).forEach((x) => add(p.agent, x, "k")); if (kt.dead && kt.dp) add(p.agent, kt.dp, "d"); }));
+    return Object.values(m).sort((a, b) => (b.k + b.d) - (a.k + a.d));
+  }
+
+  // Team situations from the round list of each match (counted once per match):
+  // man-advantage states reached (alive counts us v them), post-plant / retake, attack pace (time left at plant), timing of the first fight.
+  function situations(roundLists) {
+    const st = {}, out = { states: st, postPlant: [0, 0], retake: [0, 0], pace: { fast: [0, 0], mid: [0, 0], slow: [0, 0], none: [0, 0] }, firstFight: { early: [0, 0], mid: [0, 0], late: [0, 0] }, smallFight: [0, 0], plantState: {} };
+    const inc = (a, win) => { a[1]++; if (win) a[0]++; };
+    roundLists.forEach((rs) => (rs || []).forEach((r) => {
+      if (r.win == null) return;
+      const atk = r.side === "attack", planted = !!r.planted || r.plantAt != null;
+      if (planted && atk) inc(out.postPlant, r.win);
+      if (planted && !atk) inc(out.retake, r.win);
+      if (atk) { const x = typeof r.plant === "number" ? r.plant : null; inc(out.pace[!planted ? "none" : x == null ? "mid" : x >= 60 ? "fast" : x >= 30 ? "mid" : "slow"], r.win); }
+      const alv = Array.isArray(r.alv) ? r.alv : null; if (!alv) return;
+      const seen = new Set(); let small = false;
+      alv.forEach(([t, u, e]) => { if (u < 1 || e < 1) return; const k = u + "v" + e; if (!seen.has(k)) { seen.add(k); inc(st[k] = st[k] || [0, 0], r.win); } if (u <= 2 && e <= 2) small = true; });
+      if (small) inc(out.smallFight, r.win);
+      const first = alv.find((x) => x[1] < 5 || x[2] < 5);
+      if (first) inc(out.firstFight[first[0] < 20 ? "early" : first[0] < 45 ? "mid" : "late"], r.win);
+      if (planted && typeof r.plant === "number") { const tp = 100 - r.plant; let s = [5, 5]; alv.forEach(([t, u, e]) => { if (t <= tp) s = [u, e]; }); const k = (atk ? "post-plant " : "retake ") + s[0] + "v" + s[1]; inc(out.plantState[k] = out.plantState[k] || [0, 0], r.win); }
+    }));
+    return out;
+  }
+  const wr = (a) => a[0] + "/" + a[1] + (a[1] ? "(" + Math.round((a[0] / a[1]) * 100) + "%)" : "");
+  function situationText(roundLists) {
+    const o = situations(roundLists);
+    const states = Object.entries(o.states).sort((a, b) => b[1][1] - a[1][1]).map(([k, v]) => k + "=" + wr(v)).join(" ");
+    return "team situations (wins/rounds): post_plant_attack=" + wr(o.postPlant) + " retake_defense=" + wr(o.retake) +
+      " attack_pace: fast(planted with 60s+ left)=" + wr(o.pace.fast) + " mid(30-59s left)=" + wr(o.pace.mid) + " slow(<30s left)=" + wr(o.pace.slow) + " no_plant=" + wr(o.pace.none) +
+      " first_fight: within20s=" + wr(o.firstFight.early) + " 20-45s=" + wr(o.firstFight.mid) + " after45s=" + wr(o.firstFight.late) +
+      " small_fight(both sides 2 or fewer at some point)=" + wr(o.smallFight) +
+      "\nreached_state(us v them, round win rate when this state happened)=" + (states || "-") +
+      "\nat_plant=" + (Object.entries(o.plantState).map(([k, v]) => k.replace(" ", "_") + "=" + wr(v)).join(" ") || "-");
+  }
+  function placeText(rows) {
+    return places(rows).slice(0, 80).map((x) => "fight_place agent=" + (x.agent === "*" ? "TEAM" : String(x.agent).replace(/[,\s]+/g, "_")) + " place=" + x.place.replace(/[,\s]+/g, "_") + " kills=" + x.k + " deaths=" + x.d).join("\n");
+  }
+
   // short per-round marks for the AI data text
   function marks(r) {
     const kt = r && r.kit; if (!kt || !(kt.al > 0)) return "";
     const h = (kt.h || []).map((v, i) => (v ? SLOT[i] + Math.round(v) : "")).filter(Boolean).join("/");
     const lf = (kt.lf || []).map((v, i) => (v ? SLOT[i] : "")).join("");
-    return "+AL" + Math.round(kt.al) + (h ? "+H:" + h : "") + (lf ? "+L:" + lf : "") + (kt.us ? (kt.uu ? "+UU" : "+UH") : "") + (kt.ud ? "+DU" : "") + (kt.k != null ? "+K" + kt.k + (kt.ku ? "+KU" + kt.ku : "") : "");
+    const pl = (x) => String(x).replace(/[,\s]+/g, "_");
+    return "+AL" + Math.round(kt.al) + (h ? "+H:" + h : "") + (lf ? "+L:" + lf : "") + (kt.us ? (kt.uu ? "+UU" : "+UH") : "") + (kt.ud ? "+DU" : "") + (kt.k != null ? "+K" + kt.k + (kt.ku ? "+KU" + kt.ku : "") : "") + ((kt.kp || []).length ? "+KP:" + kt.kp.map(pl).join("/") : "") + (kt.dead && kt.dp ? "+DP:" + pl(kt.dp) : "");
   }
 
   function summaryText(rows) {
@@ -56,6 +102,8 @@
       " kills=" + s.kills + "(in " + s.killsRounds + " rounds) kills_while_ult_ready=" + s.killsUlt).join("\n");
   }
 
-  const K = { SLOT, summarize, marks, summaryText };
+  // alive-count flow of a round, e.g. "4v5>4v4>2v3" (us v them)
+  const flow = (r) => (Array.isArray(r.alv) && r.alv.length > 1 ? "+S:" + r.alv.slice(1).map((x) => x[1] + "v" + x[2]).join(">") : "");
+  const K = { SLOT, summarize, marks, summaryText, places, placeText, situations, situationText, flow };
   if (typeof module !== "undefined" && module.exports) module.exports = K; else root.TLKit = K;
 })(typeof window !== "undefined" ? window : this);

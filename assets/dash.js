@@ -149,6 +149,30 @@
       h("div", { class: "tblbox" }, h("table", { class: "tbl dtbl" }, h("thead", {}, h("tr", {}, ["エージェント", "ラウンド", "構え C", "構え Q", "構え E", "構え X", "構えていた割合", "倒されたときの残りスキル", "ウルト温存", "ウルトを持ったままデス", "キル(ウルト中)"].map((t) => h("th", {}, t)))), h("tbody", {}, tr))));
   }
 
+  // Team situations (post-plant, retake, attack pace, small fights, clutches) and fights by location
+  function situationSection(ms) {
+    if (!window.TLKit) return null;
+    const o = TLKit.situations(ms.map((m) => m.rounds)), t = (label, a, sub) => tile(label, a[0], a[1], sub);
+    const st = o.states, pick = (k) => st[k] || [0, 0];
+    const clutch = Object.keys(st).filter((k) => /^1v[1-5]$/.test(k)).reduce((a, k) => [a[0] + st[k][0], a[1] + st[k][1]], [0, 0]);
+    return h("section", { class: "card dsec" }, h("h3", {}, "状況別の勝率"),
+      h("p", { class: "small muted" }, "人数はバリアが消えてからの生存人数(自分たちv相手)。攻めの速さは、アタックで設置したときの残り時間で分けています。"),
+      h("div", { class: "dgrid" }, t("ポストプラント(アタック設置後)", o.postPlant), t("リテイク(ディフェンス)", o.retake), t("少人数戦(両方2人以下)", o.smallFight), t("クラッチ(1人残り)", clutch)),
+      h("div", { class: "dgrid" }, t("速攻(残り60秒以上で設置)", o.pace.fast), t("ふつう(残り30〜59秒)", o.pace.mid), t("ゆっくり(残り30秒未満)", o.pace.slow), t("設置なし(アタック)", o.pace.none)),
+      h("div", { class: "dgrid" }, t("人数有利 5v4", pick("5v4")), t("人数不利 4v5", pick("4v5")), t("2v2", pick("2v2")), t("1v1", pick("1v1"))));
+  }
+  function placeTable(ms) {
+    if (!window.TLKit) return null;
+    const rows = [];
+    ms.forEach((m) => { const pv = POVS[m.id] || []; if (pv.length) pv.forEach((p) => rows.push({ agent: p.agent, rounds: p.rounds })); else if (m.comps && m.comps.me) rows.push({ agent: m.comps.me, rounds: m.rounds }); });
+    const list = TLKit.places(rows).filter((x) => x.agent !== "*" && x.k + x.d >= 2).slice(0, 30);
+    if (!list.length) return null;
+    return h("section", { class: "card dsec" }, h("h3", {}, "場所ごとの撃ち合い(エージェント別)"),
+      h("p", { class: "small muted" }, "録画した人がキルした場所と、倒された場所(ゲームがミニマップの下に出す場所の名前)。撃ち合い勝率 = キル ÷(キル+デス)。"),
+      h("div", { class: "tblbox" }, h("table", { class: "tbl dtbl" }, h("thead", {}, h("tr", {}, ["エージェント", "場所", "キル", "デス", "撃ち合い勝率"].map((x) => h("th", {}, x)))),
+        h("tbody", {}, list.map((x) => h("tr", {}, h("td", {}, x.agent), h("td", {}, x.place), h("td", { class: "num" }, x.k), h("td", { class: "num" }, x.d), h("td", {}, bar(rate(x.k, x.k + x.d)))))))));
+  }
+
   function filters() {
     const sel = h("select", { "aria-label": "マップ", class: "teamsel" }, h("option", { value: "" }, "すべてのマップ"), ...MAPS().map(([v, n]) => h("option", { value: v }, n)));
     sel.value = F.map; sel.onchange = () => { F.map = sel.value; render(); };
@@ -186,7 +210,9 @@
       h("div", { class: "dgrid" }, tile("試合勝率", W, W + Lo, "ラウンド勝率 " + pctText(wins(all), all.length)), tile("アタック取得率", wins(att), att.length), tile("ディフェンス取得率", wins(def), def.length), recent),
       h("div", { class: "dgrid" }, tile("ファーストキル取得率", fkUs.length, fk.length), tile("FKを取ったラウンドの勝率", wins(known(fkUs)), known(fkUs).length), tile("FKを取られたラウンドの勝率", wins(known(fkThem)), known(fkThem).length), tile("ピストル(1・13R)取得率", wins(pistol), pistol.length)),
       playerTable(ms) || (myK.length || myD.length || sv.length ? h("div", { class: "dgrid" }, tile("配信者のファーストキル率", myK.filter((r) => r.myFk).length, myK.length, "録画した人"), tile("配信者のファーストデス率", myD.filter((r) => r.myFd).length, myD.length, "録画した人"), tile("配信者の生存率", sv.filter((r) => r.myDead === false).length, sv.length, "最後まで生き残ったラウンド"), lifeTile) : null),
+      situationSection(ms),
       kitTable(ms),
+      placeTable(ms),
       h("section", { class: "card dsec" }, h("h3", {}, "ラウンド勝率の推移(直近20試合)"), h("p", { class: "small muted" }, "点にマウスを乗せると、その試合の内容が出ます。点線は50%。緑の点は勝った試合、赤は負けた試合です。"), trendChart(ms)),
       h("div", { class: "dcols" },
         h("section", { class: "card dsec" }, h("h3", {}, "マップ別"), mapTable(ms)),

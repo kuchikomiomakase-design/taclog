@@ -10,7 +10,7 @@ const LIM={images:{maxCount:6}};
 const toB64=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(b)});
 function parseJSON(t){t=String(t||"").trim();try{return JSON.parse(t)}catch(e){}const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f){try{return JSON.parse(f[1])}catch(e){}}const i=Math.min(...["{","["].map(c=>{const k=t.indexOf(c);return k<0?1e9:k})),j=Math.max(t.lastIndexOf("}"),t.lastIndexOf("]"));if(i<j){try{return JSON.parse(t.slice(i,j+1))}catch(e){}}throw{code:"invalid_json"}}
 const SAMPLE={json:async(prompt,o)=>{if(o.signal&&o.signal.aborted)throw{code:"cancelled"};const images=await Promise.all((o.images||[]).map(toB64));
-  try{const r=await TL.api("/api/vision",{prompt,images,teamId:APP.team.id,task:o.task||""});return parseJSON(r.text)}catch(e){if(o.signal&&o.signal.aborted)throw{code:"cancelled"};throw{code:e.code||"upstream_error",message:e.message}}}};
+  try{const r=await TL.api("/api/vision",{prompt,images,teamId:APP.team.id,task:o.task||"",fast:o.modelTier==="fast"});return parseJSON(r.text)}catch(e){if(o.signal&&o.signal.aborted)throw{code:"cancelled"};throw{code:e.code||"upstream_error",message:e.message}}}};
 /* ---------- video + crop ---------- */
 const video=document.createElement("video");video.muted=true;video.playsInline=true;video.preload="auto";
 let duration=0,fileName="";
@@ -335,42 +335,54 @@ function kitNow(kx){
   }
   return{ok,bars,held};
 }
+// One pass over every round from the barrier drop to the round end (free, on this PC), every 2 seconds:
+//  - how many players are alive on each side (portraits) -> man-advantage situations, clutches, small fights (r.alv)
+//  - while the recording player is alive: their own ability HUD -> hold time, skills left, ult (r.kit)
+// Then the AI reads only a few small crops: who got the kills the player was there for, and where (the location name the game shows
+// under the minimap, e.g. "A Main", "Mid Courtyard") the player got each kill and died.
 async function readKit(segs,me){
   const jobs=[];
   segs.forEach((rs,si)=>rs.forEach(r=>{
-    if(r._st==null||r.myDead==null)return;   // only rounds where we know when the player died (after that the HUD is a teammate's)
+    if(r._st==null)return;
     const end=Math.min(r._next!=null?r._next-1:(r.plantAt!=null?r.plantAt+44:r._st+99),r._st+145,duration-0.3);
-    const stop=r.myDead?Math.min(end,r._st+(r.myDeathT||0)-1):end;
-    if(stop>r._st+3)jobs.push({si,r,a:r._st+1,b:stop,died:!!r.myDead,me:me[si]});
+    // the player's own HUD only while we know they are alive (after death the HUD is a teammate's)
+    const stop=r.myDead==null?null:r.myDead?Math.min(end,r._st+(r.myDeathT||0)-1):end;
+    if(end>r._st+3)jobs.push({si,r,a:r._st+1,end,b:stop!=null&&stop>r._st+3?stop:null,died:!!r.myDead,me:me[si]});
   }));
   if(!jobs.length)return;
   // which horizontal scale fits the HUD (normal 16:9 or stretched 4:3)
-  const probe=jobs.slice(0,12).map(j=>j.a+4).filter(t=>t<duration-0.3);let best=[-1,1];
+  const probe=jobs.filter(j=>j.b!=null).slice(0,12).map(j=>j.a+4);let best=[-1,1];
   for(const kx of [1,4/3]){let n=0;for(const t of probe){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);if(kitNow(kx).ok)n++}if(n>best[0])best=[n,kx]}
-  if(best[0]<Math.max(2,probe.length*0.3))return;   // no ability HUD found (e.g. HUD hidden): skip quietly
-  KIT_KX=best[1];
-  const kills=[];let done=0;
+  const hud=best[0]>=Math.max(2,probe.length*0.3);KIT_KX=best[1];
+  const kills=[],places=[];let done=0;
   for(const j of jobs){
-    prog(0.99,"スキルとウルトを確認しています… ("+(++done)+"/"+jobs.length+"ラウンド)");
+    prog(0.99,"ラウンドの流れとスキルを確認しています… ("+(++done)+"/"+jobs.length+"ラウンド)");
     const S=[];
-    for(let t=j.a;t<=j.b;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);S.push({t,...kitNow(KIT_KX),en:aliveNow()[1]})}
-    for(let i=1;i<S.length-1;i++)if(S[i].ok&&S[i].held==null&&S[i-1].held!=null&&S[i-1].held===S[i+1].held)S[i].held=S[i-1].held;   // one missed look in the middle of a hold
-    const V=S.filter(x=>x.ok);if(V.length<2)continue;
+    for(let t=j.a;t<=j.end;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const al=aliveNow();S.push({t,us:al[0],en:al[1],...(hud&&j.b!=null&&t<=j.b?kitNow(KIT_KX):{ok:false,bars:[],held:null})})}
+    // alive counts only go down in a round: accept a drop once it is seen twice in a row (or at the last look)
+    const alv=[[0,5,5]];let cu=5,ce=5;
+    for(let i=0;i<S.length;i++){const nx=S[i+1];
+      const u=nx?Math.max(S[i].us,nx.us):S[i].us,e=nx?Math.max(S[i].en,nx.en):S[i].en;
+      if(u<cu||e<ce){cu=Math.min(cu,u);ce=Math.min(ce,e);alv.push([Math.round(S[i].t-j.r._st),cu,ce])}}
+    j.r.alv=alv;
+    if(j.b==null||!hud)continue;
+    const A=S.filter(x=>x.t<=j.b);
+    for(let i=1;i<A.length-1;i++)if(A[i].ok&&A[i].held==null&&A[i-1].held!=null&&A[i-1].held===A[i+1].held)A[i].held=A[i-1].held;   // one missed look in the middle of a hold
+    const V=A.filter(x=>x.ok);if(V.length<2)continue;
     const h=[0,0,0,0];let hn=0;V.forEach((x,i)=>{if(x.held!=null){h[x.held]+=KSTEP;if(i===0||V[i-1].held!==x.held)hn++}});
     const maj=(arr,f)=>arr.filter(f).length*2>arr.length;
     const head=V.slice(0,3),tail=V.slice(-2),last=V[V.length-1];
     const us=maj(head,x=>x.bars[3]===1);
     let uu=false;if(us)for(let i=1;i<V.length;i++){if(V[i].bars[3]===0&&(V[i+1]?V[i+1].bars[3]===0:true)){uu=true;break}}
-    const ultNow=x=>x&&x.bars[3]===1;
-    const kit={al:Math.round(j.b-j.a+1),h,hn,lf:last.bars.slice(0,3),dead:j.died,us,uu,ud:j.died&&maj(tail,x=>x.bars[3]===1),k:null,ku:null};
+    const kit={al:Math.round(j.b-j.a+1),h,hn,lf:last.bars.slice(0,3),dead:j.died,us,uu,ud:j.died&&maj(tail,x=>x.bars[3]===1),k:null,ku:null,kp:[],dp:null};
     j.r.kit=kit;
     // enemy portraits that turned grey while this player was alive: candidates for this player's kills (who got it is read from the kill feed)
-    if(j.me)for(let i=1;i<S.length;i++){const a=S[i-1].en,b=S[i].en;if(b<a&&(!S[i+1]||S[i+1].en<=b)){let pv=null;for(let q=i-1;q>=0;q--)if(S[q].ok){pv=S[q];break}kills.push({j,t:S[i].t,ult:ultNow(pv)})}}
-    if(j.me)kit.k=0,kit.ku=0;
+    if(j.me){kit.k=0;kit.ku=0;for(let i=1;i<A.length;i++){const a=A[i-1].en,b=A[i].en;if(b<a&&(!A[i+1]||A[i+1].en<=b)){let pv=null;for(let q=i-1;q>=0;q--)if(A[q].ok){pv=A[q];break}kills.push({j,t:A[i].t,ult:!!(pv&&pv.bars[3]===1)})}}}
+    if(j.died)places.push({j,t:Math.max(j.a,j.b),kind:"d"});   // a moment before the death, still in their own view
   }
-  if(!kills.length)return;
+  const W=video.videoWidth,H=video.videoHeight;
   // read the kill feed at those moments: green entries "killer>victim"; the player's kills are entries whose killer is their agent (each victim counted once per round)
-  const W=video.videoWidth,H=video.videoHeight,seen=new Map();
+  const seen=new Map();
   for(let i=0;i<kills.length;i+=16){
     const part=kills.slice(i,i+16);
     prog(0.995,"キルを読み取っています…("+Math.min(kills.length,i+16)+"/"+kills.length+")");
@@ -380,9 +392,21 @@ async function readKit(segs,me){
       const arr=Array.isArray(r.k)?r.k:[];
       part.forEach((c,k)=>{
         const list=Array.isArray(arr[k])?arr[k]:[],mine=agentKey(c.j.me),key=c.j.r;if(!seen.has(key))seen.set(key,new Set());const vs=seen.get(key);
-        if(c.j.r.kit.k==null)return;list.forEach(e=>{const [kn,vn]=String(e||"").split(">").map(x=>agentKey(x));if(!kn||kn!==mine||!vn||vs.has(vn))return;vs.add(vn);c.j.r.kit.k++;if(c.ult)c.j.r.kit.ku++});
+        if(c.j.r.kit.k==null)return;
+        list.forEach(e=>{const [kn,vn]=String(e||"").split(">").map(x=>agentKey(x));if(!kn||kn!==mine||!vn||vs.has(vn))return;vs.add(vn);c.j.r.kit.k++;if(c.ult)c.j.r.kit.ku++;places.push({j:c.j,t:c.t,kind:"k"})});
       });
     }catch(e){if(e&&e.code==="cancelled")throw e;part.forEach(c=>{c.j.r.kit.k=null;c.j.r.kit.ku=null})}
+  }
+  // where: the location name under the minimap (top-left), read in small crops (cheap text reading)
+  for(let i=0;i<places.length;i+=30){
+    const part=places.slice(i,i+30);
+    prog(0.997,"撃ち合いの場所を読み取っています…");
+    const blob=await gridOf(part,330,52,3,(x,ox,oy)=>x.drawImage(video,W*0.03,H*0.004,W*0.16,H*0.036,ox+34,oy+2,296,48));
+    try{
+      const r=await SAMPLE.json("Each numbered cell is the top-left corner of a VALORANT screen, where the game shows the name of the player's current location (e.g. 'A Main', 'Mid Courtyard', 'Defender Side Spawn'). Ignore any 'Client FPS' text. Copy the location name exactly as written for each cell (English or Japanese as shown), or \"-\" if there is none. Reply only JSON: {\"p\":[\"A Main\",\"-\"]}",{images:[blob],signal:ctl.signal,modelTier:"fast",task:"places"});
+      const arr=Array.isArray(r.p)?r.p:[];
+      part.forEach((c,k)=>{const v=String(arr[k]||"").trim().slice(0,40);if(!v||v==="-")return;if(c.kind==="d")c.j.r.kit.dp=v;else c.j.r.kit.kp.push(v)});
+    }catch(e){if(e&&e.code==="cancelled")throw e}
   }
 }
 function markMine(segs,me){
@@ -578,7 +602,7 @@ function sameMatch(a,b){ // a, b: round lists
   let same=0,cmp=0;for(let i=0;i<Math.min(A.length,B.length);i++){if(A[i]==="?"||B[i]==="?")continue;cmp++;if(A[i]===B[i])same++}
   return cmp>=6&&same/cmp>=0.9;
 }
-const povRounds=rs=>rs.map(r=>({n:r.n,side:r.side,win:r.win,fk:r.fk??null,fkBy:r.fkBy??null,fkVictim:r.fkVictim??null,myFk:r.myFk??null,myFd:r.myFd??null,myDead:r.myDead??null,myDeathT:r.myDeathT??null,kit:r.kit??null}));
+const povRounds=rs=>rs.map(r=>({n:r.n,side:r.side,win:r.win,fk:r.fk??null,fkBy:r.fkBy??null,fkVictim:r.fkVictim??null,myFk:r.myFk??null,myFd:r.myFd??null,myDead:r.myDead??null,myDeathT:r.myDeathT??null,kit:r.kit??null,alv:r.alv??null}));
 async function findSame(date,map,rs,part){
   if(!date)return null;
   const d=new Date(date+"T00:00:00"),iso=x=>new Date(d.getTime()+x*864e5).toISOString().slice(0,10);
