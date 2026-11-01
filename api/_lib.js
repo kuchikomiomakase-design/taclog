@@ -147,7 +147,7 @@ async function verifyStripe(raw, header, secret) {
 const TRIAL_UNLIMITED = true;
 const PLAN_LIMITS = TRIAL_UNLIMITED
   ? { free: { questions: 100000, days: 36500 }, team: { questions: 100000, days: 36500 }, org: { questions: 100000, days: 36500 } }
-  : { free: { questions: 20, days: 14 }, team: { questions: 150, days: 36500 }, org: { questions: 100000, days: 36500 } };
+  : { free: { questions: 20, days: 14 }, team: { questions: 300, days: 36500 }, org: { questions: 100000, days: 36500 } };
 
 function serviceHeaders() { const k = SERVICE(); const h = { apikey: k }; if (String(k || "").startsWith("eyJ")) h.authorization = "Bearer " + k; return h; }
 
