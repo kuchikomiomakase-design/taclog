@@ -10,7 +10,7 @@ const LIM={images:{maxCount:6}};
 const toB64=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(b)});
 function parseJSON(t){t=String(t||"").trim();try{return JSON.parse(t)}catch(e){}const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f){try{return JSON.parse(f[1])}catch(e){}}const i=Math.min(...["{","["].map(c=>{const k=t.indexOf(c);return k<0?1e9:k})),j=Math.max(t.lastIndexOf("}"),t.lastIndexOf("]"));if(i<j){try{return JSON.parse(t.slice(i,j+1))}catch(e){}}throw{code:"invalid_json"}}
 const SAMPLE={json:async(prompt,o)=>{if(o.signal&&o.signal.aborted)throw{code:"cancelled"};const images=await Promise.all((o.images||[]).map(toB64));
-  try{const r=await TL.api("/api/vision",{prompt,images,teamId:APP.team.id});return parseJSON(r.text)}catch(e){if(o.signal&&o.signal.aborted)throw{code:"cancelled"};throw{code:e.code||"upstream_error",message:e.message}}}};
+  try{const r=await TL.api("/api/vision",{prompt,images,teamId:APP.team.id,task:o.task||""});return parseJSON(r.text)}catch(e){if(o.signal&&o.signal.aborted)throw{code:"cancelled"};throw{code:e.code||"upstream_error",message:e.message}}}};
 /* ---------- video + crop ---------- */
 const video=document.createElement("video");video.muted=true;video.playsInline=true;video.preload="auto";
 let duration=0,fileName="";
@@ -64,14 +64,14 @@ async function readTiles(blobs,from,to){
   const prompt="You are reading a VALORANT match video. The images contain tiles cut from the TOP-CENTER of the game screen (team scores and the round timer), sampled at regular intervals. Each tile has a yellow number label on its left. Go through tiles "+from+" to "+to+" in number order ("+(to-from+1)+" tiles total, left-to-right then top-to-bottom, across all images in order) and output one string per tile in this exact format:\n"
    +"'<left score>-<right score>|<state>'\n<state> = the remaining round time as m:ss if a timer is visible; S if the spike (bomb) icon is shown instead of the timer; E if the timer shows seconds with decimals such as 28.11 (the short phase right after a round ends); - if this is not the in-game HUD or it is unreadable. Use ? for a score you cannot read (e.g. '?-?|-').\n"
    +"Reply with only JSON: {\"tiles\":[\"3-2|1:24\",\"3-2|S\",\"?-?|-\"]} containing exactly "+(to-from+1)+" strings.";
-  const r=await SAMPLE.json(prompt,{images:blobs,signal:ctl.signal,modelTier:"default"});
+  const r=await SAMPLE.json(prompt,{images:blobs,signal:ctl.signal,modelTier:"default",task:"tiles"});
   const arr=r&&Array.isArray(r.tiles)?r.tiles:[];return arr;
 }
 async function readComps(){
   const W=video.videoWidth,H=video.videoHeight,strip=document.createElement("canvas");strip.width=1400;const sh=Math.round(1400*(H*0.11)/W);strip.height=sh*3;const x=strip.getContext("2d");
   const ts=[0.15,0.45,0.75];for(let i=0;i<3;i++){await seek(duration*ts[i]);x.drawImage(video,0,0,W,H*0.11,0,i*sh,1400,sh)}
   const blob=await new Promise(r=>strip.toBlob(r,"image/jpeg",0.9));
-  try{const r=await SAMPLE.json("These are three strips from the top of a VALORANT match screen. The top bar shows agent portraits: the player's team on the LEFT of the score and the enemy team on the RIGHT. Identify the agents (English agent names). Reply only JSON: {\"left\":[\"Jett\"],\"right\":[\"Sova\"]} with up to 5 names each; leave a list empty if you are not sure.",{images:[blob],signal:ctl.signal,modelTier:"default"});
+  try{const r=await SAMPLE.json("These are three strips from the top of a VALORANT match screen. The top bar shows agent portraits: the player's team on the LEFT of the score and the enemy team on the RIGHT. Identify the agents (English agent names). Reply only JSON: {\"left\":[\"Jett\"],\"right\":[\"Sova\"]} with up to 5 names each; leave a list empty if you are not sure.",{images:[blob],signal:ctl.signal,modelTier:"default",task:"comps"});
     return{left:(r.left||[]).map(String).slice(0,5),right:(r.right||[]).map(String).slice(0,5)}}catch(e){if(e&&e.code==="cancelled")throw e;return{left:[],right:[]}}
 }
 
@@ -82,13 +82,13 @@ async function gridOf(cells,cw,chh,cols,draw){const cv=document.createElement("c
 async function readSides(cands){
   if(!cands.length)return[];const W=video.videoWidth,H=video.videoHeight;
   const blob=await gridOf(cands,700,60,2,(x,ox,oy)=>x.drawImage(video,0,0,W*0.3,H*0.05,ox+36,oy,664,58));
-  try{const r=await SAMPLE.json("Each numbered strip is the top-left corner of a VALORANT screen, where the current location name is shown (e.g. 'Attacker Side Spawn', 'Defender Side Spawn', 'A Site', or Japanese equivalents like アタッカー側スポーン / ディフェンダー側スポーン). For strips 1 to "+cands.length+" in order, output 'attack' if it says attacker side spawn, 'defense' if defender side spawn, otherwise '-'. Reply only JSON: {\"sides\":[\"defense\",\"-\"]}",{images:[blob],signal:ctl.signal,modelTier:"default"});return Array.isArray(r.sides)?r.sides:[]}catch(e){if(e&&e.code==="cancelled")throw e;return[]}
+  try{const r=await SAMPLE.json("Each numbered strip is the top-left corner of a VALORANT screen, where the current location name is shown (e.g. 'Attacker Side Spawn', 'Defender Side Spawn', 'A Site', or Japanese equivalents like アタッカー側スポーン / ディフェンダー側スポーン). For strips 1 to "+cands.length+" in order, output 'attack' if it says attacker side spawn, 'defense' if defender side spawn, otherwise '-'. Reply only JSON: {\"sides\":[\"defense\",\"-\"]}",{images:[blob],signal:ctl.signal,modelTier:"default",task:"sides"});return Array.isArray(r.sides)?r.sides:[]}catch(e){if(e&&e.code==="cancelled")throw e;return[]}
 }
 async function readSites(cells){
   const out=[];if(!cells.length)return out;const W=video.videoWidth,H=video.videoHeight;
   for(let i=0;i<cells.length;i+=20){const part=cells.slice(i,i+20);
     const blob=await gridOf(part,260,270,5,(x,ox,oy)=>x.drawImage(video,0,0,W*0.22,H*0.42,ox,oy,260,268));
-    try{const r=await SAMPLE.json("Each numbered cell is the top-left of a VALORANT screen shortly after the spike was planted: the minimap (with site letters A, B, maybe C, and a spike/bomb marker) and the current location name above it (e.g. 'B Site'). For cells 1 to "+part.length+" in order, output the site letter where the spike was planted ('A','B' or 'C'), or '-' if you cannot tell. Reply only JSON: {\"sites\":[\"B\",\"-\"]}",{images:[blob],signal:ctl.signal,modelTier:"default"});
+    try{const r=await SAMPLE.json("Each numbered cell is the top-left of a VALORANT screen shortly after the spike was planted: the minimap (with site letters A, B, maybe C, and a spike/bomb marker) and the current location name above it (e.g. 'B Site'). For cells 1 to "+part.length+" in order, output the site letter where the spike was planted ('A','B' or 'C'), or '-' if you cannot tell. Reply only JSON: {\"sites\":[\"B\",\"-\"]}",{images:[blob],signal:ctl.signal,modelTier:"default",task:"sites"});
       const arr=Array.isArray(r.sites)?r.sites:[];part.forEach((c,k)=>out.push(/^[ABC]$/.test(String(arr[k]))?String(arr[k]):null))}catch(e){if(e&&e.code==="cancelled")throw e;part.forEach(()=>out.push(null))}}
   return out;
 }
@@ -185,11 +185,12 @@ async function readFirstKillers(segs){
     const part=cells.slice(i,i+16);
     const blob=await gridOf(part,440,176,2,(x,ox,oy)=>x.drawImage(video,W*0.66,H*0.035,W*0.34,H*0.17,ox+36,oy,404,174));
     const want=part.map((c,k)=>{const f=segs[c.si][c.ri].fk;return (k+1)+":"+(f==="us"?"green":f==="them"?"red":"any")}).join(", ");
-    try{const r=await SAMPLE.json("Each numbered cell is the kill feed (top-right of a VALORANT screen) at the moment of the first kill of a round. In an entry the LEFT name is the killer. Green/teal entries = killer on the player's team, red = enemy team. For each cell take the entry of the given colour (if several, the oldest one; 'any' = whichever entry is there): "+want+". Reply only JSON with one string per cell in order: {\"k\":[\"Jett|g\",\"-\"]} = killer name, then |g for green or |r for red. Use \"-\" if unreadable.",{images:[blob],signal:ctl.signal,modelTier:"default"});
+    try{const r=await SAMPLE.json("Each numbered cell is the kill feed (top-right of a VALORANT screen) at the moment of the first kill of a round. An entry is: killer agent portrait (and name), weapon, victim agent portrait (and name). Green/teal entries = killer on the player's team, red = enemy team. For each cell take the entry of the given colour (if several, the oldest one; 'any' = whichever entry is there): "+want+". Identify both AGENTS from the portraits (names may be hidden or blurred). Reply only JSON with one string per cell in order: {\"k\":[\"Jett>Sova|g\",\"-\"]} = killer agent > victim agent, then |g for green or |r for red. Use \"-\" if unreadable, and ? for one unreadable side.",{images:[blob],signal:ctl.signal,modelTier:"default",task:"killers"});
       const arr=Array.isArray(r.k)?r.k:[];
-      part.forEach((c,k)=>{const r0=segs[c.si][c.ri],m=String(arr[k]||"").match(/^(.*?)\|\s*([gr])\s*$/i),nm=(m?m[1]:String(arr[k]||"")).trim().slice(0,30);
-        if(!nm||BAD.test(nm))return;
-        r0.fkBy=/^me$/i.test(nm)?"Me(配信者)":nm;
+      part.forEach((c,k)=>{const r0=segs[c.si][c.ri],raw=String(arr[k]||"").trim(),m=raw.match(/^(.*?)\|\s*([gr])\s*$/i),body=(m?m[1]:raw).trim();
+        const [kn,vn]=body.split(">").map(x=>String(x||"").trim().slice(0,30));
+        if(kn&&!BAD.test(kn))r0.fkBy=kn;
+        if(vn&&!BAD.test(vn))r0.fkVictim=vn;
         if(r0.fk==="tie"&&m)r0.fk=m[2].toLowerCase()==="g"?"us":"them"});
     }catch(e){if(e&&e.code==="cancelled")throw e}
   }
@@ -240,7 +241,7 @@ async function sheetAt(ts){
   return await new Promise(r=>cv.toBlob(r,"image/jpeg",0.72));
 }
 async function askValorant(blob){
-  const r=await SAMPLE.json("These are 16 numbered frames taken at different times from ONE stream recording. Streamers often show the lobby for a long time, or switch to other screens (desktop, Discord, a 'be right back' screen, another app) for a while. Question: does ANY of the 16 frames show VALORANT (the Riot Games tactical shooter)? Count all of these as VALORANT: in-match gameplay (score and round timer at top center, minimap at top left), the VALORANT lobby/main menu, agent select, loading screen, the scoreboard or end-of-match screen. If even one frame is VALORANT, or you are not sure, answer true. Answer false only if you are confident that none of the frames is VALORANT. Reply only JSON: {\"valorant\":true,\"frames\":[numbers of VALORANT frames]} or {\"valorant\":false,\"what\":\"what the video shows, short, in Japanese\"}",{images:[blob],signal:ctl.signal,modelTier:"default"});
+  const r=await SAMPLE.json("These are 16 numbered frames taken at different times from ONE stream recording. Streamers often show the lobby for a long time, or switch to other screens (desktop, Discord, a 'be right back' screen, another app) for a while. Question: does ANY of the 16 frames show VALORANT (the Riot Games tactical shooter)? Count all of these as VALORANT: in-match gameplay (score and round timer at top center, minimap at top left), the VALORANT lobby/main menu, agent select, loading screen, the scoreboard or end-of-match screen. If even one frame is VALORANT, or you are not sure, answer true. Answer false only if you are confident that none of the frames is VALORANT. Reply only JSON: {\"valorant\":true,\"frames\":[numbers of VALORANT frames]} or {\"valorant\":false,\"what\":\"what the video shows, short, in Japanese\"}",{images:[blob],signal:ctl.signal,modelTier:"default",task:"check"});
   return r&&r.valorant===false?{ok:false,what:String(r.what||"").slice(0,40)}:{ok:true};
 }
 async function isValorant(){
@@ -252,18 +253,33 @@ async function isValorant(){
   }catch(e){if(e&&e.code==="cancelled")throw e;if(e&&["not_granted","sampling_disabled","rate_limited","images_unavailable"].includes(e.code))throw e;return{ok:true}}
 }
 // Which map: a few minimap + location-name crops per map segment, one small AI call per segment.
+// Which map, and which agent the streamer (the player whose screen this is) plays: one small AI call per map segment.
+// The map comes from minimap crops; the agent from the bottom-centre HUD (ability icons), which is visible even when names are hidden.
 async function readMaps(segs){
-  const keys=(window.TACLOG_MAPS||[]).map(m=>m[0]);if(!keys.length)return segs.map(()=>null);
-  const W=video.videoWidth,H=video.videoHeight,out=[];
+  const keys=(window.TACLOG_MAPS||[]).map(m=>m[0]);const W=video.videoWidth,H=video.videoHeight,maps=[],me=[];
   for(const rs of segs){
-    if(!rs.length){out.push(null);continue}
+    if(!rs.length){maps.push(null);me.push(null);continue}
     const pick=[Math.floor(rs.length*0.25),Math.floor(rs.length*0.5),Math.floor(rs.length*0.75)].map(i=>rs[Math.min(i,rs.length-1)]);
     const cells=pick.map(r=>({t:Math.min(duration-0.2,r.start+35)}));
-    try{const blob=await gridOf(cells,260,270,3,(x,ox,oy)=>x.drawImage(video,0,0,W*0.22,H*0.42,ox,oy,260,268));
-      const r=await SAMPLE.json("Each numbered cell is the top-left of a VALORANT screen during a round: the minimap and the current location name (e.g. 'A Site', 'Mid Courtyard', or Japanese names). All cells are from the SAME map. Which VALORANT map is it? Choose one of: "+keys.join(", ")+". If you cannot tell, use \"-\". Reply only JSON: {\"map\":\"ascent\"}",{images:[blob],signal:ctl.signal,modelTier:"default"});
-      const m=String(r&&r.map||"").toLowerCase().trim();out.push(keys.includes(m)?m:null)}catch(e){if(e&&e.code==="cancelled")throw e;out.push(null)}
+    try{
+      const mapBlob=await gridOf(cells,260,270,3,(x,ox,oy)=>x.drawImage(video,0,0,W*0.22,H*0.42,ox,oy,260,268));
+      const hudBlob=await gridOf(cells,560,120,1,(x,ox,oy)=>x.drawImage(video,W*0.28,H*0.86,W*0.44,H*0.14,ox+36,oy,524,118));
+      const r=await SAMPLE.json("Image 1: numbered cells showing the top-left of a VALORANT screen during a round (minimap and location name such as 'A Site'). Image 2: the bottom-centre HUD of the same moments (health and the player's ability icons). All cells are from the SAME map and the SAME player. 1) Which map? Choose one of: "+keys.join(", ")+" (or \"-\"). 2) Which agent is this player playing, judging from the ability icons? English agent name (or \"-\"). Reply only JSON: {\"map\":\"ascent\",\"me\":\"Jett\"}",{images:[mapBlob,hudBlob],signal:ctl.signal,modelTier:"default",task:"map"});
+      const m=String(r&&r.map||"").toLowerCase().trim();maps.push(keys.includes(m)?m:null);
+      const a=String(r&&r.me||"").trim().slice(0,20);me.push(a&&a!=="-"&&!/unknown/i.test(a)?a:null);
+    }catch(e){if(e&&e.code==="cancelled")throw e;maps.push(null);me.push(null)}
   }
-  return out;
+  return{maps,me};
+}
+const agentKey=s=>String(s||"").toLowerCase().replace(/[^a-z]/g,"");
+// Personal first kill / first death of the streamer, from the kill feed agents and the streamer's agent
+function markMine(segs,me){
+  segs.forEach((rs,si)=>{const mine=agentKey(me[si]);rs.forEach(r=>{
+    if(!mine||!r.fk||r.fk==="tie"){r.myFk=null;r.myFd=null;return}
+    const k=agentKey(r.fkBy),v=agentKey(r.fkVictim);
+    r.myFk=r.fk==="us"?(k?k===mine:null):false;
+    r.myFd=r.fk==="them"?(v?v===mine:null):false;
+  })});
 }
 let lastErr=null;
 // Free check on this PC for one frame: white digits of both scores (to notice a change) and the red spike icon.
@@ -400,9 +416,9 @@ async function runAnalysis(){
     const pc=[];segs.forEach((rs,si)=>rs.forEach((r,ri)=>{if(r.plantAt!=null)pc.push({si,ri,t:Math.min(duration-0.2,r.plantAt+4)})}));
     const sites=await readSites(pc);pc.forEach((c,k)=>{segs[c.si][c.ri].site=sites[k]||null});
     prog(1,"完了しました");
-    prog(0.99,"マップを確認しています…");
-    const maps=await readMaps(segs);
-    lastResult={segs,comps,starts,maps,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
+    prog(0.99,"マップと、配信者のエージェントを確認しています…");
+    const mm=await readMaps(segs),maps=mm.maps,me=mm.me;markMine(segs,me);
+    lastResult={segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
     showResult();
     return true;
   }catch(e){
@@ -425,7 +441,7 @@ function showResult(){
     box.append(h("h3",{style:"margin:6px 0 0;font:700 16px var(--f-display)"},(R.segs.length>1?"マップ"+(si+1)+" ・ ":"")+(R.maps&&R.maps[si]?(((window.TACLOG_MAPS||[]).find(m=>m[0]===R.maps[si])||[0,R.maps[si]])[1])+" ・ ":"")+rs.length+"ラウンド ・ "+w+"勝 "+l+"敗"+(rs.some(r=>r.win==null)?"(最後のラウンドは判定なし)":"")));
     box.append(h("div",{class:"tblbox"},h("table",{class:"tbl"},h("thead",{},h("tr",{},["R","攻守","結果","ファーストキル","設置","サイト","設置時の残り","動画の位置"].map(x=>h("th",{},x)))),
       h("tbody",{},rs.map(r=>h("tr",{},h("td",{class:"num"},r.n),h("td",{},sideJa(r.side)),h("td",{},r.win==null?h("span",{class:"pill mute"},"?"):r.win?h("span",{class:"pill win"},"勝ち"):h("span",{class:"pill loss"},"負け")),
-        h("td",{},(r.fk==="us"?"自チーム":r.fk==="them"?"相手":r.fk==="tie"?"同時":"—")+(r.fkBy?":"+r.fkBy:"")),h("td",{},r.planted?(r.side==="attack"?"自チームが設置":"相手が設置"):"—"),h("td",{},r.site||"—"),h("td",{class:"num"},r.plant!=null?mmss(r.plant):"—"),h("td",{class:"num"},fmt(r.plantAt??r.start))))))));
+        h("td",{},(r.fk==="us"?"自チーム":r.fk==="them"?"相手":r.fk==="tie"?"同時":"—")+(r.fkBy?":"+r.fkBy+(r.fkVictim?"→"+r.fkVictim:""):"")+(r.myFk?" ★配信者":"")+(r.myFd?" ✕配信者":"")),h("td",{},r.planted?(r.side==="attack"?"自チームが設置":"相手が設置"):"—"),h("td",{},r.site||"—"),h("td",{class:"num"},r.plant!=null?mmss(r.plant):"—"),h("td",{class:"num"},fmt(r.plantAt??r.start))))))));
   });
   if(R.segs.every(rs=>rs.every(r=>!r.fk)))box.append(h("div",{class:"notice"},"この録画ではファーストキルを読み取れませんでした。画面上の顔アイコン(生存状況)の位置がいつもと違う可能性があります。試合中の画面のスクリーンショットを1枚お問い合わせから送ってください。"));
   if(R.segs.length>1)box.append(h("p",{class:"small muted",style:"margin:0"},"途中でスコアが0-0に戻ったので、別のマップとして分けました。"));
@@ -440,7 +456,7 @@ function showResult(){
 
 async function saveLast(meta){
   const R=lastResult;if(!R||!R.segs.length||!R.segs[0].length)throw new Error("ラウンドを見つけられませんでした。");
-  for(let si=0;si<R.segs.length;si++){const{error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:meta.date||"",opp:meta.opp||"",map:(si===0&&meta.map)?meta.map:((R.maps&&R.maps[si])||""),start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:meta.yt||"",file:fileName,part:si+1,comps:R.comps,rounds:R.segs[si]}});if(error)throw error}
+  for(let si=0;si<R.segs.length;si++){const{error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:meta.date||"",opp:meta.opp||"",map:(si===0&&meta.map)?meta.map:((R.maps&&R.maps[si])||""),start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:meta.yt||"",file:fileName,part:si+1,comps:{...R.comps,me:(R.me&&R.me[si])||null},rounds:R.segs[si]}});if(error)throw error}
 }
 window.ANALYZER={loadFile,runAnalysis,saveLast,result:()=>lastResult,error:()=>lastErr,stop:()=>ctl&&ctl.abort()};
 
