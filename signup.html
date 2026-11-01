@@ -23,6 +23,12 @@
       <label for="password">パスワード<input id="password" type="password" required minlength="8" autocomplete="current-password" placeholder="8文字以上"></label>
       <button class="btn primary" type="submit" id="submit">ログイン</button>
     </form>
+    <p class="small" id="forgotRow" style="margin:0"><a href="#" id="forgot">パスワードを忘れた方</a></p>
+    <form id="forgotForm" hidden style="display:grid;gap:12px">
+      <p class="small muted" style="margin:0">登録したメールアドレスを入れてください。パスワードを決め直すためのリンクを送ります。</p>
+      <label for="femail">メールアドレス<input id="femail" type="email" required autocomplete="email"></label>
+      <div class="row"><button class="btn primary" type="submit" id="fsubmit">リンクを送る</button><button class="btn" type="button" id="fcancel">戻る</button></div>
+    </form>
     <div id="msg" hidden></div>
     <p class="small muted" id="switch">アカウントがない方は <a href="/signup">無料で登録</a></p>
   </section>
@@ -41,6 +47,15 @@ if(!TL.C.GOOGLE_LOGIN_ENABLED){TL.$("google").hidden=true;TL.$("google").nextEle
 if(!TL.sb){TL.notConfigured();TL.$("submit").disabled=true;TL.$("google").disabled=true}
 TL.session().then(s=>{if(s)location.href=next});
 TL.$("google").onclick=async()=>{const{error}=await TL.sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin+next}});if(error)msg(TL.errText(error))};
+if(isSignup)TL.$("forgotRow").hidden=true;
+TL.$("forgot").onclick=e=>{e.preventDefault();TL.$("form").hidden=true;TL.$("forgotRow").hidden=true;TL.$("forgotForm").hidden=false;TL.$("femail").value=TL.$("email").value;TL.$("msg").hidden=true};
+TL.$("fcancel").onclick=()=>{TL.$("form").hidden=false;TL.$("forgotRow").hidden=false;TL.$("forgotForm").hidden=true;TL.$("msg").hidden=true};
+TL.$("forgotForm").addEventListener("submit",async e=>{
+  e.preventDefault();const b=TL.$("fsubmit");b.disabled=true;
+  try{const{error}=await TL.sb.auth.resetPasswordForEmail(TL.$("femail").value.trim(),{redirectTo:location.origin+"/reset"});if(error)throw error;
+    msg("メールを送りました。届いたメールのリンクから、新しいパスワードを決めてください(届かないときは迷惑メールフォルダも確認してください)。",true)}
+  catch(err){msg(TL.errText(err))}finally{b.disabled=false}
+});
 TL.$("form").addEventListener("submit",async e=>{
   e.preventDefault();const b=TL.$("submit");b.disabled=true;
   const email=TL.$("email").value.trim(),password=TL.$("password").value;
