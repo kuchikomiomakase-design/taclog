@@ -123,3 +123,12 @@ footer.site a{color:var(--ink2)}
 .adwide{position:relative;display:block;max-width:100%}.adwide img{display:block;max-width:100%;height:auto}
 @media print{.adwidebox{display:none!important}}
 .nav a.lang{font:700 12px var(--f-mono);letter-spacing:.06em;border:1px solid var(--line2);border-radius:999px;padding:3px 10px}
+
+/* AI question history */
+.qhist{display:grid;gap:4px;max-height:320px;overflow:auto;padding:6px;border:1px solid var(--line2);border-radius:10px;background:var(--raise)}
+.qhist .qh{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:14px}
+.qhist .qh:hover,.qhist .qh.on{background:var(--accent-soft)}
+.qhist .qh span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qhist .qh small{color:var(--muted,#888);flex:none}
+.qhist .qh button{flex:none;background:none;border:0;color:inherit;opacity:.5;cursor:pointer;font-size:14px}
+.qhist .qh button:hover{opacity:1}

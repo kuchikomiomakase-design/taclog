@@ -153,7 +153,8 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
   <!-- ASK -->
   <div id="view-ask" style="display:grid;gap:16px" hidden>
     <section class="card">
-      <div class="spread"><h2>AIに質問</h2><span class="small muted" id="qScope"></span></div>
+      <div class="spread"><h2>AIに質問</h2><span class="row" style="gap:8px;align-items:center"><span class="small muted" id="qScope"></span><button class="btn small" type="button" id="qHistBtn" hidden>履歴</button><button class="btn small" type="button" id="qNew">新しい会話</button></span></div>
+      <div id="qHist" class="qhist" hidden></div>
       <span class="small muted">質問テンプレ(押すと入力欄に入ります。〈 〉を書きかえてください)</span>
       <div class="chips" id="tpls"></div>
     </section>

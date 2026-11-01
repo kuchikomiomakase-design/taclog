@@ -20,6 +20,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     if (v === "contact") loadContact();
     if (v === "analyze" && APP.team) renderFolder();
     if (v === "dash" && window.renderDash) window.renderDash();
+    if (v === "ask" && APP.team) renderHist();
   }
 
   /* ---------- game titles ---------- */
@@ -202,7 +203,46 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
         box.append(h("div", { class: "scene" }, h("span", {}, (m ? fmtDate(m.date) + (m.opp ? " vs " + m.opp : "") + " " : "") + "第" + s.round + "ラウンド" + (s.note ? " ・ " + s.note : "")), link ? h("a", { href: link, target: "_blank", rel: "noopener", class: "mono" }, "▶ " + fmt(sec)) : sec != null ? h("span", { class: "mono small muted" }, "動画の " + fmt(sec)) : null)); });
     }
   }
+  /* ---------- question history (like a chat app): saved per person, per team ---------- */
+  let curThread = null, histOK = true;
+  const emptyThread = () => h("div", { class: "empty" }, h("strong", {}, "まだ質問していません"), h("span", {}, "分析した試合のデータをもとに答えます。"));
+  function newThread() { curThread = null; chat.length = 0; $("thread").replaceChildren(emptyThread()); renderHist(); }
+  async function renderHist() {
+    const box = $("qHist"), btn = $("qHistBtn"); if (!box || !APP.team) return;
+    const { data, error } = await sb.from("ask_threads").select("id,title,updated_at").eq("team_id", APP.team.id).order("updated_at", { ascending: false }).limit(50);
+    if (error) { histOK = false; btn.hidden = true; box.hidden = true; return; }   // before 008_ask_history.sql is run
+    histOK = true; btn.hidden = false;
+    btn.onclick = () => { box.hidden = !box.hidden; };
+    box.replaceChildren(...(data || []).map((t) => {
+      const del = h("button", { type: "button", title: "この会話を削除", "aria-label": "削除" }, "×");
+      del.onclick = async (e) => { e.stopPropagation(); await sb.from("ask_threads").delete().eq("id", t.id); if (curThread === t.id) newThread(); else renderHist(); };
+      const row = h("div", { class: "qh" + (t.id === curThread ? " on" : ""), role: "button", tabindex: "0" }, h("span", {}, t.title || "(無題)"), h("small", {}, fmtDate(String(t.updated_at).slice(0, 10))), del);
+      row.onclick = () => openThread(t.id); row.onkeydown = (e) => { if (e.key === "Enter") openThread(t.id); };
+      return row;
+    }));
+    if (!(data || []).length) box.append(h("p", { class: "small muted", style: "margin:4px" }, "まだ履歴はありません。"));
+  }
+  async function openThread(id) {
+    const { data, error } = await sb.from("ask_messages").select("question,answer").eq("thread_id", id).order("id");
+    if (error) return;
+    curThread = id; chat.length = 0; const thread = $("thread"); thread.replaceChildren();
+    (data || []).forEach((m) => { thread.append(h("div", { class: "bubble" }, m.question)); const box = h("div", { class: "answer" }); renderAnswer(box, m.answer || {}); thread.append(box); chat.push({ q: m.question, a: String((m.answer && m.answer.answer) || "") }); });
+    if (!(data || []).length) thread.replaceChildren(emptyThread());
+    $("qHist").hidden = window.innerWidth < 900; renderHist();
+  }
+  async function saveQA(q, ans) {
+    if (!histOK || !APP.team) return;
+    try {
+      if (!curThread) { const { data, error } = await sb.from("ask_threads").insert({ team_id: APP.team.id, title: q.slice(0, 60) }).select("id").single(); if (error) throw error; curThread = data.id; }
+      const a = { answer: ans.answer || "", chart: ans.chart || null, scenes: ans.scenes || [], looked: !!ans.looked };
+      await sb.from("ask_messages").insert({ thread_id: curThread, question: q, answer: a });
+      await sb.from("ask_threads").update({ updated_at: new Date().toISOString() }).eq("id", curThread);
+      renderHist();
+    } catch (e) { histOK = false; }
+  }
   function setupAsk() {
+    $("qNew").onclick = newThread;
+    renderHist();
     TPL.forEach((t) => $("tpls").append(h("button", { type: "button", class: "chip", onclick: () => { $("q").value = t; $("q").focus(); } }, t)));
     $("askForm").addEventListener("submit", async (e) => {
       e.preventDefault(); const q = $("q").value.trim(); if (!q) return;
@@ -228,6 +268,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
           } else box.append(h("p", { class: "small muted" }, "この試合の画像がこのパソコンにないため、データだけで答えています(画像は分析したパソコンに保存されます)。"));
         }
         chat.push({ q, a: String((ans && ans.answer) || "") });
+        saveQA(q, ans || {});
       }
       catch (err) { box.replaceChildren(h("p", {}, TL.errText(err))); }
       finally { $("askBtn").disabled = false; }
