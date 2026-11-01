@@ -118,6 +118,9 @@
     const fk = rs.filter((r) => r.fk === "us" || r.fk === "them"), fkUs = fk.filter((r) => r.fk === "us"), fkThem = fk.filter((r) => r.fk === "them");
     const pistol = known(rs.filter((r) => r.n === 1 || r.n === 13));
     const myK = rs.filter((r) => r.myFk === true || r.myFk === false), myD = rs.filter((r) => r.myFd === true || r.myFd === false);
+    const sv = rs.filter((r) => r.myDead === true || r.myDead === false), dead = sv.filter((r) => r.myDead === true && r.myDeathT != null);
+    const avgLife = dead.length ? Math.round(dead.reduce((a, r) => a + r.myDeathT, 0) / dead.length) : null;
+    const lifeTile = h("div", { class: "dtile" }, h("span", { class: "dk" }, "配信者の平均生存時間(死んだラウンド)"), h("span", { class: "dv" }, avgLife == null ? "—" : String(avgLife), avgLife == null ? null : h("small", {}, "秒")), h("span", { class: "ds" }, dead.length ? dead.length + "ラウンド ・ 開始から倒されるまで" : "データなし"));
 
     const recent = h("div", { class: "dtile" }, h("span", { class: "dk" }, "直近5試合"),
       h("span", { class: "dv" }, String(rate(last5.filter((m) => result(m) === "W").length, last5.filter((m) => result(m)).length) ?? "—"), h("small", {}, "%")),
@@ -127,7 +130,7 @@
     box.append(
       h("div", { class: "dgrid" }, tile("試合勝率", W, W + Lo, "ラウンド勝率 " + pctText(wins(all), all.length)), tile("アタック取得率", wins(att), att.length), tile("ディフェンス取得率", wins(def), def.length), recent),
       h("div", { class: "dgrid" }, tile("ファーストキル取得率", fkUs.length, fk.length), tile("FKを取ったラウンドの勝率", wins(known(fkUs)), known(fkUs).length), tile("FKを取られたラウンドの勝率", wins(known(fkThem)), known(fkThem).length), tile("ピストル(1・13R)取得率", wins(pistol), pistol.length)),
-      myK.length || myD.length ? h("div", { class: "dgrid two" }, tile("配信者のファーストキル率", myK.filter((r) => r.myFk).length, myK.length, "録画した人"), tile("配信者のファーストデス率", myD.filter((r) => r.myFd).length, myD.length, "録画した人")) : null,
+      myK.length || myD.length || sv.length ? h("div", { class: "dgrid" }, tile("配信者のファーストキル率", myK.filter((r) => r.myFk).length, myK.length, "録画した人"), tile("配信者のファーストデス率", myD.filter((r) => r.myFd).length, myD.length, "録画した人"), tile("配信者の生存率", sv.filter((r) => r.myDead === false).length, sv.length, "最後まで生き残ったラウンド"), lifeTile) : null,
       h("section", { class: "card dsec" }, h("h3", {}, "ラウンド勝率の推移(直近20試合)"), h("p", { class: "small muted" }, "点にマウスを乗せると、その試合の内容が出ます。点線は50%。緑の点は勝った試合、赤は負けた試合です。"), trendChart(ms)),
       h("div", { class: "dcols" },
         h("section", { class: "card dsec" }, h("h3", {}, "マップ別"), mapTable(ms)),

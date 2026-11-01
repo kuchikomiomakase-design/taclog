@@ -144,7 +144,7 @@ function aliveNow(){
 }
 async function readFirstKills(segs,samples){
   const jobs=[];
-  segs.forEach((rs,si)=>rs.forEach((r,ri)=>{const next=rs[ri+1]?rs[ri+1].start:null;const st=roundStartOf(r,samples,next);if(st==null)return;
+  segs.forEach((rs,si)=>rs.forEach((r,ri)=>{const next=rs[ri+1]?rs[ri+1].start:null;const st=roundStartOf(r,samples,next);r._next=next;if(st==null)return;r._st=st;
     jobs.push({si,ri,st,end:Math.min(st+75,r.plantAt!=null?r.plantAt+40:Infinity,next??Infinity,duration-0.3)})}));
   if(!jobs.length)return;
   prog(0.95,"ファーストキルの読み取りを準備しています…");
@@ -260,7 +260,7 @@ async function readMaps(segs){
   for(const rs of segs){
     if(!rs.length){maps.push(null);me.push(null);continue}
     const pick=[Math.floor(rs.length*0.25),Math.floor(rs.length*0.5),Math.floor(rs.length*0.75)].map(i=>rs[Math.min(i,rs.length-1)]);
-    const cells=pick.map(r=>({t:Math.min(duration-0.2,r.start+35)}));
+    const cells=pick.map(r=>({t:Math.min(duration-0.2,r._st!=null?r._st+4:r.start+35)}));   // right after the round starts: the streamer is alive, so the HUD is their own
     try{
       const mapBlob=await gridOf(cells,260,270,3,(x,ox,oy)=>x.drawImage(video,0,0,W*0.22,H*0.42,ox,oy,260,268));
       const hudBlob=await gridOf(cells,560,120,1,(x,ox,oy)=>x.drawImage(video,W*0.28,H*0.86,W*0.44,H*0.14,ox+36,oy,524,118));
@@ -273,6 +273,42 @@ async function readMaps(segs){
 }
 const agentKey=s=>String(s||"").toLowerCase().replace(/[^a-z]/g,"");
 // Personal first kill / first death of the streamer, from the kill feed agents and the streamer's agent
+// When did the streamer die in each round? (for survival rate / time alive)
+// 1) one frame just before each round ends: own view or spectating a teammate (dead)?  2) for rounds where they died, narrow it down with
+// 2 more looks (all rounds of a level in one AI call), 3) snap to the moment a portrait of the streamer's team turned grey (free, on this PC).
+async function readMyDeaths(segs,me){
+  const W=video.videoWidth,H=video.videoHeight,jobs=[];
+  segs.forEach((rs,si)=>{if(!me[si])return;rs.forEach((r,ri)=>{if(r._st==null)return;
+    const end=Math.min(r._next!=null?r._next-1:(r.plantAt!=null?r.plantAt+44:r._st+99),r._st+145,duration-0.3);
+    if(end>r._st+6)jobs.push({si,ri,r,lo:r._st+2,hi:end,agent:me[si]})})});
+  if(!jobs.length)return;
+  const ask=async(list)=>{   // list of {t,agent} -> "A" alive / "D" spectating or dead / null
+    const out=[];
+    for(let i=0;i<list.length;i+=16){
+      const part=list.slice(i,i+16);
+      const blob=await gridOf(part,300,180,4,(x,ox,oy)=>x.drawImage(video,W*0.2,H*0.5,W*0.6,H*0.5,ox+34,oy,266,178));
+      try{const r=await SAMPLE.json("Each numbered cell is the lower half of a VALORANT screen. For each cell, is this the player's OWN first-person view while alive, or is the player DEAD (spectating a teammate: a 'Spectating'/観戦中 label or another player's name at the bottom, a different agent's abilities, a death recap or kill cam)? The player's own agent for each cell: "+part.map((c,k)=>(k+1)+":"+c.agent).join(", ")+". Reply only JSON with one letter per cell in order: {\"s\":[\"A\",\"D\",\"?\"]} (A = alive own view, D = dead/spectating, ? = cannot tell or not in a round).",{images:[blob],signal:ctl.signal,modelTier:"default",task:"deaths"});
+        const arr=Array.isArray(r.s)?r.s:[];part.forEach((_,k)=>{const v=String(arr[k]||"").toUpperCase();out.push(v==="A"||v==="D"?v:null)})}
+      catch(e){if(e&&e.code==="cancelled")throw e;part.forEach(()=>out.push(null))}
+    }
+    return out;
+  };
+  prog(0.985,"配信者の生存を確認しています…");
+  const endS=await ask(jobs.map(j=>({t:j.hi,agent:j.agent})));
+  const died=[];
+  jobs.forEach((j,k)=>{if(endS[k]==="A"){j.r.myDead=false;j.r.myDeathT=null}else if(endS[k]==="D")died.push(j)});
+  for(let level=0;level<2&&died.length;level++){
+    const mids=died.map(j=>Math.round((j.lo+j.hi)/2));
+    const s=await ask(died.map((j,k)=>({t:mids[k],agent:j.agent})));
+    died.forEach((j,k)=>{if(s[k]==="A")j.lo=mids[k];else if(s[k]==="D")j.hi=mids[k]});
+  }
+  for(const j of died){   // the death itself is when one of the streamer's team portraits turns grey, a little before the spectating view starts
+    let prev=null,best=null;
+    for(let t=Math.max(j.r._st+1,Math.floor(j.lo)-2);t<=Math.ceil(j.hi);t++){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const a=aliveNow()[0];if(prev!=null&&a<prev)best=t;prev=a}
+    const at=best!=null?best:j.hi-2;
+    j.r.myDead=true;j.r.myDeathT=Math.max(0,Math.round(at-j.r._st));
+  }
+}
 function markMine(segs,me){
   segs.forEach((rs,si)=>{const mine=agentKey(me[si]);rs.forEach(r=>{
     if(!mine||!r.fk||r.fk==="tie"){r.myFk=null;r.myFd=null;return}
@@ -415,9 +451,11 @@ async function runAnalysis(){
     prog(0.97,"設置したサイトを読み取っています…");
     const pc=[];segs.forEach((rs,si)=>rs.forEach((r,ri)=>{if(r.plantAt!=null)pc.push({si,ri,t:Math.min(duration-0.2,r.plantAt+4)})}));
     const sites=await readSites(pc);pc.forEach((c,k)=>{segs[c.si][c.ri].site=sites[k]||null});
-    prog(1,"完了しました");
     prog(0.99,"マップと、配信者のエージェントを確認しています…");
     const mm=await readMaps(segs),maps=mm.maps,me=mm.me;markMine(segs,me);
+    await readMyDeaths(segs,me);
+    segs.forEach(rs=>rs.forEach(r=>{delete r._st;delete r._next}));
+    prog(1,"完了しました");
     lastResult={segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
     showResult();
     return true;
@@ -441,7 +479,7 @@ function showResult(){
     box.append(h("h3",{style:"margin:6px 0 0;font:700 16px var(--f-display)"},(R.segs.length>1?"マップ"+(si+1)+" ・ ":"")+(R.maps&&R.maps[si]?(((window.TACLOG_MAPS||[]).find(m=>m[0]===R.maps[si])||[0,R.maps[si]])[1])+" ・ ":"")+rs.length+"ラウンド ・ "+w+"勝 "+l+"敗"+(rs.some(r=>r.win==null)?"(最後のラウンドは判定なし)":"")));
     box.append(h("div",{class:"tblbox"},h("table",{class:"tbl"},h("thead",{},h("tr",{},["R","攻守","結果","ファーストキル","設置","サイト","設置時の残り","動画の位置"].map(x=>h("th",{},x)))),
       h("tbody",{},rs.map(r=>h("tr",{},h("td",{class:"num"},r.n),h("td",{},sideJa(r.side)),h("td",{},r.win==null?h("span",{class:"pill mute"},"?"):r.win?h("span",{class:"pill win"},"勝ち"):h("span",{class:"pill loss"},"負け")),
-        h("td",{},(r.fk==="us"?"自チーム":r.fk==="them"?"相手":r.fk==="tie"?"同時":"—")+(r.fkBy?":"+r.fkBy+(r.fkVictim?"→"+r.fkVictim:""):"")+(r.myFk?" ★配信者":"")+(r.myFd?" ✕配信者":"")),h("td",{},r.planted?(r.side==="attack"?"自チームが設置":"相手が設置"):"—"),h("td",{},r.site||"—"),h("td",{class:"num"},r.plant!=null?mmss(r.plant):"—"),h("td",{class:"num"},fmt(r.plantAt??r.start))))))));
+        h("td",{},(r.fk==="us"?"自チーム":r.fk==="them"?"相手":r.fk==="tie"?"同時":"—")+(r.fkBy?":"+r.fkBy+(r.fkVictim?"→"+r.fkVictim:""):"")+(r.myFk?" ★配信者":"")+(r.myFd?" ✕配信者":"")+(r.myDead===false?" ・配信者生存":r.myDead===true?" ・配信者"+r.myDeathT+"秒で死亡":"")),h("td",{},r.planted?(r.side==="attack"?"自チームが設置":"相手が設置"):"—"),h("td",{},r.site||"—"),h("td",{class:"num"},r.plant!=null?mmss(r.plant):"—"),h("td",{class:"num"},fmt(r.plantAt??r.start))))))));
   });
   if(R.segs.every(rs=>rs.every(r=>!r.fk)))box.append(h("div",{class:"notice"},"この録画ではファーストキルを読み取れませんでした。画面上の顔アイコン(生存状況)の位置がいつもと違う可能性があります。試合中の画面のスクリーンショットを1枚お問い合わせから送ってください。"));
   if(R.segs.length>1)box.append(h("p",{class:"small muted",style:"margin:0"},"途中でスコアが0-0に戻ったので、別のマップとして分けました。"));
