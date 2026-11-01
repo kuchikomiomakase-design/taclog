@@ -132,6 +132,17 @@
     corrode: "B Arch/Bアーチ, B Tower/Bタワー, B Elbow/Bエルボー, B Site/Bサイト, B Link/Bリンク, B Main/Bメイン, B Lobby/Bロビー, Mid Window/中央ウィンドウ, Mid Top/中央トップ, Mid Stairs/中央階段, Mid Bottom/中央ボトム, A Crane/Aクレーン, A Elbow/Aエルボー, A Site/Aサイト, A Yard/Aヤード, A Pocket/Aポケット, A Link/Aリンク, A Main/Aメイン, A Lobby/Aロビー, Defender Side Spawn/ディフェンス側スポーン, Attacker Side Spawn/アタック側スポーン",
     summit: "B Drop/Bドロップ, B Tower/Bタワー, B Gym/Bジム, B Site/Bサイト, B Trophy/Bトロフィー, B Link/Bリンク, B Main/Bメイン, B Lobby/Bロビー, Mid Window/中央ウィンドウ, Mid Bottom/中央ボトム, Mid Bend/中央ベンド, Mid Fountain/中央ファウンテン, Mid Tiles/中央タイル, Mid Top/中央トップ, A Hall/Aホール, A Art/Aアート, A Cave/Aケイヴ, A Link/Aリンク, A Garden/Aガーデン, A Site/Aサイト, A Main/Aメイン, A Lobby/Aロビー, Defender Side Spawn/ディフェンス側スポーン, Attacker Side Spawn/アタック側スポーン",
   };
+  // Which map has these location names? (location names read from the screen, English or Japanese) -> {map, hits, second}
+  const norm = (x) => String(x || "").toLowerCase().replace(/[\s・_\-]+/g, "");
+  let NAMES = null;
+  function guessMap(names) {
+    if (!NAMES) { NAMES = {}; for (const [m, txt] of Object.entries(CALLOUTS)) { const set = new Set(); txt.split(/,\s*/).forEach((it) => { const main = it.replace(/\(.*?\)/g, ""); main.split("/").forEach((x) => { if (x.trim()) set.add(norm(x)); }); const nick = it.match(/\((.*?)\)/); if (nick) nick[1].split(/[・、]/).forEach((x) => set.add(norm(x))); }); NAMES[m] = set; } }
+    const generic = new Set(["asite", "bsite", "csite", "aサイト", "bサイト", "cサイト", "amain", "bmain", "aメイン", "bメイン", "alobby", "blobby", "aロビー", "bロビー", "alink", "blink", "aリンク", "bリンク", "midtop", "midbottom", "中央トップ", "中央ボトム", "defendersidespawn", "attackersidespawn", "ディフェンス側スポーン", "アタック側スポーン", "defenderspawn", "attackerspawn"]);
+    const score = {};
+    [...new Set(names.map(norm))].filter((n) => n && !generic.has(n)).forEach((n) => { for (const [m, set] of Object.entries(NAMES)) if (set.has(n)) score[m] = (score[m] || 0) + 1; });
+    const top = Object.entries(score).sort((a, b) => b[1] - a[1]);
+    return top.length ? { map: top[0][0], hits: top[0][1], second: top[1] ? top[1][1] : 0 } : null;
+  }
   function calloutText(mapIds) {
     return [...new Set(mapIds)].filter((m) => CALLOUTS[m]).map((m) => "callouts map=" + m + ": " + CALLOUTS[m]).join("\n");
   }
@@ -139,6 +150,6 @@
   // alive-count flow of a round, e.g. "4v5>4v4>2v3" (us v them)
   const flow = (r) => (Array.isArray(r.alv) && r.alv.length > 1 ? "+S:" + r.alv.slice(1).map((x) => x[1] + "v" + x[2]).join(">") : "") +
     (Array.isArray(r.fights) && r.fights.length ? "+FT:" + r.fights.map((f) => f.t + "s_" + String(f.k).replace(/[,\s>]+/g, "") + ">" + String(f.v).replace(/[,\s>]+/g, "") + (f.g === true ? "(us)" : f.g === false ? "(them)" : "") + "@" + String(f.p).replace(/[,\s]+/g, "_")).join("/") : "");
-  const K = { teamKD, CALLOUTS, calloutText, SLOT, summarize, marks, summaryText, places, placeText, situations, situationText, flow };
+  const K = { guessMap, teamKD, CALLOUTS, calloutText, SLOT, summarize, marks, summaryText, places, placeText, situations, situationText, flow };
   if (typeof module !== "undefined" && module.exports) module.exports = K; else root.TLKit = K;
 })(typeof window !== "undefined" ? window : this);

@@ -283,7 +283,7 @@ async function readMaps(segs){
     try{
       const mapBlob=await gridOf(cells,260,270,3,(x,ox,oy)=>x.drawImage(video,0,0,W*0.22,H*0.42,ox,oy,260,268));
       const hudBlob=await gridOf(cells,560,120,1,(x,ox,oy)=>x.drawImage(video,W*0.28,H*0.86,W*0.44,H*0.14,ox+36,oy,524,118));
-      const r=await SAMPLE.json("Image 1: numbered cells showing the top-left of a VALORANT screen during a round (minimap and location name such as 'A Site'). Image 2: the bottom-centre HUD of the same moments (health and the ability icons of the player being shown). All cells are from the SAME map. 1) Which map? Choose one of: "+keys.join(", ")+" (or \"-\"). 2) For EACH cell of image 2: which agent's abilities are shown (English agent name or \"-\"), and is it a spectator/coach view (a 'SPECTATING'/観戦中 label, an observer layout, or no ability HUD)? A recording by a coach who keeps watching teammates shows different agents in different cells. Reply only JSON: {\"map\":\"ascent\",\"me\":[\"Jett\",\"Jett\",\"Jett\"],\"spec\":[false,false,false]}",{images:[mapBlob,hudBlob],signal:ctl.signal,modelTier:"default",task:"map"});
+      const r=await SAMPLE.json("Image 1: numbered cells showing the top-left of a VALORANT screen during a round (minimap and location name such as 'A Site'). Image 2: the bottom-centre HUD of the same moments (health and the ability icons of the player being shown). All cells are from the SAME map. 1) Which map? Judge mainly from the location names in the text (e.g. 'A Lamps', 'B Hall', 'Hookah' = bind; 'A Rafters', 'Mid Catwalk' = ascent), since the minimap may be rotated, zoomed or centred on the player. Choose one of: "+keys.join(", ")+" (or \"-\"). 2) For EACH cell of image 2: which agent's abilities are shown (English agent name or \"-\"), and is it a spectator/coach view (a 'SPECTATING'/観戦中 label, an observer layout, or no ability HUD)? A recording by a coach who keeps watching teammates shows different agents in different cells. Reply only JSON: {\"map\":\"ascent\",\"me\":[\"Jett\",\"Jett\",\"Jett\"],\"spec\":[false,false,false]}",{images:[mapBlob,hudBlob],signal:ctl.signal,modelTier:"default",task:"map"});
       const m=String(r&&r.map||"").toLowerCase().trim();maps.push(keys.includes(m)?m:null);
       // the player's own agent only if every look shows the same agent in their own view; a coach / spectator recording has none
       const ag=(Array.isArray(r&&r.me)?r.me:[r&&r.me]).map(a=>String(a||"").trim().slice(0,20)).filter(a=>a&&a!=="-"&&!/unknown/i.test(a));
@@ -467,6 +467,8 @@ async function readKit(segs,me,maps,known,comps){
       part.forEach((c,k)=>{const v=String(arr[k]||"").trim().slice(0,40);if(!v||v==="-")return;const L=(refBy[c.si]=refBy[c.si]||new Map());const key=v.toLowerCase().replace(/\s+/g,"");if(!L.has(key))L.set(key,{t:c.t,name:v})});
     }catch(e){if(e&&e.code==="cancelled")throw e}
   }
+  // the location names the game showed also tell which map it is (more reliable than the minimap shape, e.g. with a rotating minimap)
+  if(window.TLKit&&maps)Object.keys(refBy).forEach(si=>{const g=TLKit.guessMap([...refBy[si].values()].map(x=>x.name));if(g&&g.hits>=2&&g.hits>g.second&&maps[si]!==g.map)maps[si]=g.map});
   // 2) reference sheet per map: minimap with the player's own icon, labelled with the place name (drawn here, no AI)
   const sheetOf=async(si)=>{
     const L=[...((refBy[si]||new Map()).values())].slice(0,24);if(!L.length)return null;
