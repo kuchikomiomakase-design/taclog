@@ -49,12 +49,14 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     const gameSel = h("select", {}, TL.GAMES.map((g) => h("option", { value: g.id }, g.name))); gameSel.value = APP.game || "valorant";
     const orgTeams = org ? APP.teams.filter((t) => t.plan === "org" && t.kind !== "solo").length : 0;
     async function go(kind, confirmPay) {
-      msg.textContent = "作成しています…";
+      msg.textContent = "作成しています…"; dlg.querySelectorAll("button").forEach((b) => (b.disabled = true));
       try {
-        const r = await TL.api("/api/addteam", { teamId: org ? org.id : APP.team.id, kind, name: nameIn.value, myName: myIn.value, game: gameSel.value, confirm: !!confirmPay });
+        const r = await Promise.race([TL.api("/api/addteam", { teamId: org ? org.id : APP.team.id, kind, name: nameIn.value, myName: myIn.value, game: gameSel.value, confirm: !!confirmPay }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("時間がかかりすぎています。ページを開き直して、もう一度試してください。")), 20000))]);
+        if (!r || !r.teamId && !r.needConfirm) throw new Error("チームを作れませんでした。もう一度試してください。");
         if (r.needConfirm) { if (confirm("3チーム目からは、1チームにつき月" + r.yen.toLocaleString() + "円が組織プランに加わります(今月分は日割り)。追加しますか?")) return go(kind, true); msg.textContent = ""; return; }
         TL.setTeam(r.teamId); location.href = "/app#settings";
-      } catch (e) { msg.textContent = TL.errText(e); }
+      } catch (e) { msg.textContent = TL.errText(e); } finally { dlg.querySelectorAll("button").forEach((b) => (b.disabled = false)); }
     }
     const teamBox = org
       ? h("div", { style: "display:grid;gap:10px" }, h("h3", {}, "チームを追加(組織プラン)"),
