@@ -34,7 +34,21 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     bar.replaceChildren(h("span", { class: "eyebrow" }, "Title"),
       ...list.map((id) => { const b = h("button", { type: "button", class: "gtab", "aria-pressed": id === APP.game ? "true" : "false" }, TL.gameName(id));
         b.onclick = () => { APP.game = id; try { localStorage.setItem("taclog.game." + APP.team.id, id); } catch (e) {} renderGameBar(); loadMatches(); renderAnalyzeGate(); };
-        return b; }),
+        if (APP.team.role !== "admin" || list.length < 2) return b;
+        // admins can remove a title (at least one stays). Its matches are kept and come back if the title is added again.
+        const x = h("button", { type: "button", class: "gx", title: TL.gameName(id) + " を外す", "aria-label": TL.gameName(id) + " を外す" }, "×");
+        x.onclick = async (e) => {
+          e.stopPropagation();
+          const t = APP.team, paid = t.plan !== "org" && (t.extra_games || 0) > 0;
+          if (!confirm("タイトル「" + TL.gameName(id) + "」を外しますか?\n\n・このタイトルの試合データは消えません(また追加すると見られます)\n" + (t.plan === "org" ? "・コーチ・組織プランは全タイトル込みなので、料金は変わりません" : paid ? "・追加タイトルの料金(月500円)が1つ分減ります" : "・料金は変わりません"))) return;
+          try {
+            await TL.api("/api/games", { teamId: t.id, games: list.filter((g) => g !== id) });
+            t.games = list.filter((g) => g !== id); if (paid) t.extra_games = Math.max(0, t.games.length - 1);
+            if (APP.game === id) APP.game = t.games[0];
+            renderGameBar(); loadMatches(); renderAnalyzeGate();
+          } catch (err) { status(TL.errText(err)); }
+        };
+        return h("span", { class: "gwrap" }, b, x); }),
       APP.team.role === "admin" ? h("a", { href: "#settings", class: "small", style: "margin-left:4px" }, "+ タイトルを追加") : null);
   }
   // "+" on the team bar: add a team (organization plan) or your own personal space, right here (no first-time setup again)

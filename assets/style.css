@@ -159,3 +159,9 @@ footer.site a{color:var(--ink2)}
 .card.danger{border-color:color-mix(in srgb,var(--loss,#e5484d) 55%,var(--line))}
 .card.danger h2{color:var(--loss,#e5484d)}
 #delTeamBtn:not(:disabled){background:var(--loss,#e5484d);color:#fff;border-color:transparent}
+
+/* remove a title from the title bar (admins) */
+.gwrap{position:relative;display:inline-flex}
+.gwrap .gx{position:absolute;top:-7px;right:-7px;width:18px;height:18px;border-radius:50%;border:1px solid var(--line2);background:var(--raise);color:var(--ink);font-size:11px;line-height:1;cursor:pointer;opacity:0;transition:opacity .15s;display:grid;place-items:center;padding:0}
+.gwrap:hover .gx,.gwrap .gx:focus{opacity:1}
+@media (hover:none){.gwrap .gx{opacity:.8}}
