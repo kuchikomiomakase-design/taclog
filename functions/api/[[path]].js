@@ -12,8 +12,9 @@ import backup from "../../api/backup.js";
 import diag from "../../api/diag.js";
 import redeem from "../../api/redeem.js";
 import addteam from "../../api/addteam.js";
+import delteam from "../../api/delteam.js";
 
-const ROUTES = { ask, vision, checkout, portal, webhook, games, contact, "cron-monthly": cronMonthly, backup, diag, redeem, addteam };
+const ROUTES = { ask, vision, checkout, portal, webhook, games, contact, "cron-monthly": cronMonthly, backup, diag, redeem, addteam, delteam };
 
 export async function onRequest(context) {
   const { request, env, params } = context;

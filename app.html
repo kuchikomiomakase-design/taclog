@@ -251,6 +251,12 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
       <p class="small muted" id="meMail"></p>
       <div class="row"><button class="btn" type="button" id="logout">ログアウト</button><a class="btn ghost" href="/onboarding?step=4">初期設定をもう一度見る</a></div>
     </section>
+    <section class="card danger" id="delTeamBox" hidden style="display:grid;gap:10px">
+      <h2>チームを削除</h2>
+      <p class="small muted" style="margin:0">このチームと、試合・分析データ・メンバー・質問の履歴がすべて消えます。<strong>元に戻せません。</strong>有料プランの支払いが続いているチームは、先にプランを解約してください。</p>
+      <label for="delTeamName" class="small">確認のため、チーム名「<strong id="delTeamCur"></strong>」を入力してください<input id="delTeamName" autocomplete="off"></label>
+      <div class="row"><button class="btn" type="button" id="delTeamBtn" disabled>このチームを削除する</button><span class="small" id="delTeamMsg"></span></div>
+    </section>
   </div>
 </main>
 <footer id="footer"></footer>

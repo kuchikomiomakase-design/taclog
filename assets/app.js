@@ -469,7 +469,24 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     upd();
   }
 
+  // delete the current team (admins only): type the name, then the server removes it and everything in it
+  function renderDeleteTeam() {
+    const box = $("delTeamBox"); if (!box || !APP.team) return;
+    box.hidden = APP.team.role !== "admin"; if (box.hidden) return;
+    $("delTeamCur").textContent = APP.team.name; const inp = $("delTeamName"), btn = $("delTeamBtn"), msg = $("delTeamMsg");
+    inp.value = ""; btn.disabled = true; msg.textContent = "";
+    inp.oninput = () => { btn.disabled = inp.value.trim() !== APP.team.name.trim(); };
+    btn.onclick = async () => {
+      if (!confirm("「" + APP.team.name + "」を完全に削除します。よろしいですか?")) return;
+      btn.disabled = true; msg.textContent = "削除しています…";
+      try {
+        const r = await TL.api("/api/delteam", { teamId: APP.team.id, confirmName: inp.value });
+        if (r && r.next) { TL.setTeam(r.next); location.href = "/app"; } else location.href = "/onboarding";
+      } catch (e) { msg.textContent = TL.errText(e); btn.disabled = false; }
+    };
+  }
   async function renderSettings() {
+    renderDeleteTeam();
     const t = APP.team, isAdmin = t.role === "admin";
     renderTitles();
     $("teamName").value = t.name; $("teamName").disabled = !isAdmin; $("saveTeam").hidden = !isAdmin;
