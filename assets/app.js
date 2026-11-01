@@ -448,7 +448,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     const { data: u } = await sb.from("usage").select("*").eq("team_id", t.id).eq("month", mon).maybeSingle();
     const lim = TL.C.TRIAL_UNLIMITED ? { a: null, q: null } : t.plan === "free" ? { a: 2, q: 20 } : t.plan === "team" ? { a: null, q: 300 } : { a: null, q: null };
     $("usageText").textContent = "今月:分析 " + ((u && u.analyses) || 0) + (lim.a ? "/" + lim.a : "") + "本 ・ 質問 " + ((u && u.questions) || 0) + (lim.q ? "/" + lim.q : "") + "回" + (TL.C.TRIAL_UNLIMITED ? "(試作期間中は無制限)" : "");
-    if (t.plan === "team") sb.rpc("maps_today", { t: t.id }).then(({ data }) => { const d = Array.isArray(data) ? data[0] : data; if (d && d.lim != null) $("usageText").textContent += " ・ 今日の分析 " + d.used + "/" + d.lim + "マップ分"; }).catch(() => {});
+    if (t.plan === "team") (async () => { try { const { data } = await sb.rpc("maps_today", { t: t.id }); const d = Array.isArray(data) ? data[0] : data; if (d && d.lim != null) $("usageText").textContent += " ・ 今日の分析 " + d.used + "/" + d.lim + "マップ分"; } catch (e) {} })();
     const br = $("billingRow"); br.replaceChildren();
     if (t.comp_until && new Date(t.comp_until) > new Date()) br.append(h("span", { class: "pill data" }, "テスター特典:" + new Date(t.comp_until).toLocaleDateString("ja-JP") + "まで" + (PLAN_JA[t.plan] || t.plan) + "プランを無料で利用中"));
     if (isAdmin && t.plan === "free") {   // tester / invite code: paid plan for free for a while
