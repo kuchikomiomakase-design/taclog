@@ -298,9 +298,9 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
             if (["rate_limited", "not_granted", "images_unavailable", "sampling_disabled"].includes(er.code)) { set((er.message || "分析できませんでした").slice(0, 40), "loss"); stopped = true; autoPaused = true; break; }
             await TLFolder.markFailed(APP.team.id, v, er.message || "分析できませんでした。"); set(er.code === "not_valorant" ? "VALORANTではない動画" : "分析できませんでした", "loss"); continue;
           }
-          await ANALYZER.saveLast({ date: dateOf(v.mtime), opp: "", map: "", yt: "" });
+          const sv = await ANALYZER.saveLast({ date: dateOf(v.mtime), opp: "", map: "", yt: "" });
           await TLFolder.markDone(APP.team.id, v);
-          set("保存しました", "win");
+          set(sv && sv.merged && !sv.created ? "同じ試合にまとめました(別の視点)" : "保存しました", "win");
           if (delAfter) {
             if (!(await TLFolder.permission(hd, true, "readwrite"))) set("保存しました(削除は許可されませんでした)", "warn");
             else { try { await TLFolder.remove(hd, v.name, v); set("保存して削除しました", "win"); } catch (e) { set("保存しました(削除できませんでした)", "warn"); } }

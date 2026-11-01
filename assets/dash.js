@@ -94,6 +94,38 @@
       h("tbody", {}, ...row("アタック(自チームが設置)", att), ...row("ディフェンス(相手が設置=リテイク)", def))));
   }
 
+  // ---- players (each recorded point of view = one teammate, by agent) ----
+  let POVS = {}, povKey = "";
+  async function loadPovs() {
+    const ids = (APP.matches || []).map((m) => m.id);
+    const key = ids.join(",");
+    if (!ids.length || key === povKey) return false;
+    povKey = key;
+    try {
+      const { data, error } = await TL.sb.from("match_povs").select("match_id,agent,rounds").in("match_id", ids.slice(0, 300));
+      if (error) return false;
+      POVS = {}; (data || []).forEach((p) => { (POVS[p.match_id] = POVS[p.match_id] || []).push(p); });
+      return true;
+    } catch (e) { return false; }
+  }
+  function playerTable(ms) {
+    const by = {};
+    ms.forEach((m) => (POVS[m.id] || []).forEach((p) => { const k = p.agent || "不明"; (by[k] = by[k] || { matches: 0, rs: [] }); by[k].matches++; by[k].rs.push(...(p.rounds || [])); }));
+    const names = Object.keys(by);
+    if (!names.length) return null;
+    const rows = names.sort((a, b) => by[b].rs.length - by[a].rs.length).map((k) => {
+      const rs = by[k].rs, fkK = rs.filter((r) => r.myFk === true || r.myFk === false), fdK = rs.filter((r) => r.myFd === true || r.myFd === false);
+      const sv = rs.filter((r) => r.myDead === true || r.myDead === false), dead = sv.filter((r) => r.myDead === true && r.myDeathT != null);
+      const life = dead.length ? Math.round(dead.reduce((a, r) => a + r.myDeathT, 0) / dead.length) + "秒" : "—";
+      return h("tr", {}, h("td", {}, k), h("td", { class: "num" }, by[k].matches), h("td", { class: "num" }, rs.length),
+        h("td", {}, bar(rate(fkK.filter((r) => r.myFk).length, fkK.length))), h("td", {}, bar(rate(fdK.filter((r) => r.myFd).length, fdK.length))),
+        h("td", {}, bar(rate(sv.filter((r) => r.myDead === false).length, sv.length))), h("td", { class: "num" }, life));
+    });
+    return h("section", { class: "card dsec" }, h("h3", {}, "選手別(録画した視点ごと)"),
+      h("p", { class: "small muted" }, "同じ試合を何人かが録画すると、その人(使ったエージェント)ごとに分かれます。チームの数字は1試合として1回だけ数えています。"),
+      h("div", { class: "tblbox" }, h("table", { class: "tbl dtbl" }, h("thead", {}, h("tr", {}, ["エージェント", "試合", "ラウンド", "ファーストキル率", "ファーストデス率", "生存率", "平均生存時間"].map((t) => h("th", {}, t)))), h("tbody", {}, rows))));
+  }
+
   function filters() {
     const sel = h("select", { "aria-label": "マップ", class: "teamsel" }, h("option", { value: "" }, "すべてのマップ"), ...MAPS().map(([v, n]) => h("option", { value: v }, n)));
     sel.value = F.map; sel.onchange = () => { F.map = sel.value; render(); };
@@ -130,13 +162,13 @@
     box.append(
       h("div", { class: "dgrid" }, tile("試合勝率", W, W + Lo, "ラウンド勝率 " + pctText(wins(all), all.length)), tile("アタック取得率", wins(att), att.length), tile("ディフェンス取得率", wins(def), def.length), recent),
       h("div", { class: "dgrid" }, tile("ファーストキル取得率", fkUs.length, fk.length), tile("FKを取ったラウンドの勝率", wins(known(fkUs)), known(fkUs).length), tile("FKを取られたラウンドの勝率", wins(known(fkThem)), known(fkThem).length), tile("ピストル(1・13R)取得率", wins(pistol), pistol.length)),
-      myK.length || myD.length || sv.length ? h("div", { class: "dgrid" }, tile("配信者のファーストキル率", myK.filter((r) => r.myFk).length, myK.length, "録画した人"), tile("配信者のファーストデス率", myD.filter((r) => r.myFd).length, myD.length, "録画した人"), tile("配信者の生存率", sv.filter((r) => r.myDead === false).length, sv.length, "最後まで生き残ったラウンド"), lifeTile) : null,
+      playerTable(ms) || (myK.length || myD.length || sv.length ? h("div", { class: "dgrid" }, tile("配信者のファーストキル率", myK.filter((r) => r.myFk).length, myK.length, "録画した人"), tile("配信者のファーストデス率", myD.filter((r) => r.myFd).length, myD.length, "録画した人"), tile("配信者の生存率", sv.filter((r) => r.myDead === false).length, sv.length, "最後まで生き残ったラウンド"), lifeTile) : null),
       h("section", { class: "card dsec" }, h("h3", {}, "ラウンド勝率の推移(直近20試合)"), h("p", { class: "small muted" }, "点にマウスを乗せると、その試合の内容が出ます。点線は50%。緑の点は勝った試合、赤は負けた試合です。"), trendChart(ms)),
       h("div", { class: "dcols" },
         h("section", { class: "card dsec" }, h("h3", {}, "マップ別"), mapTable(ms)),
         h("section", { class: "card dsec" }, h("h3", {}, "設置サイト別"), h("p", { class: "small muted" }, "アタックは設置してからの勝率、ディフェンスは相手に設置されてからの勝率(リテイク)です。"), siteTable(rs))));
   }
 
-  function renderWithAds() { render(); const ad = $("adDash"); if (!ad) return; if (APP.team && APP.team.plan === "free" && window.TLAds) { TLAds.fill(ad, "dash", { title: "デバイスを見直すなら" }); TLAds.wide($("adWide")); } else { ad.hidden = true; if ($("adWide")) $("adWide").hidden = true; } }
+  function renderWithAds() { render(); loadPovs().then((changed) => { if (changed && !$("view-dash").hidden) render(); }); const ad = $("adDash"); if (!ad) return; if (APP.team && APP.team.plan === "free" && window.TLAds) { TLAds.fill(ad, "dash", { title: "デバイスを見直すなら" }); TLAds.wide($("adWide")); } else { ad.hidden = true; if ($("adWide")) $("adWide").hidden = true; } }
   window.renderDash = renderWithAds;
 })();

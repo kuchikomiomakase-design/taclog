@@ -486,15 +486,45 @@ function showResult(){
   box.append(h("p",{class:"small muted",style:"margin:0"},"マップは録画のミニマップから自動で判定しました。違っていたら、保存後に試合チャンネルで直せます。設置時の残り時間は、読み取り間隔の半分くらいの誤差があります。ファーストキルは生存人数の変化から1秒単位で判定し、その瞬間のキルログから取った人を読んでいます。"+(R.starts&&R.starts.every(x=>x.auto)?" 攻守は画面の表示から自動で判定しました。":" 攻守を自動で判定できなかったマップは、手順2で選んだ「最初の攻守」を使っています。")));
   const save=h("button",{type:"button",class:"btn primary"},"この結果を保存する");
   save.onclick=async()=>{save.disabled=true;try{
-    await saveLast({date:$("mDate").value,opp:$("mOpp").value.trim(),map:$("mMap").value,yt:$("mYt").value.trim()});
-    save.textContent="保存しました";APP.reloadMatches();box.append(h("div",{class:"row"},h("a",{class:"btn",href:"#ask"},"AIに質問する →")))}catch(e){box.append(h("div",{class:"notice"},TL.errText(e)));save.disabled=false}};
+    const sv=await saveLast({date:$("mDate").value,opp:$("mOpp").value.trim(),map:$("mMap").value,yt:$("mYt").value.trim()});
+    save.textContent=sv&&sv.merged&&!sv.created?"同じ試合にまとめました(別の視点)":"保存しました";APP.reloadMatches();box.append(h("div",{class:"row"},h("a",{class:"btn",href:"#ask"},"AIに質問する →")))}catch(e){box.append(h("div",{class:"notice"},TL.errText(e)));save.disabled=false}};
   box.append(h("div",{class:"row"},save));
 }
 
 
+// Several players may record the same scrim from their own view. A recording whose rounds match a match already saved
+// (same day ±1, same map or unknown, same round results) is attached to it as another point of view instead of a new match,
+// so team numbers are counted once and each player's own numbers are kept per view (match_povs).
+const resStr=rs=>rs.map(r=>r.win===true?"W":r.win===false?"L":"?").join("");
+function sameMatch(a,b){ // a, b: round lists
+  const A=resStr(a),B=resStr(b);if(Math.min(A.length,B.length)<6||Math.abs(A.length-B.length)>2)return false;
+  let same=0,cmp=0;for(let i=0;i<Math.min(A.length,B.length);i++){if(A[i]==="?"||B[i]==="?")continue;cmp++;if(A[i]===B[i])same++}
+  return cmp>=6&&same/cmp>=0.9;
+}
+const povRounds=rs=>rs.map(r=>({n:r.n,side:r.side,win:r.win,fk:r.fk??null,fkBy:r.fkBy??null,fkVictim:r.fkVictim??null,myFk:r.myFk??null,myFd:r.myFd??null,myDead:r.myDead??null,myDeathT:r.myDeathT??null}));
+async function findSame(date,map,rs,part){
+  if(!date)return null;
+  const d=new Date(date+"T00:00:00"),iso=x=>new Date(d.getTime()+x*864e5).toISOString().slice(0,10);
+  const {data}=await TL.sb.from("matches").select("id,map,rounds,part").eq("team_id",APP.team.id).eq("game",APP.game||"valorant").gte("date",iso(-1)).lte("date",iso(1));
+  return (data||[]).find(m=>(!map||!m.map||m.map===map)&&sameMatch(m.rounds||[],rs))||null;
+}
+async function savePov(matchId,si,R){
+  const {error}=await TL.sb.from("match_povs").insert({match_id:matchId,team_id:APP.team.id,agent:(R.me&&R.me[si])||"",file:fileName,rounds:povRounds(R.segs[si])});
+  if(error&&!/match_povs/.test(error.message||""))throw error;   // before 007_match_povs.sql is run, just skip the per-view data
+}
 async function saveLast(meta){
   const R=lastResult;if(!R||!R.segs.length||!R.segs[0].length)throw new Error("ラウンドを見つけられませんでした。");
-  for(let si=0;si<R.segs.length;si++){const{error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:meta.date||"",opp:meta.opp||"",map:(si===0&&meta.map)?meta.map:((R.maps&&R.maps[si])||""),start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:meta.yt||"",file:fileName,part:si+1,comps:{...R.comps,me:(R.me&&R.me[si])||null},rounds:R.segs[si]}});if(error)throw error}
+  const out={created:0,merged:0};
+  for(let si=0;si<R.segs.length;si++){
+    const map=(si===0&&meta.map)?meta.map:((R.maps&&R.maps[si])||"");
+    let same=null;try{same=await findSame(meta.date,map,R.segs[si],si+1)}catch(e){same=null}
+    if(same){await savePov(same.id,si,R);out.merged++;continue}
+    const{data,error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:meta.date||"",opp:meta.opp||"",map,start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:meta.yt||"",file:fileName,part:si+1,comps:{...R.comps,me:(R.me&&R.me[si])||null},rounds:R.segs[si]}});
+    if(error)throw error;
+    if(data)await savePov(data,si,R);
+    out.created++;
+  }
+  return out;
 }
 window.ANALYZER={loadFile,runAnalysis,saveLast,result:()=>lastResult,error:()=>lastErr,stop:()=>ctl&&ctl.abort()};
 
