@@ -1,5 +1,14 @@
 // POST /api/ask  {teamId, question, history:[{q,a}]}  ->  {answer, chart, scenes}
-const { send, fail, readBody, getUser, membership, rest, claude, parseJSON, PLAN_LIMITS } = require("./_lib");
+const { send, fail, readBody, getUser, membership, rest, claude, parseJSON, PLAN_LIMITS, discord, noPing, env } = require("./_lib");
+// Questions TacLog could not answer go to the operator's Discord contact channel (question + why), to find what to build next.
+async function reportUnanswered(m, question, why) {
+  try {
+    const ch = env("DISCORD_CONTACT_CHANNEL_ID"); if (!ch) return;
+    const team = (m && m.teams && m.teams.name) || "?", plan = (m && m.teams && m.teams.plan) || "?";
+    await discord("channels/" + ch + "/messages", { method: "POST", body: { allowed_mentions: noPing,
+      content: ("❓ 答えられなかった質問\nチーム: " + team + "(" + plan + ")\n質問: " + question + "\n理由: " + why).slice(0, 1900) } });
+  } catch (e) { /* never break the answer because of the report */ }
+}
 const KIT = require("../assets/kit.js");
 
 const MAPS = { ascent: "アセント", bind: "バインド", haven: "ヘイヴン", split: "スプリット", icebox: "アイスボックス", breeze: "ブリーズ", fracture: "フラクチャー", pearl: "パール", lotus: "ロータス", sunset: "サンセット", abyss: "アビス", corrode: "カロード" };
@@ -44,7 +53,7 @@ module.exports = async (req, res) => {
     const m = await membership(body.teamId, auth); if (!m) return fail(res, 403, "このチームのメンバーではありません。");
     const question = String(body.question || "").trim().slice(0, 300);
     if (!question) return fail(res, 400, "質問を入れてください。");
-    if (INTERNAL.test(question)) return send(res, 200, { answer: REFUSE, chart: null, scenes: [] }); // no AI call, not counted
+    if (INTERNAL.test(question)) { await reportUnanswered(m, question, "運営・内部情報に関する質問なので答えない設定(AIは使っていません)"); return send(res, 200, { answer: REFUSE, chart: null, scenes: [] }); } // no AI call, not counted
     const plan = (m.teams && m.teams.plan) || "free", lim = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
 
     // monthly question limit
@@ -70,10 +79,14 @@ module.exports = async (req, res) => {
       "【スキルとウルト】ラウンドの印: +AL数字=バリアが消えてから(購入フェーズは含まない)生きていた秒数、+H:Q12/C3=そのラウンドでスキルを手に構えていた秒数(C/Q/E/X は画面下のスキル欄の左から1〜4番目。Xはウルト。キー設定と関係なく並び順)、+L:CQ=倒されたとき(生き残ったラウンドはラウンド終了時)にまだ残っていたスキル、+UH=ラウンド開始時にウルトが溜まっていて使わなかった(温存)、+UU=溜まっていて使った、+DU=ウルトが溜まったまま倒された、+K数字=そのラウンドのキル数、+KU数字=そのうちウルトが溜まっている間のキル。\n「kit agent=○○:」の行はエージェント別の合計で、スキルの質問にはまずこれを使ってください: hold_sec_per_round(C/Q/E/X)=1ラウンドあたりスキルを構えていた秒数、hold_share=生きていた時間のうちスキルを構えていた割合、takes_per_round=1ラウンドにスキルを取り出した回数、skills_left_at_death_avg=倒されたときに残っていたスキル数の平均(スキル欄の数。チャージ数ではない)、deaths_with_2plus_left=スキルを2つ以上残して倒された回数、ult_kept_unused=ウルトを溜めたまま使わなかったラウンド数、ult_longest_kept_streak=続けて温存した最長ラウンド数、died_with_ult_ready=ウルトを持ったまま倒された回数、kills_while_ult_ready=ウルトが溜まっている間のキル。目安: hold_share が15%を超える、または1つのスキルを1ラウンドに10秒以上構えているなら「構えている時間が長い」、skills_left_at_death_avg が1.5以上なら「スキルを残しすぎ」、ult_longest_kept_streak が3以上なら「ウルトを温存しすぎ」と伝えてください。これらはそのエージェントで録画した人の分だけで、録画していない選手の分はありません。\n" +
       (plan === "free" ? "(無料プランのため、直近" + lim.days + "日分のデータだけを渡しています)\n" : "") + "\n" +
       dataText(matches, povs) + "\n" + kitText(matches, povs) + "\n\n" + (history ? "これまでの会話:\n" + history + "\n\n" : "") + "質問: " + question + "\n\n" +
-      "返答はJSONのみ: {\"answer\":\"答えの文章\",\"chart\":null または {\"title\":\"グラフの題\",\"unit\":\"%\",\"bars\":[{\"label\":\"ラベル\",\"value\":数値}]},\"scenes\":[{\"match\":\"試合のmatch=の値\",\"round\":ラウンド番号,\"note\":\"短い説明\"}]}。グラフが役立つ質問ではchartを入れる。scenesは根拠になったラウンドを最大5件。";
+      "返答はJSONのみ: {\"missing\":null または \"答えられなかった理由(短く。例: 個人のアシスト数は記録していない、該当する試合がない、録画した人がいないエージェント)\",\"answer\":\"答えの文章\",\"chart\":null または {\"title\":\"グラフの題\",\"unit\":\"%\",\"bars\":[{\"label\":\"ラベル\",\"value\":数値}]},\"scenes\":[{\"match\":\"試合のmatch=の値\",\"round\":ラウンド番号,\"note\":\"短い説明\"}]}。グラフが役立つ質問ではchartを入れる。scenesは根拠になったラウンドを最大5件。質問に(一部でも)データ不足や対象外のせいで答えられなかったときは missing に理由を書き、答えられたときは null にする。";
 
     const text = await claude({ content: [{ type: "text", text: prompt.slice(0, 240000) }], maxTokens: 3000, teamId: body.teamId, kind: "ask", model: process.env.ASK_MODEL || "claude-haiku-5-5" });
-    const ans = parseJSON(text) || { answer: text, chart: null, scenes: [] };
+    let ans; try { ans = parseJSON(text); } catch (e) { ans = null; }
+    ans = ans || { answer: text, chart: null, scenes: [] };
+    if (ans.missing && String(ans.missing).trim() && String(ans.missing).trim() !== "null") await reportUnanswered(m, question, String(ans.missing).slice(0, 300));
+    else if (ans.answer === REFUSE) await reportUnanswered(m, question, "答えてはいけない話題と判断して断った");
+    delete ans.missing;
 
     await rest("usage?on_conflict=team_id,month", { method: "POST", service: true, prefer: "resolution=merge-duplicates", body: { team_id: body.teamId, month, questions: used + 1, analyses: u && u[0] ? u[0].analyses : 0 } });
     send(res, 200, ans);
