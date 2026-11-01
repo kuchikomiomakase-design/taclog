@@ -45,10 +45,11 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
       // several teams = coach / organization plan (the new team gets that plan too)
       const org = APP.teams.some((t) => t.plan === "org" && t.role === "admin");
       if (org) { location.href = "/onboarding?new=1"; return; }
-      if (confirm("複数のチームを見るには、コーチ・組織プランが必要です。\n組織プランなら、チームをいくつでも(10チームまで)追加でき、追加したチームも組織プランになります。\n\n料金プランを見ますか?")) location.href = "/pricing";
+      if (!APP.teams.some((t) => t.kind === "solo") && confirm("個人用(自分の録画だけを分析するスペース)を作りますか?\n\n※ チームを増やすには、コーチ・組織プランが必要です。")) { location.href = "/onboarding?new=1&solo=1"; return; }
+      if (confirm("複数のチームを見るには、コーチ・組織プランが必要です。\n組織プランなら2チーム込みで、追加したチームも組織プランになります。\n\n料金プランを見ますか?")) location.href = "/pricing";
     };
     bar.replaceChildren(h("span", { class: "eyebrow" }, "Team"),
-      ...APP.teams.map((t) => { const b = h("button", { type: "button", class: "gtab", "aria-pressed": t.id === APP.team.id ? "true" : "false" }, t.name);
+      ...APP.teams.map((t) => { const b = h("button", { type: "button", class: "gtab", "aria-pressed": t.id === APP.team.id ? "true" : "false" }, t.kind === "solo" ? "👤 " + t.name : t.name);
         b.onclick = () => { if (t.id === APP.team.id) return; TL.setTeam(t.id); location.reload(); }; return b; }), add);
   }
   function renderAnalyzeGate() {
@@ -446,9 +447,9 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     $("planName").textContent = PLAN_JA[t.plan] || t.plan;
     const mon = new Date().toISOString().slice(0, 7);
     const { data: u } = await sb.from("usage").select("*").eq("team_id", t.id).eq("month", mon).maybeSingle();
-    const lim = TL.C.TRIAL_UNLIMITED ? { a: null, q: null } : t.plan === "free" ? { a: 2, q: 20 } : t.plan === "team" ? { a: null, q: 300 } : t.plan === "org" ? { a: null, q: 600 } : { a: null, q: null };
+    const lim = TL.C.TRIAL_UNLIMITED ? { a: null, q: null } : t.plan === "free" ? { a: 2, q: 20 } : t.plan === "team" ? { a: null, q: 300 } : t.plan === "org" ? { a: null, q: 600 } : t.plan === "solo" ? { a: null, q: 100 } : { a: null, q: null };
     $("usageText").textContent = "今月:分析 " + ((u && u.analyses) || 0) + (lim.a ? "/" + lim.a : "") + "本 ・ 質問 " + ((u && u.questions) || 0) + (lim.q ? "/" + lim.q : "") + "回" + (t.plan === "org" ? "(質問は組織の全チームで合計600回)" : "") + (TL.C.TRIAL_UNLIMITED ? "(試作期間中は無制限)" : "");
-    if (t.plan === "team" || t.plan === "org") (async () => { try { const { data } = await sb.rpc("maps_today", { t: t.id }); const d = Array.isArray(data) ? data[0] : data; if (d && d.lim != null) $("usageText").textContent += " ・ 今日の分析 " + d.used + "/" + d.lim + "マップ分"; } catch (e) {} })();
+    if (t.plan === "team" || t.plan === "org" || t.plan === "solo") (async () => { try { const { data } = await sb.rpc("maps_today", { t: t.id }); const d = Array.isArray(data) ? data[0] : data; if (d && d.lim != null) $("usageText").textContent += " ・ 今日の分析 " + d.used + "/" + d.lim + "マップ分"; } catch (e) {} })();
     const br = $("billingRow"); br.replaceChildren();
     if (t.comp_until && new Date(t.comp_until) > new Date()) br.append(h("span", { class: "pill data" }, "テスター特典:" + new Date(t.comp_until).toLocaleDateString("ja-JP") + "まで" + (PLAN_JA[t.plan] || t.plan) + "プランを無料で利用中"));
     if (isAdmin && t.plan === "free") {   // tester / invite code: paid plan for free for a while
@@ -515,7 +516,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     if (!APP.teams.length) { location.href = "/onboarding"; return; }
     APP.team = TL.currentTeam(APP.teams); TL.setTeam(APP.team.id);
     renderHeader();
-    $("mMap").append(...MAPS.map(([v, n]) => h("option", { value: v }, n)));
+    $("mMap").append(h("option", { value: "" }, "自動で判定する"), ...MAPS.map(([v, n]) => h("option", { value: v }, n)));   // empty = use the detected map
     const d = new Date(); $("mDate").value = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
     pickGame(); renderGameBar(); renderAnalyzeGate();
     setupAsk(); setupContact();

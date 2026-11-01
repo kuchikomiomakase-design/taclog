@@ -72,10 +72,11 @@
 
   async function myTeams() {
     const s = await session(); if (!s) return [];
-    let { data, error } = await sb.from("team_members").select("team_id, role, display_name, can_stream, teams(id, name, plan, games, extra_games, comp_until)").eq("user_id", s.user.id);
+    let { data, error } = await sb.from("team_members").select("team_id, role, display_name, can_stream, teams(id, name, plan, games, extra_games, comp_until, kind, pov_option)").eq("user_id", s.user.id);
+    if (error && /kind|pov_option/.test(error.message || "")) ({ data, error } = await sb.from("team_members").select("team_id, role, display_name, can_stream, teams(id, name, plan, games, extra_games, comp_until)").eq("user_id", s.user.id)); // before 012_solo_and_views.sql is run
     if (error && /comp_until/.test(error.message || "")) ({ data, error } = await sb.from("team_members").select("team_id, role, display_name, can_stream, teams(id, name, plan, games, extra_games)").eq("user_id", s.user.id)); // before 006_promo_codes.sql is run
     if (error) throw error;
-    return (data || []).filter((r) => r.teams).map((r) => ({ id: r.teams.id, name: r.teams.name, plan: r.teams.plan, games: r.teams.games || ["valorant"], extra_games: r.teams.extra_games || 0, comp_until: r.teams.comp_until || null, role: r.role, display_name: r.display_name, can_stream: r.can_stream }));
+    return (data || []).filter((r) => r.teams).map((r) => ({ id: r.teams.id, name: r.teams.name, plan: r.teams.plan, games: r.teams.games || ["valorant"], extra_games: r.teams.extra_games || 0, comp_until: r.teams.comp_until || null, kind: r.teams.kind || "team", pov_option: !!r.teams.pov_option, role: r.role, display_name: r.display_name, can_stream: r.can_stream }));
   }
 
   function currentTeam(teams) {
@@ -99,6 +100,8 @@
     if (m.includes("member limit")) return "このチームはメンバーの上限に達しています。";
     if (m.includes("invalid invite")) return "この招待リンクは無効か、期限が切れています。チームの管理者に新しいリンクをもらってください。";
     if (m.includes("daily map limit")) return "今日の分析は上限(1日6マップ分)に達しました。日本時間の0時を過ぎると、また分析できます。";
+    if (m.includes("solo exists")) return "個人用はもう作ってあります。上のチームの欄から切り替えてください。";
+    if (m.includes("view limit")) return "この試合にはもう5人分の視点が入っています。";
     if (m.includes("org plan required")) return "2つ目のチームを作るには、コーチ・組織プランが必要です。";
     if (m.includes("team limit")) return "1人で作れるチームは10チームまでです。";
     if (m.includes("game limit")) return "使えるタイトルの数を超えています。タイトルを追加してください。";

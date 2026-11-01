@@ -10,7 +10,7 @@ const LIM={images:{maxCount:6}};
 const toB64=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(b)});
 function parseJSON(t){t=String(t||"").trim();try{return JSON.parse(t)}catch(e){}const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f){try{return JSON.parse(f[1])}catch(e){}}const i=Math.min(...["{","["].map(c=>{const k=t.indexOf(c);return k<0?1e9:k})),j=Math.max(t.lastIndexOf("}"),t.lastIndexOf("]"));if(i<j){try{return JSON.parse(t.slice(i,j+1))}catch(e){}}throw{code:"invalid_json"}}
 const SAMPLE={json:async(prompt,o)=>{if(o.signal&&o.signal.aborted)throw{code:"cancelled"};const images=await Promise.all((o.images||[]).map(toB64));
-  try{const r=await TL.api("/api/vision",{prompt,images,teamId:APP.team.id,task:o.task||"",fast:o.modelTier==="fast"});return parseJSON(r.text)}catch(e){if(o.signal&&o.signal.aborted)throw{code:"cancelled"};throw{code:e.code||"upstream_error",message:e.message}}}};
+  try{const r=await TL.api("/api/vision",{prompt,images,teamId:APP.team.id,task:(POVMODE?"pov":"")+(o.task||""),fast:o.modelTier==="fast"});return parseJSON(r.text)}catch(e){if(o.signal&&o.signal.aborted)throw{code:"cancelled"};throw{code:e.code||"upstream_error",message:e.message}}}};
 /* ---------- video + crop ---------- */
 const video=document.createElement("video");video.muted=true;video.playsInline=true;video.preload="auto";
 let duration=0,fileName="";
@@ -44,7 +44,7 @@ function loadFile(f){return new Promise((resolve,reject)=>{
 $("file").addEventListener("change",()=>{const f=$("file").files[0];if(f)loadFile(f).catch(()=>{})});
 
 /* ---------- analysis ---------- */
-let ctl=null,lastResult=null;
+let ctl=null,lastResult=null,POVMODE=false;
 function prog(p,text){$("progBox").hidden=false;$("progBar").style.width=Math.round(p*100)+"%";$("progText").textContent=text}
 async function buildImage(times,startIdx){
   const c=crop(),th=Math.round(TILE_W*c.sh/c.sw),cellW=LABEL_W+TILE_W;
@@ -650,15 +650,65 @@ async function sparseScores(loc,readFn,onProg){
   return{samples,reads:reads.size};
 }
 async function firstError(list){for(const x of list){if(!x.fin)continue;try{await x.job}catch(e){return e}}return null}
+// ---------- another view of a match the team already analysed ----------
+// The score changes seen on this PC (free) are lined up with the saved match's round times (different recordings start at different
+// moments, so find the time shift), confirmed with 2 cheap readings of the score, and the saved rounds are reused (results, plants,
+// first kills, fights). Only this player's own numbers are read: their agent, when they died, abilities and ult (~2 yen a map).
+async function fastPov(loc){
+  if(!curFile||!curFile.lastModified)return false;
+  const d=new Date(curFile.lastModified),iso=x=>new Date(d.getTime()+x*864e5).toISOString().slice(0,10);
+  const {data}=await TL.sb.from("matches").select("id,map,comps,rounds,date").eq("team_id",APP.team.id).eq("game",APP.game||"valorant").gte("date",iso(-1)).lte("date",iso(1));
+  const cands=(data||[]).filter(m=>(m.rounds||[]).length>=6&&(m.rounds||[]).every(r=>r.st!=null||r.win==null));
+  if(!cands.length)return false;
+  const ch=[];for(let i=1;i<loc.length;i++){const dd=sigDist(loc[i],loc[i-1]),nx=loc[i+1]?sigDist(loc[i+1],loc[i]):0;if(dd>12&&nx<=8)ch.push(loc[i].t)}
+  if(ch.length<6)return false;
+  const found=[];
+  for(const m of cands){
+    const ts=m.rounds.slice(1).map(r=>r.start);
+    const hits=dd=>ts.filter(t=>ch.some(c=>Math.abs(c-(t+dd))<=6)).length;
+    let best=null;for(const c of ch)for(const t of ts){const dd=c-t,h=hits(dd);if(!best||h>best.h)best={dd,h}}
+    if(!best||best.h<Math.max(5,ts.length*0.6))continue;
+    const sh=best.dd,lo=m.rounds[0].start+sh,hi=m.rounds[m.rounds.length-1].start+sh+60;
+    if(lo<-30||hi>duration+120)continue;
+    found.push({m,sh});
+  }
+  if(!found.length)return false;
+  // the matched maps must cover this recording (otherwise a map nobody else analysed would be lost)
+  const covered=ch.filter(c=>found.some(f=>c>=f.m.rounds[0].start+f.sh-20&&c<=f.m.rounds[f.m.rounds.length-1].start+f.sh+120)).length;
+  if(covered<ch.length*0.8)return false;
+  POVMODE=true;
+  // confirm with 2 readings of the score per map
+  prog(0.8,"チームのほかの人の分析と照らし合わせています…");
+  const checks=[];found.forEach((f,fi)=>{const rs=f.m.rounds;[Math.floor(rs.length*0.3),Math.floor(rs.length*0.7)].forEach(k=>{const r=rs[k];if(r&&r.st!=null)checks.push({fi,r,t:Math.min(duration-0.5,r.st+f.sh+12)})})});
+  const reads=await readTimes(checks.map(c=>c.t));
+  const bad=new Set();checks.forEach((c,k)=>{const x=parseTile(reads[k]);if(x.L==null||x.R==null)return;const [a,b]=String(c.r.score||"").split("-").map(Number);if(x.L!==a||x.R!==b)bad.add(c.fi)});
+  const ok=found.filter((_,fi)=>!bad.has(fi));
+  if(!ok.length||ok.length<found.length){POVMODE=false;return false}
+  ok.sort((a,b)=>(a.m.rounds[0].start+a.sh)-(b.m.rounds[0].start+b.sh));
+  const segs=ok.map(f=>f.m.rounds.map((r,i,rs)=>{const nx=rs[i+1];const o={...r,start:Math.round(r.start+f.sh),plantAt:r.plantAt!=null?Math.round(r.plantAt+f.sh):null,_st:r.st!=null?r.st+f.sh:null,_next:nx?nx.start+f.sh:null};
+    delete o.st;delete o.kit;delete o.myFk;delete o.myFd;delete o.myDead;delete o.myDeathT;return o}));
+  const maps=ok.map(f=>f.m.map||null),known=ok.map(f=>f.m),comps=ok[0].m.comps&&ok[0].m.comps.left?{left:ok[0].m.comps.left,right:ok[0].m.comps.right||[]}:{left:[],right:[]};
+  prog(0.9,"この録画の人の分を読み取っています…");
+  const all=segs.flat().filter(r=>r._st!=null);
+  await calibrate(all.slice(0,14).map(r=>r._st+3),all.slice(0,14).map(r=>Math.max(r._st+3,(r._next||r._st+100)-3)));
+  const mm=await readMaps(segs);const me=mm.me;maps.forEach((x,i)=>{if(!x)maps[i]=mm.maps[i]});
+  markMine(segs,me);
+  await readMyDeaths(segs,me);
+  await readKit(segs,me,maps,known,comps);
+  segs.forEach(rs=>rs.forEach(r=>{if(r._st!=null)r.st=Math.round(r._st);delete r._st;delete r._next}));
+  lastResult={fast:true,coach:COACH,snaps:SNAPS,segs,comps,starts:segs.map(rs=>({side:(rs.find(r=>r.n===1)||{}).side||"attack",auto:true})),maps,me,samples:loc.length,read:loc.length};
+  POVMODE=false;prog(1,"完了しました(チームのほかの人の分析と合わせました)");
+  return true;
+}
 async function runAnalysis(){
   if(!duration)return false;
   ctl=new AbortController();$("go").disabled=true;$("stop").hidden=false;$("result").hidden=true;
   const p=plan(),times=[];for(let i=0;i<p.n;i++)times.push(3+i*p.iv);
-  const samples=[];lastErr=null;SNAPS={};COACH={};
+  const samples=[];lastErr=null;SNAPS={};COACH={};POVMODE=false;let limitHit=null;
   try{
     // team plan: up to 6 maps a day (Japan time). Check before spending anything.
     try{const{data}=await TL.sb.rpc("maps_today",{t:APP.team.id});const d=Array.isArray(data)?data[0]:data;
-      if(d&&d.lim!=null&&d.used>=d.lim){lastErr={code:"daily_map_limit",message:"今日の分析は上限("+d.lim+"マップ分)に達しました。日本時間の0時を過ぎると、また分析できます。"};prog(0,lastErr.message);return false}}catch(e){}
+      if(d&&d.lim!=null&&d.used>=d.lim){limitHit=d.lim;if(!(APP.team.plan==="org"||APP.team.pov_option)){lastErr={code:"daily_map_limit",message:"今日の分析は上限("+d.lim+"マップ分)に達しました。日本時間の0時を過ぎると、また分析できます。"};prog(0,lastErr.message);return false}}}catch(e){}
     prog(0,"VALORANTの動画か確認しています…");
     const g=await isValorant();
     if(!g.ok){lastErr={code:"not_valorant",message:"VALORANTの動画ではないため、読み込みませんでした"+(g.what?"("+g.what+")":"")+"。"};prog(0,lastErr.message);return false}
@@ -669,6 +719,9 @@ async function runAnalysis(){
       if(i%10===0)prog(i/times.length*0.75,"録画を確認しています… "+fmt(times[i])+" / "+fmt(duration));
       await seek(times[i]);loc.push({t:times[i],...localSig()});
     }
+    // 2) Another player of the team already analysed this match? Then reuse its rounds (cheap: only this player's own numbers are read).
+    try{if(await fastPov(loc))return true}catch(e){if(e&&e.code==="cancelled")throw e;POVMODE=false}
+    if(limitHit!=null){lastErr={code:"daily_map_limit",message:"今日の分析は上限("+limitHit+"マップ分)に達しました。チームのほかの人がまだ分析していない試合なので、日本時間の0時を過ぎてから分析してください。"};prog(0,lastErr.message);return false}
     const sp=await sparseScores(loc,readTimes,(m)=>prog(0.8,m));sp.samples.forEach(x=>samples.push(x));
     lastReads=sp.reads;
     if(!buildRounds(samples,"attack").some(rs=>rs.length)){lastErr={code:"no_rounds",message:"ラウンドを見つけられませんでした(試合の画面が映っていない録画かもしれません)。"};prog(0,lastErr.message);return false}
@@ -693,7 +746,7 @@ async function runAnalysis(){
     await readMyDeaths(segs,me);
     let known=[];try{known=await knownMatches(segs,maps)}catch(e){known=[]}
     await readKit(segs,me,maps,known,comps);
-    segs.forEach(rs=>rs.forEach(r=>{delete r._st;delete r._next}));
+    segs.forEach(rs=>rs.forEach(r=>{if(r._st!=null)r.st=Math.round(r._st);delete r._st;delete r._next}));
     prog(1,"完了しました");
     lastResult={coach:COACH,snaps:SNAPS,segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
     showResult();

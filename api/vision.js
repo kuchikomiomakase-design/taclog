@@ -9,11 +9,17 @@ module.exports = async (req, res) => {
     const body = await readBody(req);
     const m = await membership(body.teamId, auth); if (!m) return fail(res, 403, "このチームのメンバーではありません。");
     // team plan: 6 maps a day; once reached, no more reading today (saves AI cost). Before 010_daily_maps.sql this check is skipped.
-    if (m.teams && m.teams.plan === "team") {
+    const DAILY = { team: 6, org: 6, solo: 2 }, plan = (m.teams && m.teams.plan) || "free";
+    if (DAILY[plan]) {
       try {
         const day = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
         const u = await rest("usage_daily?select=maps&team_id=eq." + body.teamId + "&day=eq." + day, { service: true });
-        if (u && u[0] && u[0].maps >= 6) return fail(res, 429, "daily map limit", "daily_map_limit");
+        if (u && u[0] && u[0].maps >= DAILY[plan]) {
+          // another player's view of an already analysed match (cheap reads, tasks "pov...") is still fine with the all-views option
+          let views = plan === "org";
+          if (!views && /^pov/.test(String(body.task || ""))) { const t = await rest("teams?select=pov_option&id=eq." + body.teamId, { service: true }); views = !!(t && t[0] && t[0].pov_option); }
+          if (!(views && /^pov/.test(String(body.task || "")))) return fail(res, 429, "daily map limit", "daily_map_limit");
+        }
       } catch (e) {}
     }
     const prompt = String(body.prompt || "").slice(0, 6000);

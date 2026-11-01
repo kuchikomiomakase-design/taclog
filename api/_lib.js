@@ -146,8 +146,8 @@ async function verifyStripe(raw, header, secret) {
 // 試作期間中は全プラン無制限。Riotに申請するときに false に戻す(supabase/005_restore_limits.sql と assets/config.js の TRIAL_UNLIMITED も)
 const TRIAL_UNLIMITED = false;
 const PLAN_LIMITS = TRIAL_UNLIMITED
-  ? { free: { questions: 100000, days: 36500 }, team: { questions: 100000, days: 36500 }, org: { questions: 100000, days: 36500 } }
-  : { free: { questions: 20, days: 14 }, team: { questions: 300, days: 36500 }, org: { questions: 600, days: 36500 } };   // org: shared by all the organization's teams
+  ? { free: { questions: 100000, days: 36500 }, team: { questions: 100000, days: 36500 }, org: { questions: 100000, days: 36500 }, solo: { questions: 100000, days: 36500 } }
+  : { free: { questions: 20, days: 14 }, team: { questions: 300, days: 36500 }, org: { questions: 600, days: 36500 }, solo: { questions: 100, days: 36500 } };   // org: shared by all the organization's teams
 
 function serviceHeaders() { const k = SERVICE(); const h = { apikey: k }; if (String(k || "").startsWith("eyJ")) h.authorization = "Bearer " + k; return h; }
 

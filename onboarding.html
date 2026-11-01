@@ -36,12 +36,30 @@
   </section>
 
   <section class="card" data-step="2" hidden>
-    <h1>チームを作りましょう</h1>
-    <p class="lead">あとでメンバーを招待すると、全員で分析結果を見たりAIに質問したりできます。招待されて参加する方は、届いた招待リンクを開いてください。</p>
+    <div class="row" role="radiogroup" aria-label="使い方" style="gap:8px">
+      <label class="check" for="useTeam" style="flex:1;min-width:220px"><input type="radio" name="useKind" id="useTeam" value="team" checked><span><strong>チームで使う</strong><span class="small muted">スクリムをチームで振り返る。メンバーを招待できます</span></span></label>
+      <label class="check" for="useSolo" style="flex:1;min-width:220px"><input type="radio" name="useKind" id="useSolo" value="solo"><span><strong>個人で使う</strong><span class="small muted">自分の録画(ランク・スクリム)で、自分のプレーだけを振り返る</span></span></label>
+    </div>
+    <div data-kind="team">
+      <h1>チームを作りましょう</h1>
+      <p class="lead">あとでメンバーを招待すると、全員で分析結果を見たりAIに質問したりできます。招待されて参加する方は、届いた招待リンクを開いてください。</p>
+    </div>
+    <div data-kind="solo" hidden style="display:grid;gap:10px">
+      <h1>自分専用の分析をはじめましょう</h1>
+      <p class="lead">自分の視点の録画から、あなたのプレーを数字にします。ランクでもスクリムでも使えます。</p>
+      <ul class="small" style="margin:0;padding-left:1.2em;display:grid;gap:4px">
+        <li>ファーストキル・ファーストデス、生き残った割合と時間</li>
+        <li>スキルを構えていた時間、倒されたときに残っていたスキル(購入フェーズは含みません)</li>
+        <li>ウルトの温存、ウルトが溜まっているときのキルとデス</li>
+        <li>場所ごとの撃ち合いの勝ち負け、人数の流れ(クラッチ・少人数戦)</li>
+        <li>「最近Aメインで負けてる理由は?」のように、AIに質問できます</li>
+      </ul>
+      <p class="small muted" style="margin:0">個人プラン:月980円(1日2マップ分まで分析・AIへの質問 月100回)。まずは無料(月2本)で試せます。</p>
+    </div>
     <form id="teamForm" style="display:grid;gap:14px">
-      <label for="teamName">チーム名<input id="teamName" required maxlength="40" placeholder="例:Kawasaki Owls"></label>
-      <label for="myName">あなたの表示名<input id="myName" required maxlength="30" placeholder="例:トンパ(ゲーム内の名前がおすすめ)"></label>
-      <div class="row"><button class="btn primary" type="submit">チームを作る</button></div>
+      <label for="teamName" data-kind="team">チーム名<input id="teamName" maxlength="40" placeholder="例:Kawasaki Owls"></label>
+      <label for="myName"><span data-kind="team">あなたの表示名</span><span data-kind="solo" hidden>あなたの名前(ゲーム内の名前がおすすめ)</span><input id="myName" required maxlength="30" placeholder="例:トンパ"></label>
+      <div class="row"><button class="btn primary" type="submit" id="teamSubmit">チームを作る</button></div>
     </form>
     <div id="teamMsg" hidden></div>
   </section>
@@ -103,7 +121,7 @@
   <section class="card" data-step="6" hidden>
     <h1>準備できました</h1>
     <p class="lead">スクリムが終わったら、アプリの「録画を分析」から録画ファイルを選ぶだけです。</p>
-    <div style="display:grid;gap:10px;padding:16px;border-radius:12px;border:1px solid var(--line)">
+    <div style="display:grid;gap:10px;padding:16px;border-radius:12px;border:1px solid var(--line)" data-kind="team">
       <strong>メンバーを招待しましょう</strong>
       <span class="small muted">このリンクを送ると、メンバーがアカウントを作ってチームに参加できます(14日間有効)。</span>
       <div class="row"><input id="inviteUrl" readonly style="flex:1 1 260px" aria-label="招待リンク"><button class="btn" type="button" id="copyInvite">コピー</button></div>
@@ -144,8 +162,18 @@ TL.$("linkFolder").onclick=async()=>{await TLFolder.setDeleteAfter(TL.$("delAfte
   if(teams.length&&!qs.get("step")){location.href="/app";return}
   if(teams.length){const t=TL.currentTeam(teams);teamId=t.id;hasValo=(t.games||[]).includes("valorant");show(Number(qs.get("step"))||4)}else show(1);
 })();
+// team or personal (solo): personal users get their own one-person space and a guide written for them
+let kind="team";
+function setKind(k){kind=k;document.querySelectorAll("[data-kind]").forEach(el=>el.hidden=el.dataset.kind!==k);
+  TL.$("teamSubmit").textContent=k==="solo"?"はじめる":"チームを作る";TL.$("teamName").required=k==="team";
+  document.querySelectorAll("#labels span")[1].textContent=k==="solo"?"個人":"チーム";
+  if(k==="solo"){const r=TL.$("modeRec");if(r){r.checked=true;r.dispatchEvent(new Event("change"))}}}
+TL.$("useTeam").onchange=()=>setKind("team");TL.$("useSolo").onchange=()=>setKind("solo");
+if(new URLSearchParams(location.search).get("solo")){TL.$("useSolo").checked=true;setKind("solo")}
 TL.$("teamForm").addEventListener("submit",async e=>{e.preventDefault();const b=e.target.querySelector("button");b.disabled=true;
-  const{data,error}=await TL.sb.rpc("create_team",{team_name:TL.$("teamName").value.trim(),my_name:TL.$("myName").value.trim(),game:game||"valorant"});
+  const nm=TL.$("myName").value.trim(),tn=kind==="solo"?(nm+"(個人)").slice(0,40):TL.$("teamName").value.trim();
+  let{data,error}=await TL.sb.rpc("create_team",{team_name:tn,my_name:nm,game:game||"valorant",team_kind:kind});
+  if(error&&kind==="team"&&/team_kind|function/.test(error.message||""))({data,error}=await TL.sb.rpc("create_team",{team_name:tn,my_name:nm,game:game||"valorant"}));   // before 012_solo_and_views.sql
   if(error){const m=TL.$("teamMsg");m.hidden=false;m.className="notice";m.textContent=TL.errText(error);b.disabled=false;return}
   teamId=data;TL.setTeam(teamId);show(hasValo?3:4)});
 TL.$("prefsSave").onclick=async()=>{const b=TL.$("prefsSave");b.disabled=true;const s=await TL.session();
