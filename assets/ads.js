@@ -1,7 +1,7 @@
 // TacLog affiliate ads ("PR"). Paste the links you get from A8.net / もしもアフィリエイト into ITEMS below.
 // Only items with a url are shown. Paid teams see no ads inside the app.
 //
-//   cat:   pc | capture | mic | camera | mouse | keyboard | headset | monitor | net
+//   cat:   pc | capture | mic | camera | mouse | keyboard | headset | monitor | net | other (other = only in the side banner columns)
 //   title: product name shown on the card            note: one short line on why it helps (written by you)
 //   url:   the affiliate link (https://...)          pixel: optional impression image URL that A8.net gives with the link
 //   img:   optional banner image URL (A8.net "バナー" ads); shown instead of the text card
@@ -17,6 +17,10 @@ window.TACLOG_ADS = {
       url: "https://px.a8.net/svt/ejp?a8mat=4BGAV1+AF33W2+5U1O+5YZ75",
       img: "https://www20.a8.net/svt/bgt?aid=261101053630&wid=001&eno=01&mid=s00000027222001003000&mc=1",
       pixel: "https://www10.a8.net/0.gif?a8mat=4BGAV1+AF33W2+5U1O+5YZ75" },
+    { cat: "other", title: "GEMY(オンラインゲームで景品ゲット)", note: "無料で始められるオンラインゲームサイト",
+      url: "https://px.a8.net/svt/ejp?a8mat=4BGAV1+B0IPO2+1J3M+NV1XD",
+      img: "https://www25.a8.net/svt/bgt?aid=261101053666&wid=001&eno=01&mid=s00000007141004008000&mc=1",
+      pixel: "https://www18.a8.net/0.gif?a8mat=4BGAV1+B0IPO2+1J3M+NV1XD" },
     { cat: "monitor", title: "Pixio ゲーミングモニター", note: "SNSで話題のカラフルなゲーミングモニター",
       url: "https://px.a8.net/svt/ejp?a8mat=4BGAV1+A4DB02+XTI+15RZIP",
       img: "https://www22.a8.net/svt/bgt?aid=261101053612&wid=001&eno=01&mid=s00000004383007017000&mc=1",
@@ -31,7 +35,7 @@ window.TACLOG_ADS = {
 };
 
 window.TLAds = (function () {
-  const CAT = { pc: "ゲーミングPC", capture: "キャプチャーボード", mic: "マイク", camera: "Webカメラ", mouse: "マウス", keyboard: "キーボード", headset: "ヘッドセット", monitor: "モニター", net: "回線" };
+  const CAT = { other: "ゲーム", pc: "ゲーミングPC", capture: "キャプチャーボード", mic: "マイク", camera: "Webカメラ", mouse: "マウス", keyboard: "キーボード", headset: "ヘッドセット", monitor: "モニター", net: "回線" };
   const ok = (u) => /^https:\/\//.test(String(u || ""));
   function items(place, max) {
     const cats = (window.TACLOG_ADS.PLACES[place] || []);
