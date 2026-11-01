@@ -51,7 +51,7 @@ async function rest(path, { method = "GET", body, token, service, prefer } = {})
 
 async function membership(teamId, auth) {
   if (!/^[0-9a-f-]{36}$/i.test(String(teamId || ""))) return null;
-  const rows = await rest("team_members?select=role,team_id,teams(plan,name,stripe_customer_id)&team_id=eq." + teamId + "&user_id=eq." + auth.user.id, { token: auth.token });
+  const rows = await rest("team_members?select=role,team_id,teams(plan,name,games,extra_games,stripe_customer_id,stripe_subscription_id)&team_id=eq." + teamId + "&user_id=eq." + auth.user.id, { token: auth.token });
   return rows && rows[0] ? rows[0] : null;
 }
 

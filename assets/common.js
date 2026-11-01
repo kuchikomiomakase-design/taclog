@@ -17,7 +17,17 @@
     return e;
   };
 
-  const LOGO = '<svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect x="1.5" y="1.5" width="27" height="27" rx="4" fill="none" stroke="var(--ink)" stroke-width="2"></rect><path d="M8 10.5h14M15 10.5v12" stroke="var(--accent)" stroke-width="3.2" stroke-linecap="round"></path><circle cx="22.5" cy="21" r="3" fill="var(--loss)"></circle></svg>';
+  const LOGO = '<svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><path d="M3 3h18l6 6v18H9l-6-6z" fill="none" stroke="var(--accent)" stroke-width="2"></path><path d="M9 11h12M15 11v11" stroke="var(--ink)" stroke-width="3" stroke-linecap="square"></path><path d="M21 21l3 3" stroke="var(--data)" stroke-width="2.5"></path></svg>';
+  // Supported titles. "ready" = automatic recording analysis is available.
+  const GAMES = [
+    { id: "valorant", name: "VALORANT", maker: "Riot Games", color: "#FF4655", ready: true },
+    { id: "cs2", name: "Counter-Strike 2", short: "CS2", maker: "Valve", color: "#F2A93B", ready: false },
+    { id: "ow2", name: "Overwatch 2", short: "OW2", maker: "Blizzard", color: "#F99E1A", ready: false },
+    { id: "apex", name: "Apex Legends", maker: "EA / Respawn", color: "#DA292A", ready: false },
+    { id: "fortnite", name: "Fortnite", maker: "Epic Games", color: "#9D4DFF", ready: false }
+  ];
+  const gameName = (id) => { const g = GAMES.find((x) => x.id === id); return g ? (g.short || g.name) : id; };
+  const ADDON_YEN = 500;
 
   function header(links) {
     const el = $("topbar"); if (!el) return;
@@ -32,7 +42,7 @@
     const el = $("footer"); if (!el) return;
     el.className = "site";
     el.innerHTML = '<span><a href="/legal/terms">利用規約</a> ・ <a href="/legal/privacy">プライバシーポリシー</a> ・ <a href="/legal/tokushoho">特定商取引法に基づく表記</a> ・ <a href="/pricing">料金</a> ・ <a href="/app#contact">お問い合わせ</a></span>' +
-      "<span>TacLogはRiot Gamesが承認・後援するものではなく、Riot Gamesまたはその関係者の見解を反映するものではありません。VALORANTはRiot Games, Inc.の商標または登録商標です。</span>";
+      "<span>TacLogは非公式のファンメイドツールで、各ゲームの開発・運営会社(Riot Games、Valve、Blizzard Entertainment、Electronic Arts、Epic Gamesなど)が承認・後援するものではありません。VALORANTはRiot Games, Inc.の、その他のゲーム名はそれぞれの権利者の商標または登録商標です。</span>";
   }
 
   function notConfigured(target) {
@@ -50,9 +60,9 @@
 
   async function myTeams() {
     const s = await session(); if (!s) return [];
-    const { data, error } = await sb.from("team_members").select("team_id, role, display_name, can_stream, teams(id, name, plan)").eq("user_id", s.user.id);
+    const { data, error } = await sb.from("team_members").select("team_id, role, display_name, can_stream, teams(id, name, plan, games, extra_games)").eq("user_id", s.user.id);
     if (error) throw error;
-    return (data || []).filter((r) => r.teams).map((r) => ({ id: r.teams.id, name: r.teams.name, plan: r.teams.plan, role: r.role, display_name: r.display_name, can_stream: r.can_stream }));
+    return (data || []).filter((r) => r.teams).map((r) => ({ id: r.teams.id, name: r.teams.name, plan: r.teams.plan, games: r.teams.games || ["valorant"], extra_games: r.teams.extra_games || 0, role: r.role, display_name: r.display_name, can_stream: r.can_stream }));
   }
 
   function currentTeam(teams) {
@@ -75,10 +85,11 @@
     if (m.includes("question limit")) return "今月の質問回数の上限に達しました。プランを変えると回数が増えます。";
     if (m.includes("member limit")) return "このチームはメンバーの上限に達しています。";
     if (m.includes("invalid invite")) return "この招待リンクは無効か、期限が切れています。チームの管理者に新しいリンクをもらってください。";
+    if (m.includes("game limit")) return "使えるタイトルの数を超えています。タイトルを追加してください。";
     if (m.includes("Invalid login")) return "メールアドレスかパスワードが違います。";
     if (m.includes("already registered")) return "このメールアドレスはすでに登録されています。ログインしてください。";
     return m || "うまくいきませんでした。もう一度試してください。";
   };
 
-  window.TL = { sb, configured, C, $, h, header, footer, notConfigured, session, requireLogin, myTeams, currentTeam, setTeam, api, errText };
+  window.TL = { GAMES, gameName, ADDON_YEN, sb, configured, C, $, h, header, footer, notConfigured, session, requireLogin, myTeams, currentTeam, setTeam, api, errText };
 })();

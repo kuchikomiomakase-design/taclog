@@ -60,7 +60,7 @@ Supabase の **Authentication → Providers → Google** をオンにします�
 
 ### 6. 決済(Riot の承認後)
 1. Stripe でアカウントを作り、本人確認と振込先を登録
-2. 商品を2つ作る:「チーム」月1,980円、「コーチ・組織」月4,980円(どちらも毎月の定期支払い)
+2. 商品を3つ作る:「チーム」月1,980円、「コーチ・組織」月4,980円、「タイトル追加」月500円(どれも毎月の定期支払い)
 3. **Developers → Webhooks** で `https://(サイトのURL)/api/webhook` を登録し、次のイベントを選ぶ
    `checkout.session.completed` / `customer.subscription.created` / `customer.subscription.updated` / `customer.subscription.deleted`
 4. **Settings → Billing → Customer portal** を有効にする(解約・カード変更の画面)
@@ -72,6 +72,7 @@ Supabase の **Authentication → Providers → Google** をオンにします�
 | `STRIPE_PRICE_TEAM` | 「チーム」の価格ID(price_…) |
 | `STRIPE_PRICE_ORG` | 「コーチ・組織」の価格ID |
 | `STRIPE_WEBHOOK_SECRET` | Webhook の署名シークレット(whsec_…) |
+| `STRIPE_PRICE_GAME` | 「タイトル追加」の価格ID(月500円の定期支払い。数量=追加タイトル数) |
 | `SITE_URL` | サイトのURL(例:`https://taclog.gg`) |
 
 6. `assets/config.js` の `BILLING_ENABLED` を `true` にする
@@ -107,6 +108,9 @@ Supabase の **Authentication → Providers → Google** をオンにします�
 ```
 curl -H "Authorization: Bearer (CRON_SECRET)" "https://taclog-one.vercel.app/api/cron-monthly?force=1"
 ```
+
+### 9. ゲームタイトル
+Supabase の SQL Editor で `supabase/003_games.sql` を実行してください。1つ目のタイトルは無料、2つ目から1タイトル月500円(コーチ・組織プランは全タイトル込み)。録画の自動分析は今のところ VALORANT だけで、ほかは「準備中」と表示されます。
 
 ## 料金プランと制限
 

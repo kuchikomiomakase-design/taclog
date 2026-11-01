@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>TacLog</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=IBM+Plex+Mono:wght@500;600&family=Yomogi&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
 <link rel="stylesheet" href="/assets/style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="/assets/config.js"></script>
@@ -54,9 +54,15 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
 <header id="topbar"></header>
 <main id="main" class="wrap">
   <div id="status" class="notice" hidden></div>
+  <div class="gtabs" id="gameBar" style="align-items:center"></div>
 
   <!-- ANALYZE -->
   <div id="view-analyze" style="display:grid;gap:16px" hidden>
+    <section class="card" id="gameSoon" hidden>
+      <span class="eyebrow">Coming soon</span>
+      <h2><span id="gameSoonName"></span> の自動分析は準備中です</h2>
+      <p class="small muted">録画から自動で読み取る機能は、タイトルごとに順番に対応しています。使えるようになったらお知らせします。それまでは、上のタイトル切り替えで対応しているタイトルを選んでください。</p>
+    </section>
     <section class="card" id="folderCard">
       <div class="spread"><h2>新しい録画</h2><span class="small muted" id="folderName"></span></div>
       <div id="folderBody" style="display:grid;gap:10px"></div>
@@ -161,6 +167,13 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
       <div class="row" id="billingRow"></div>
     </section>
     <section class="card">
+      <div style="display:grid;gap:4px"><span class="eyebrow">Game titles</span><h2>ゲームタイトル</h2></div>
+      <p class="small muted">分析するゲームを選びます。1つ目は無料、2つ目からは1タイトルにつき月500円です(コーチ・組織プランは全タイトル込み)。外したタイトルの試合データは消えません。</p>
+      <div class="games" id="titleBox"></div>
+      <div class="row" id="titleActions"></div>
+      <span class="small" id="titleMsg" style="color:var(--accent)"></span>
+    </section>
+    <section class="card">
       <h2>メンバー</h2>
       <p class="small muted">メンバーはログインして、分析結果を見たりAIに質問したりできます。「配信する」をオンにした人は、OBSの設定をしておけば誰でも録画を分析できます。</p>
       <div id="members" style="display:grid;gap:8px"></div>
@@ -183,7 +196,7 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
     <section class="card">
       <h2>アカウント</h2>
       <p class="small muted" id="meMail"></p>
-      <div class="row"><button class="btn" type="button" id="logout">ログアウト</button><a class="btn ghost" href="/onboarding?step=3">初期設定をもう一度見る</a></div>
+      <div class="row"><button class="btn" type="button" id="logout">ログアウト</button><a class="btn ghost" href="/onboarding?step=4">初期設定をもう一度見る</a></div>
     </section>
   </div>
 </main>

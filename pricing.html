@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>料金プラン | TacLog</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=IBM+Plex+Mono:wght@500;600&family=Yomogi&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
 <link rel="stylesheet" href="/assets/style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="/assets/config.js"></script>
@@ -32,23 +32,28 @@
     <section class="card plan">
       <div><h2>無料</h2><p class="small muted">まずは試したいチームに</p></div>
       <div class="price"><b>0</b><span>円</span></div>
-      <ul><li>録画の分析 月2本まで</li><li>AIへの質問 月20回</li><li>直近2週間のデータ</li><li>メンバー3人まで</li><li>勝敗・攻守・設置・ファーストキルの記録</li></ul>
+      <ul><li>録画の分析 月2本まで</li><li>AIへの質問 月20回</li><li>直近2週間のデータ</li><li>メンバー3人まで</li><li>勝敗・攻守・設置・ファーストキルの記録</li><li>ゲームタイトル 1つ(追加は月500円)</li></ul>
       <a class="btn" href="/signup">無料ではじめる</a>
     </section>
     <section class="card plan best">
       <div><div class="row"><h2>チーム</h2><span class="pill">おすすめ</span></div><p class="small muted">毎週スクリムをするチームに</p></div>
       <div class="price"><b>1,980</b><span>円 / 月(税込)</span></div>
-      <ul><li>録画の分析 無制限</li><li>AIへの質問 月300回</li><li>全期間のデータ</li><li>メンバー無制限</li></ul>
+      <ul><li>録画の分析 無制限</li><li>AIへの質問 月300回</li><li>全期間のデータ</li><li>メンバー無制限</li><li>ゲームタイトル 1つ(追加は月500円)</li></ul>
       <a class="btn primary" href="/app#settings" data-plan="team">チームプランにする</a>
     </section>
     <section class="card plan">
       <div><h2>コーチ・組織</h2><p class="small muted">複数のチームを見るコーチや運営に</p></div>
       <div class="price"><b>4,980</b><span>円 / 月〜(税込)</span></div>
-      <ul><li>チームプランの内容すべて</li><li>AIへの質問 無制限</li><li>複数チームの管理</li><li>優先サポート</li></ul>
+      <ul><li>チームプランの内容すべて</li><li>AIへの質問 無制限</li><li><strong>全ゲームタイトル込み</strong></li><li>複数チームの管理</li><li>優先サポート</li></ul>
       <a class="btn" href="/app#settings" data-plan="org">コーチ・組織プランにする</a>
     </section>
   </div>
-  <p id="billingNote" class="notice" hidden>有料プランは現在準備中です。先行ユーザーとして登録したチームは、正式公開後3か月無料、その後もチームプランをずっと半額で使えます。</p>
+  <section class="card" style="gap:12px">
+    <div class="spread"><div style="display:grid;gap:4px"><span class="eyebrow">Add-on</span><h2>ゲームタイトルの追加</h2></div><div class="row" style="align-items:baseline;gap:4px"><b style="font:700 32px var(--f-mono)">+500</b><span>円 / 月 ・ 1タイトルごと(税込)</span></div></div>
+    <p class="small muted">最初に選んだ1タイトルは、どのプランでも無料です。2つ目からは1タイトルにつき月500円で、設定画面からいつでも追加・削除できます。コーチ・組織プランは全タイトル込みです。</p>
+    <div class="titles" id="ptitles" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+  </section>
+  <p id="billingNote" class="notice" hidden>有料プランとタイトルの追加は、現在準備中です。</p>
   <section class="card">
     <h2>よくある質問</h2>
     <div class="grid">
@@ -63,6 +68,7 @@
 <script>
 TL.header([{href:"/pricing",label:"料金"},{href:"/login",label:"ログイン"},{href:"/signup",label:"無料ではじめる"}]);
 TL.footer();
+TL.$("ptitles").append(...TL.GAMES.map(g=>TL.h("span",{class:"pill "+(g.ready?"win":"mute")},(g.short||g.name)+(g.ready?" ・ 対応":" ・ 準備中"))));
 if(!TL.C.BILLING_ENABLED){TL.$("billingNote").hidden=false;document.querySelectorAll("[data-plan]").forEach(a=>{a.textContent="準備中";a.removeAttribute("href");a.setAttribute("aria-disabled","true");a.style.opacity=".55";a.style.cursor="default"})}
 </script>
 </body>

@@ -14,20 +14,32 @@ async function notify(team, before, after) {
     ], timestamp: new Date().toISOString() }] } }).catch(() => {});
 }
 
-function planFromSub(sub) {
-  if (!sub || !["active", "trialing", "past_due"].includes(sub.status)) return "free";
-  const price = sub.items && sub.items.data && sub.items.data[0] && sub.items.data[0].price && sub.items.data[0].price.id;
-  if (price && price === env("STRIPE_PRICE_ORG")) return "org";
-  if (price && price === env("STRIPE_PRICE_TEAM")) return "team";
-  return "free";
+const VALID = ["valorant", "cs2", "ow2", "apex", "fortnite"];
+// One subscription can hold a plan item (team/org) and a title add-on item (quantity = extra titles).
+function readSub(sub) {
+  const live = sub && ["active", "trialing", "past_due"].includes(sub.status);
+  let plan = "free", extra = 0;
+  for (const it of (live && sub.items && sub.items.data) || []) {
+    const p = it.price && it.price.id;
+    if (p === env("STRIPE_PRICE_ORG")) plan = "org";
+    else if (p === env("STRIPE_PRICE_TEAM") && plan !== "org") plan = "team";
+    else if (p === env("STRIPE_PRICE_GAME")) extra = it.quantity || 0;
+  }
+  return { live, plan, extra };
 }
 async function applySub(sub) {
   const teamId = sub.metadata && sub.metadata.team_id;
-  const plan = planFromSub(sub);
+  const { live, plan, extra } = readSub(sub);
   const q = teamId && /^[0-9a-f-]{36}$/i.test(teamId) ? "teams?id=eq." + teamId : "teams?stripe_customer_id=eq." + encodeURIComponent(sub.customer);
-  const before = await rest(q.replace("teams?", "teams?select=name,plan&"), { service: true });
-  await rest(q, { method: "PATCH", service: true, body: { plan, stripe_subscription_id: plan === "free" ? null : sub.id } });
-  if (before && before[0]) await notify(before[0], before[0].plan, plan);
+  const before = await rest(q.replace("teams?", "teams?select=name,plan,games&"), { service: true });
+  const cur = before && before[0];
+  let games = cur ? cur.games || ["valorant"] : ["valorant"];
+  const wanted = String((sub.metadata && sub.metadata.games) || "").split(",").filter((g) => VALID.includes(g));
+  if (live && wanted.length) games = [...new Set(wanted)];
+  const allowed = plan === "org" ? 99 : 1 + extra;
+  games = games.slice(0, Math.max(1, allowed));
+  await rest(q, { method: "PATCH", service: true, body: { plan, extra_games: extra, games, stripe_subscription_id: live ? sub.id : null } });
+  if (cur) await notify(cur, cur.plan, plan);
 }
 
 module.exports = async (req, res) => {

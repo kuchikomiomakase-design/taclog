@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>はじめての設定 | TacLog</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=IBM+Plex+Mono:wght@500;600&family=Yomogi&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
 <link rel="stylesheet" href="/assets/style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="/assets/config.js"></script>
@@ -19,12 +19,21 @@
 <body>
 <header id="topbar"></header>
 <main id="main" class="wrap narrow">
-  <div style="--n:5;display:grid;gap:8px">
-    <div class="steps" id="bars"><span></span><span></span><span></span><span></span><span></span></div>
-    <div class="steplabels" id="labels"><span>チーム</span><span>Riot連携</span><span>OBSの設定</span><span>お知らせ</span><span>完了</span></div>
+  <div style="--n:6;display:grid;gap:8px">
+    <div class="steps" id="bars"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    <div class="steplabels" id="labels"><span>ゲーム</span><span>チーム</span><span>Riot連携</span><span>OBSの設定</span><span>お知らせ</span><span>完了</span></div>
   </div>
 
   <section class="card" data-step="1">
+    <span class="eyebrow">Step 1</span>
+    <h1>分析するゲームを選んでください</h1>
+    <p class="lead">チームでいちばん練習しているタイトルを1つ選んでください。最初の1タイトルは無料です。</p>
+    <div class="games" id="gamePick" role="radiogroup" aria-label="ゲームタイトル"></div>
+    <p class="small muted">2つ目からは、あとで設定画面の「ゲームタイトル」から追加できます(1タイトルにつき月${TL_ADDON}円)。「準備中」のタイトルは、録画の自動分析が使えるようになり次第お知らせします。それまでは試合の記録とAIへの質問だけ使えます。</p>
+    <div class="row"><button class="btn primary" type="button" id="gameNext" disabled>次へ</button></div>
+  </section>
+
+  <section class="card" data-step="2" hidden>
     <h1>チームを作りましょう</h1>
     <p class="lead">あとでメンバーを招待すると、全員で分析結果を見たりAIに質問したりできます。招待されて参加する方は、届いた招待リンクを開いてください。</p>
     <form id="teamForm" style="display:grid;gap:14px">
@@ -35,7 +44,7 @@
     <div id="teamMsg" hidden></div>
   </section>
 
-  <section class="card" data-step="2" hidden>
+  <section class="card" data-step="3" hidden>
     <h1>Riotアカウントとつなぐ</h1>
     <p class="lead">VALORANTの分析を使うには、Riotのルールにより、プレイヤー本人がRiotアカウントでログインして、データの利用に同意する必要があります。</p>
     <div class="notice" style="display:grid;gap:4px">
@@ -52,7 +61,7 @@
     <p class="small muted">Riot連携は、TacLogがRiotの審査で承認されたあとに使えるようになります。それまでは「あとでつなぐ」で進めてください。</p>
   </section>
 
-  <section class="card" data-step="3" hidden>
+  <section class="card" data-step="4" hidden>
     <h1>OBSの設定を変えてください</h1>
     <p class="lead">配信のやり方はそのままです。配信すると、パソコンにも録画が残るようになります。配信する人だけ設定すればOKです。</p>
     <ol class="obs">
@@ -73,7 +82,7 @@
     <p class="small muted" id="obsHint">「ここまで全部設定できた」にチェックして、録画フォルダを連携すると次へ進めます。</p>
   </section>
 
-  <section class="card" data-step="4" hidden>
+  <section class="card" data-step="5" hidden>
     <h1>お知らせを受け取りますか?</h1>
     <p class="lead">いらないものはチェックを外してください。あとから設定画面でいつでも変えられます。</p>
     <label class="check" for="nArrived"><input id="nArrived" type="checkbox" checked><span><strong>分析が保存されたらお知らせ</strong><span class="small muted">誰かが録画を分析したことが分かります</span></span></label>
@@ -82,7 +91,7 @@
     <div class="row"><button class="btn ghost" type="button" data-back>戻る</button><button class="btn primary" type="button" id="prefsSave">設定を終える</button></div>
   </section>
 
-  <section class="card" data-step="5" hidden>
+  <section class="card" data-step="6" hidden>
     <h1>準備できました</h1>
     <p class="lead">スクリムが終わったら、アプリの「録画を分析」から録画ファイルを選ぶだけです。</p>
     <div style="display:grid;gap:10px;padding:16px;border-radius:12px;border:1px solid var(--line)">
@@ -96,17 +105,22 @@
 <footer id="footer"></footer>
 <script>
 TL.header([]);TL.footer();
-let step=1,teamId=null;
+let step=1,teamId=null,game=null,hasValo=true;
+document.querySelectorAll("p").forEach(p=>{if(p.textContent.includes("${TL_ADDON}"))p.textContent=p.textContent.replace("${TL_ADDON}",TL.ADDON_YEN)});
+TL.$("gamePick").append(...TL.GAMES.map(g=>{const id="g_"+g.id;const inp=TL.h("input",{type:"radio",name:"game",id,value:g.id});
+  inp.onchange=()=>{game=g.id;hasValo=g.id==="valorant";TL.$("gameNext").disabled=false};
+  return TL.h("label",{class:"game",for:id,style:"--gc:"+g.color},inp,TL.h("span",{class:"gbar"}),TL.h("span",{class:"gname"},g.name),TL.h("span",{class:"gsub"},g.maker),TL.h("span",{class:"pill "+(g.ready?"win":"mute"),style:"justify-self:start"},g.ready?"自動分析に対応":"準備中"))}));
+TL.$("gameNext").onclick=()=>show(2);
 function show(n){step=n;document.querySelectorAll("[data-step]").forEach(s=>s.hidden=Number(s.dataset.step)!==n);
   document.querySelectorAll("#bars span").forEach((b,i)=>b.classList.toggle("on",i<n));
   document.querySelectorAll("#labels span").forEach((b,i)=>b.style.fontWeight=i===n-1?"700":"400");window.scrollTo(0,0)}
 document.querySelectorAll("[data-next]").forEach(b=>b.onclick=()=>show(step+1));
-document.querySelectorAll("[data-back]").forEach(b=>b.onclick=()=>show(Math.max(2,step-1)));
+document.querySelectorAll("[data-back]").forEach(b=>b.onclick=()=>{let n=step-1;if(n===3&&!hasValo)n=2;show(Math.max(3,n))});
 TL.$("agree").onchange=()=>{};
 let folderLinked=false;
 function obsGate(){const ok=TL.$("obsDone").checked&&(folderLinked||!TLFolder.supported);TL.$("obsNext").disabled=!ok;TL.$("obsHint").hidden=ok}
 TL.$("obsDone").onchange=obsGate;
-TL.$("viewerSkip").onclick=()=>show(4);
+TL.$("viewerSkip").onclick=()=>show(5);
 if(!TLFolder.supported){TL.$("linkFolder").disabled=true;TL.$("folderNote").hidden=false}
 TLFolder.handle().then(h=>{if(h){folderLinked=true;TL.$("folderState").textContent="連携ずみ:"+h.name;TL.$("linkFolder").textContent="フォルダを選び直す";obsGate()}});
 TL.$("linkFolder").onclick=async()=>{try{const h=await TLFolder.link();folderLinked=true;TL.$("folderState").textContent="連携しました:"+h.name;TL.$("linkFolder").textContent="フォルダを選び直す";obsGate()}catch(e){if(e&&e.name!=="AbortError")TL.$("folderState").textContent="連携できませんでした。もう一度試してください。"}};
@@ -116,17 +130,17 @@ TL.$("linkFolder").onclick=async()=>{try{const h=await TLFolder.link();folderLin
   const teams=await TL.myTeams();
   const qs=new URLSearchParams(location.search);
   if(teams.length&&!qs.get("step")){location.href="/app";return}
-  if(teams.length){teamId=TL.currentTeam(teams).id;show(Number(qs.get("step"))||2)}else show(1);
+  if(teams.length){const t=TL.currentTeam(teams);teamId=t.id;hasValo=(t.games||[]).includes("valorant");show(Number(qs.get("step"))||4)}else show(1);
 })();
 TL.$("teamForm").addEventListener("submit",async e=>{e.preventDefault();const b=e.target.querySelector("button");b.disabled=true;
-  const{data,error}=await TL.sb.rpc("create_team",{team_name:TL.$("teamName").value.trim(),my_name:TL.$("myName").value.trim()});
+  const{data,error}=await TL.sb.rpc("create_team",{team_name:TL.$("teamName").value.trim(),my_name:TL.$("myName").value.trim(),game:game||"valorant"});
   if(error){const m=TL.$("teamMsg");m.hidden=false;m.className="notice";m.textContent=TL.errText(error);b.disabled=false;return}
-  teamId=data;TL.setTeam(teamId);show(2)});
+  teamId=data;TL.setTeam(teamId);show(hasValo?3:4)});
 TL.$("prefsSave").onclick=async()=>{const b=TL.$("prefsSave");b.disabled=true;const s=await TL.session();
   await TL.sb.from("notification_prefs").upsert({team_id:teamId,user_id:s.user.id,arrived:TL.$("nArrived").checked,missing:TL.$("nMissing").checked,report:TL.$("nReport").checked});
   try{const{data}=await TL.sb.rpc("create_invite",{t:teamId});if(data)TL.$("inviteUrl").value=location.origin+"/invite?t="+data}catch(e){}
   if(!TL.$("inviteUrl").value)TL.$("inviteUrl").value="設定画面から招待リンクを作れます";
-  b.disabled=false;show(5)};
+  b.disabled=false;show(6)};
 TL.$("copyInvite").onclick=()=>{const v=TL.$("inviteUrl").value;navigator.clipboard.writeText(v).then(()=>TL.$("copyInvite").textContent="コピーしました").catch(()=>TL.$("inviteUrl").select())};
 </script>
 </body>

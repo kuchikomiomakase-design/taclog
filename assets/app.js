@@ -21,6 +21,26 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     if (v === "analyze" && APP.team) renderFolder();
   }
 
+  /* ---------- game titles ---------- */
+  function pickGame() {
+    let g = null; try { g = localStorage.getItem("taclog.game." + APP.team.id); } catch (e) {}
+    const list = APP.team.games && APP.team.games.length ? APP.team.games : ["valorant"];
+    APP.game = list.includes(g) ? g : list[0];
+  }
+  function renderGameBar() {
+    const bar = $("gameBar"), list = APP.team.games || ["valorant"];
+    bar.replaceChildren(h("span", { class: "eyebrow" }, "Title"),
+      ...list.map((id) => { const b = h("button", { type: "button", class: "gtab", "aria-pressed": id === APP.game ? "true" : "false" }, TL.gameName(id));
+        b.onclick = () => { APP.game = id; try { localStorage.setItem("taclog.game." + APP.team.id, id); } catch (e) {} renderGameBar(); loadMatches(); renderAnalyzeGate(); };
+        return b; }),
+      APP.team.role === "admin" ? h("a", { href: "#settings", class: "small", style: "margin-left:4px" }, "+ タイトルを追加") : null);
+  }
+  function renderAnalyzeGate() {
+    const g = TL.GAMES.find((x) => x.id === APP.game), ready = !g || g.ready;
+    $("gameSoon").hidden = ready; $("folderCard").hidden = !ready; $("manualBox").hidden = !ready;
+    if (!ready) $("gameSoonName").textContent = g.name;
+  }
+
   function renderHeader() {
     TL.header([{ href: "#analyze", label: "録画を分析" }, { href: "#channel", label: "チャンネル" }, { href: "#ask", label: "AIに質問" }, { href: "#matches", label: "試合一覧" }, { href: "#contact", label: "お問い合わせ" }, { href: "#settings", label: "設定" }]);
     updateBadge();
@@ -33,7 +53,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
 
   /* ---------- matches ---------- */
   async function loadMatches() {
-    const { data, error } = await sb.from("matches").select("*").eq("team_id", APP.team.id).order("date", { ascending: false }).order("created_at", { ascending: false });
+    const { data, error } = await sb.from("matches").select("*").eq("team_id", APP.team.id).eq("game", APP.game || "valorant").order("date", { ascending: false }).order("created_at", { ascending: false });
     if (error) { status(TL.errText(error)); return; }
     APP.matches = data || []; renderMatches(); renderChannel();
   }
@@ -189,7 +209,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
       const thread = $("thread"); if (thread.querySelector(".empty")) thread.replaceChildren();
       thread.append(h("div", { class: "bubble" }, q)); const box = h("div", { class: "answer" }, h("span", { class: "muted small" }, "考えています…")); thread.append(box);
       $("q").value = ""; $("askBtn").disabled = true;
-      try { const ans = await TL.api("/api/ask", { teamId: APP.team.id, question: q, history: chat.slice(-2) }); renderAnswer(box, ans || {}); chat.push({ q, a: String((ans && ans.answer) || "") }); }
+      try { const ans = await TL.api("/api/ask", { teamId: APP.team.id, game: APP.game, question: q, history: chat.slice(-2) }); renderAnswer(box, ans || {}); chat.push({ q, a: String((ans && ans.answer) || "") }); }
       catch (err) { box.replaceChildren(h("p", {}, TL.errText(err))); }
       finally { $("askBtn").disabled = false; }
     });
@@ -266,8 +286,50 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   let autoPaused = false;
 
   /* ---------- settings ---------- */
+  function renderTitles() {
+    const t = APP.team, isAdmin = t.role === "admin", allowed = t.plan === "org" ? 99 : 1 + (t.extra_games || 0);
+    const box = $("titleBox"), msg = $("titleMsg");
+    const chosen = new Set(t.games || ["valorant"]);
+    const extraNeeded = () => t.plan === "org" ? 0 : Math.max(0, chosen.size - 1);
+    const sum = h("p", { class: "small muted" });
+    const save = h("button", { class: "btn small primary", type: "button" }, "変更を保存");
+    const upd = () => {
+      const ex = extraNeeded(), changed = [...chosen].sort().join() !== [...(t.games || [])].sort().join();
+      sum.textContent = t.plan === "org" ? "コーチ・組織プランなので、全タイトル込みです。" :
+        "選択中:" + chosen.size + "タイトル(1つ目は無料" + (ex ? "、追加 " + ex + "タイトル × 月" + TL.ADDON_YEN + "円 = 月" + (ex * TL.ADDON_YEN).toLocaleString() + "円" : "") + ")";
+      save.disabled = !isAdmin || !changed || chosen.size < 1;
+      save.textContent = ex > (t.extra_games || 0) && t.plan !== "org" ? "支払いに進んで追加する" : "変更を保存";
+    };
+    box.replaceChildren(...TL.GAMES.map((g) => {
+      const id = "t_" + g.id, inp = h("input", { type: "checkbox", id }); inp.checked = chosen.has(g.id); inp.disabled = !isAdmin;
+      inp.onchange = () => { if (inp.checked) chosen.add(g.id); else chosen.delete(g.id); upd(); };
+      return h("label", { class: "game", for: id, style: "--gc:" + g.color }, inp, h("span", { class: "gbar" }), h("span", { class: "gname" }, g.name), h("span", { class: "gsub" }, g.maker), h("span", { class: "pill " + (g.ready ? "win" : "mute"), style: "justify-self:start" }, g.ready ? "自動分析に対応" : "準備中"));
+    }));
+    save.onclick = async () => {
+      save.disabled = true; msg.textContent = "";
+      const games = [...chosen];
+      try {
+        if (extraNeeded() <= (t.extra_games || 0) || t.plan === "org") {
+          // within what is paid for (or reducing): the server keeps billing in sync
+          const r = await TL.api("/api/games", { teamId: t.id, games });
+          if (r && r.url) { location.href = r.url; return; }
+        } else {
+          if (!TL.C.BILLING_ENABLED) throw new Error("タイトルの追加は準備中です。");
+          const r = await TL.api("/api/games", { teamId: t.id, games });
+          if (r && r.url) { location.href = r.url; return; }
+        }
+        t.games = games; pickGame(); renderGameBar(); loadMatches(); renderAnalyzeGate(); msg.textContent = "保存しました";
+      } catch (e) { msg.textContent = TL.errText(e); }
+      upd();
+    };
+    $("titleActions").replaceChildren(save, sum);
+    if (!isAdmin) $("titleActions").replaceChildren(h("p", { class: "small muted" }, "タイトルの変更は、チームの管理者だけができます。"));
+    upd();
+  }
+
   async function renderSettings() {
     const t = APP.team, isAdmin = t.role === "admin";
+    renderTitles();
     $("teamName").value = t.name; $("teamName").disabled = !isAdmin; $("saveTeam").hidden = !isAdmin;
     $("planName").textContent = PLAN_JA[t.plan] || t.plan;
     const mon = new Date().toISOString().slice(0, 7);
@@ -335,6 +397,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     renderHeader();
     $("mMap").append(...MAPS.map(([v, n]) => h("option", { value: v }, n)));
     const d = new Date(); $("mDate").value = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    pickGame(); renderGameBar(); renderAnalyzeGate();
     setupAsk(); setupContact();
     $("saveTeam").onclick = async () => { const { error } = await sb.from("teams").update({ name: $("teamName").value.trim() }).eq("id", APP.team.id); status(error ? TL.errText(error) : ""); if (!error) APP.team.name = $("teamName").value.trim(); };
     $("logout").onclick = async () => { await sb.auth.signOut(); location.href = "/"; };
