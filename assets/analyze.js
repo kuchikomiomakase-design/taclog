@@ -94,23 +94,61 @@ async function readSites(cells){
 function roundStartOf(r,samples,next){const it=samples.filter(x=>x.t>=r.start&&(next==null||x.t<next)&&typeof x.x==="number"&&x.x>30&&x.x<=100);return it.length?it[0].t-(100-it[0].x):null}
 // First kill without AI: each agent portrait in the top bar loses its detail when that player dies.
 // Measure the texture of the 10 portrait boxes and find the first moment either side drops below 5 alive.
-const SLOT_L=[0.2427,0.277,0.310,0.3458,0.3797],SLOT_R=[0.6208,0.6557,0.6896,0.7234,0.7573],ALIVE_EDGE=15.5;
-const slotCv=document.createElement("canvas");slotCv.width=32;slotCv.height=40;const slotX=slotCv.getContext("2d",{willReadFrequently:true});
-function slotAlive(cx){
+// The top bar (agent portraits) is read as one strip; each column gets a "detail" score. A dead player's portrait turns grey and flat.
+// Portrait positions and the alive/dead line are calibrated per video (resolution, stretched 4:3, HUD differences), falling back to 1080p defaults.
+const SX0=0.08,SX1=0.92,SY0=0.004,SY1=0.072,SW=700,SH=44;
+const stripCv=document.createElement("canvas");stripCv.width=SW;stripCv.height=SH;const stripX=stripCv.getContext("2d",{willReadFrequently:true});
+const DEF_L=[0.2427,0.277,0.310,0.3458,0.3797],DEF_R=[0.6208,0.6557,0.6896,0.7234,0.7573];
+const toCol=f=>Math.round((f-SX0)/(SX1-SX0)*SW);
+let SLOTS=null; // {cols:[10 column centers], hw, thr:[10]}
+function profile(){
   const W=video.videoWidth,H=video.videoHeight;
-  slotX.drawImage(video,W*(cx-0.011),H*0.014,W*0.022,H*0.042,0,0,32,40);
-  const d=slotX.getImageData(0,0,32,40).data,lum=new Float32Array(32*40);
+  stripX.drawImage(video,W*SX0,H*SY0,W*(SX1-SX0),H*(SY1-SY0),0,0,SW,SH);
+  const d=stripX.getImageData(0,0,SW,SH).data,lum=new Float32Array(SW*SH),out=new Float32Array(SW);
   for(let i=0;i<lum.length;i++)lum[i]=(d[i*4]+d[i*4+1]+d[i*4+2])/3;
-  let gx=0,gy=0;
-  for(let y=0;y<40;y++)for(let x=0;x<31;x++)gx+=Math.abs(lum[y*32+x+1]-lum[y*32+x]);
-  for(let y=0;y<39;y++)for(let x=0;x<32;x++)gy+=Math.abs(lum[(y+1)*32+x]-lum[y*32+x]);
-  return gx/(40*31)+gy/(39*32)>ALIVE_EDGE;
+  for(let y=0;y<SH-1;y++)for(let x=0;x<SW-1;x++){const i=y*SW+x;out[x]+=Math.abs(lum[i+1]-lum[i])+Math.abs(lum[i+SW]-lum[i])}
+  for(let x=0;x<SW;x++)out[x]/=SH;return out;
 }
-function aliveNow(){return[SLOT_L.filter(slotAlive).length,SLOT_R.filter(slotAlive).length]}
+const slotVal=(p,c,hw)=>{let s=0,n=0;for(let x=Math.max(0,c-hw);x<=Math.min(SW-1,c+hw);x++){s+=p[x];n++}return n?s/n:0};
+function defaultSlots(){return{cols:DEF_L.concat(DEF_R).map(toCol),hw:7,thr:null}}
+function withThr(sl,A,E){
+  const all=A.concat(E);
+  // alive/dead line per slot: halfway between "everyone alive" and the lowest values seen at round ends
+  let thr=sl.cols.map(c=>{const av=A.map(p=>slotVal(p,c,sl.hw)).sort((a,b)=>a-b),ev=all.map(p=>slotVal(p,c,sl.hw)).sort((a,b)=>a-b);
+    if(!av.length)return null;const hi=av[Math.floor(av.length/2)],lo=ev[Math.floor(ev.length*0.1)];return hi-lo>hi*0.18?(hi+lo)/2:null});
+  const known=thr.filter(x=>x!=null);const fb=known.length?known.reduce((a,b)=>a+b)/known.length:null;
+  return{...sl,thr:thr.map(x=>x!=null?x:fb)};
+}
+// how well a slot layout works: share of "everyone alive" frames read as 5v5, and of round-end frames with someone dead
+function score(sl,A,E){if(!sl.thr||sl.thr[0]==null)return 0;const cnt=p=>{const r=[0,0];sl.cols.forEach((c,i)=>{if(slotVal(p,c,sl.hw)>sl.thr[i])r[i<5?0:1]++});return r};
+  const a=A.filter(p=>{const r=cnt(p);return r[0]===5&&r[1]===5}).length/Math.max(1,A.length),e=E.filter(p=>{const r=cnt(p);return r[0]<5||r[1]<5}).length/Math.max(1,E.length);return a*0.7+e*0.3}
+async function calibrate(aliveTimes,endTimes){
+  const P=async ts=>{const out=[];for(const t of ts){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);out.push(profile())}return out};
+  const A=await P(aliveTimes),E=await P(endTimes);
+  let best=withThr(defaultSlots(),A,E),bs=score(best,A,E);
+  if(bs<0.9&&A.length>=3&&E.length>=3){  // the usual 1080p layout does not fit well (other resolution / stretched 4:3 / HUD scale): try wider and narrower layouts
+    for(let k=0.8;k<=1.6;k+=0.025){
+      const fr=DEF_L.concat(DEF_R).map(f=>0.5+(f-0.5)*k);if(fr[0]<SX0+0.005||fr[9]>SX1-0.005)continue;
+      const c=withThr({cols:fr.map(toCol),hw:Math.max(4,Math.round(7*k)),k,auto:true},A,E),cs=score(c,A,E);
+      if(cs>bs+0.02){best=c;bs=cs}
+    }
+  }
+  best.score=bs;SLOTS=best;return best;
+}
+function aliveNow(){
+  const sl=SLOTS||defaultSlots(),p=profile(),r=[0,0];
+  sl.cols.forEach((c,i)=>{const v=slotVal(p,c,sl.hw),thr=sl.thr&&sl.thr[i]!=null?sl.thr[i]:null;if(thr==null?false:v>thr)r[i<5?0:1]++});
+  return r;
+}
 async function readFirstKills(segs,samples){
   const jobs=[];
   segs.forEach((rs,si)=>rs.forEach((r,ri)=>{const next=rs[ri+1]?rs[ri+1].start:null;const st=roundStartOf(r,samples,next);if(st==null)return;
     jobs.push({si,ri,st,end:Math.min(st+75,r.plantAt!=null?r.plantAt+40:Infinity,next??Infinity,duration-0.3)})}));
+  if(!jobs.length)return;
+  prog(0.95,"ファーストキルの読み取りを準備しています…");
+  const aliveT=jobs.slice(0,14).map(j=>j.st+3),endT=samples.filter(x=>x.x==="E").map(x=>x.t).slice(0,14);
+  if(endT.length<3)jobs.slice(0,14).forEach(j=>endT.push(Math.max(j.st+3,j.end-2)));
+  await calibrate(aliveT,endT);
   let done=0;
   for(const j of jobs){
     prog(0.95,"ファーストキルを読み取っています… ("+(++done)+"/"+jobs.length+"ラウンド)");
@@ -270,6 +308,7 @@ function showResult(){
       h("tbody",{},rs.map(r=>h("tr",{},h("td",{class:"num"},r.n),h("td",{},sideJa(r.side)),h("td",{},r.win==null?h("span",{class:"pill mute"},"?"):r.win?h("span",{class:"pill win"},"勝ち"):h("span",{class:"pill loss"},"負け")),
         h("td",{},(r.fk==="us"?"自チーム":r.fk==="them"?"相手":r.fk==="tie"?"同時":"—")+(r.fkBy?":"+r.fkBy:"")),h("td",{},r.planted?(r.side==="attack"?"自チームが設置":"相手が設置"):"—"),h("td",{},r.site||"—"),h("td",{class:"num"},r.plant!=null?mmss(r.plant):"—"),h("td",{class:"num"},fmt(r.plantAt??r.start))))))));
   });
+  if(R.segs.every(rs=>rs.every(r=>!r.fk)))box.append(h("div",{class:"notice"},"この録画ではファーストキルを読み取れませんでした。画面上の顔アイコン(生存状況)の位置がいつもと違う可能性があります。試合中の画面のスクリーンショットを1枚お問い合わせから送ってください。"));
   if(R.segs.length>1)box.append(h("p",{class:"small muted",style:"margin:0"},"途中でスコアが0-0に戻ったので、別のマップとして分けました。2つ目以降のマップ名は、保存後に試合一覧で設定してください。"));
   box.append(h("p",{class:"small muted",style:"margin:0"},"設置時の残り時間は、読み取り間隔の半分くらいの誤差があります。ファーストキルは生存人数の変化から1秒単位で判定し、その瞬間のキルログから取った人を読んでいます。"+(R.starts&&R.starts.every(x=>x.auto)?" 攻守は画面の表示から自動で判定しました。":" 攻守を自動で判定できなかったマップは、手順2で選んだ「最初の攻守」を使っています。")));
   const save=h("button",{type:"button",class:"btn primary"},"この結果を保存する");
