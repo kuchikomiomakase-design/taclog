@@ -34,13 +34,25 @@
     el.className = "topbar";
     const nav = h("nav", { class: "nav", "aria-label": "メニュー" });
     (links || []).forEach((l) => nav.append(h("a", { href: l.href, "aria-current": location.pathname.replace(/\/$/, "") === l.href.replace(/\/$/, "") ? "page" : false }, l.label)));
-    const logo = h("a", { class: "logo", href: "/" }); logo.innerHTML = LOGO + "<span>TacLog</span>";
+    const en = document.documentElement.lang === "en";
+    const logo = h("a", { class: "logo", href: en ? "/en" : "/" }); logo.innerHTML = LOGO + "<span>TacLog</span>";
+    // language switch on public pages that have both versions
+    const p = location.pathname.replace(/\.html$/, "").replace(/\/$/, "") || "/";
+    const JA2EN = { "/": "/en", "/pricing": "/en/pricing", "/guide-obs": "/en/guide", "/guide-rec": "/en/guide", "/legal/terms": "/en/legal", "/legal/privacy": "/en/legal", "/legal/tokushoho": "/en/legal", "/gear": "/en" };
+    const EN2JA = { "/en": "/", "/en/index": "/", "/en/pricing": "/pricing", "/en/guide": "/guide-obs", "/en/legal": "/legal/terms" };
+    const other = en ? EN2JA[p] : JA2EN[p];
+    if (other) nav.append(h("a", { href: other, class: "lang", lang: en ? "ja" : "en", hreflang: en ? "ja" : "en" }, en ? "日本語" : "EN"));
     el.replaceChildren(logo, nav);
   }
 
   function footer() {
     const el = $("footer"); if (!el) return;
     el.className = "site";
+    if (document.documentElement.lang === "en") {
+      el.innerHTML = '<span><a href="/en/legal">Terms &amp; privacy</a> ・ <a href="/en/pricing">Pricing</a> ・ <a href="/en/guide">Setup guide</a> ・ <a href="mailto:support@taclog.app">Contact</a> ・ <a href="/">日本語</a></span>' +
+        "<span>TacLog isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc. Other game names are trademarks of their respective owners (Valve, Blizzard Entertainment, Electronic Arts, Epic Games).</span>";
+      return;
+    }
     el.innerHTML = '<span><a href="/legal/terms">利用規約</a> ・ <a href="/legal/privacy">プライバシーポリシー</a> ・ <a href="/legal/tokushoho">特定商取引法に基づく表記</a> ・ <a href="/pricing">料金</a> ・ <a href="/gear">おすすめ機材</a> ・ <a href="/app#contact">お問い合わせ</a></span>' +
       "<span>TacLogは非公式のファンメイドツールで、各ゲームの開発・運営会社(Riot Games、Valve、Blizzard Entertainment、Electronic Arts、Epic Gamesなど)が承認・後援するものではありません。VALORANTはRiot Games, Inc.の、その他のゲーム名はそれぞれの権利者の商標または登録商標です。</span>";
   }

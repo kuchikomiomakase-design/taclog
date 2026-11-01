@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>TacLog — VALORANT scrim analysis tool: rounds recorded automatically from your recordings</title>
+<meta name="description" content="Load your scrim recording and TacLog records every round: result, attack/defense, first kill, spike plant time and site. Then ask the AI questions like “What is our attack win rate on Ascent?”. Free to start.">
+<link rel="canonical" href="https://taclog.app/en">
+<link rel="alternate" hreflang="en" href="https://taclog.app/en">
+<link rel="alternate" hreflang="ja" href="https://taclog.app/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TacLog">
+<meta property="og:title" content="TacLog — VALORANT scrim analysis tool: rounds recorded automatically from your recordings">
+<meta property="og:description" content="Load your scrim recording and TacLog records every round: result, attack/defense, first kill, spike plant time and site. Then ask the AI questions like “What is our attack win rate on Ascent?”. Free to start.">
+<meta property="og:url" content="https://taclog.app/en">
+<meta property="og:image" content="https://taclog.app/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="/assets/config.js"></script>
+<script src="/assets/common.js"></script>
+<script src="/assets/ads.js"></script>
+<style>
+.hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:44px;align-items:center;padding-block:36px 8px}
+.hero h1{font-size:clamp(28px,4.4vw,46px);line-height:1.28}
+.hero h1 .nw{white-space:nowrap}
+.hero .lead{font-size:16.5px}
+.report{position:relative;padding:20px 22px 18px;background:linear-gradient(180deg,rgba(28,34,48,.95),rgba(18,23,34,.95));border:1px solid var(--line2);
+  clip-path:polygon(0 0,calc(100% - 22px) 0,100% 22px,100% 100%,22px 100%,0 calc(100% - 22px));box-shadow:0 30px 80px rgba(0,0,0,.45)}
+.report::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.02) 0 1px,transparent 1px 3px);pointer-events:none}
+.report .top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.report .lbl{font:600 11px var(--f-mono);letter-spacing:.2em;color:var(--data)}
+.report .title{font:700 16px var(--f-body);margin-top:2px}
+.score{display:flex;align-items:baseline;gap:10px;font:700 40px/1 var(--f-mono)}
+.score .w{color:var(--win)} .score .l{color:var(--loss)} .score .vs{font-size:16px;color:var(--muted)}
+.strip{display:grid;grid-template-columns:repeat(12,minmax(0,1fr)) 12px repeat(12,minmax(0,1fr));gap:3px}
+.strip .r{display:grid;gap:4px;justify-items:center}
+.strip .sq{width:100%;height:22px;transform:skewX(-12deg)}
+.strip .W{background:var(--win);box-shadow:0 0 8px rgba(67,209,138,.35)} .strip .L{background:var(--loss);opacity:.85}
+.strip .fk{width:6px;height:6px;transform:rotate(45deg)}
+.strip .fk.us{background:var(--accent)} .strip .fk.them{border:1.5px solid var(--muted);box-sizing:border-box}
+.strip .n{font:600 9px var(--f-mono);color:var(--muted)}
+.strip .gap{border-left:1px dashed var(--line2);margin:0 5px}
+.callouts{position:relative;height:52px}
+.callout{position:absolute;bottom:4px;font:600 12px var(--f-mono);letter-spacing:.03em;padding:3px 8px;white-space:nowrap;border-left:2px solid currentColor;background:rgba(14,17,23,.75)}
+.callout.good{color:var(--data)} .callout.bad{color:var(--loss)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:12px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:16px}
+.kpis div{padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid var(--line);display:grid;gap:2px}
+.kpis .k{font:600 11px var(--f-mono);letter-spacing:.12em;color:var(--muted)} .kpis .v{font:700 26px/1.1 var(--f-mono);color:var(--ink)} .kpis .s{font:500 12px var(--f-mono);color:var(--muted)}
+.ex{position:absolute;right:30px;top:20px}
+.titles{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ttl{display:inline-flex;align-items:center;gap:8px;font:700 13px var(--f-body);padding:7px 14px 7px 12px;background:var(--raise);border:1px solid var(--line);clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%)}
+.ttl i{width:8px;height:8px;background:var(--c);transform:rotate(45deg)}
+.ttl .st{font:600 11px var(--f-mono);letter-spacing:.06em;color:var(--muted)}
+.ttl.on .st{color:var(--win)}
+.qa{display:grid;border-top:2px solid var(--accent)}
+.qa .row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;padding:16px 4px;border-bottom:1px solid var(--line);align-items:baseline}
+.qa .q{font-weight:700;font-size:16px}
+.qa .a{font:500 14px var(--f-mono);color:var(--ink2)}
+.qa .a b{color:var(--data);font-weight:700;font-size:16px}
+.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.flow .st{padding:18px 18px 16px 30px;display:grid;gap:6px;background:var(--surface);border:1px solid var(--line);clip-path:polygon(0 0,calc(100% - 14px) 0,100% 50%,calc(100% - 14px) 100%,0 100%,14px 50%)}
+.flow .st:first-child{padding-left:18px;clip-path:polygon(0 0,calc(100% - 14px) 0,100% 50%,calc(100% - 14px) 100%,0 100%)}
+.flow .who{font:600 11px var(--f-mono);letter-spacing:.16em;color:var(--muted)}
+.flow .st b{font-size:15.5px}
+.flow .st.auto{background:linear-gradient(160deg,rgba(79,216,240,.12),var(--surface))}
+.flow .st.auto .who{color:var(--data)}
+.promise{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px}
+.promise div{display:grid;gap:6px;padding-top:14px;border-top:2px solid var(--line2)}
+.promise b{font-size:16px}
+.end{display:grid;gap:16px;justify-items:start;padding:36px 32px;background:linear-gradient(120deg,rgba(255,194,61,.14),rgba(79,216,240,.06));border:1px solid var(--line2);clip-path:polygon(0 0,calc(100% - 26px) 0,100% 26px,100% 100%,26px 100%,0 calc(100% - 26px))}
+.end h2{font-family:var(--f-display);font-weight:400;font-size:clamp(24px,4.5vw,34px);word-break:keep-all;overflow-wrap:anywhere}
+@media (max-width:880px){.hero{grid-template-columns:1fr}.qa .row2{grid-template-columns:1fr;gap:4px}.promise{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.flow .st,.flow .st:first-child{clip-path:none;padding-left:18px}}
+@media (max-width:480px){.callouts{display:none}.flow{grid-template-columns:1fr}.kpis .v{font-size:22px}.end{padding:26px 20px}}
+</style>
+</head>
+<body>
+<header id="topbar"></header>
+<main id="main" class="wrap" style="max-width:1100px;gap:64px">
+  <section class="hero">
+    <div style="display:grid;gap:22px">
+      <span class="eyebrow">Scrim Analytics for Teams</span>
+      <h1>Talk about <span class="mark">why you lost</span> with numbers.</h1>
+      <p class="lead">Just load the recording of your stream. Every round's result, first kill, and spike plant time and site are saved. Then ask the AI: “What percentage of attack rounds do we win on Ascent?”</p>
+      <div class="row"><a class="btn primary" href="/signup">Start free</a><a class="btn" href="/en/pricing">See pricing</a></div>
+      <p class="small muted" style="margin:0">The app screens are currently in Japanese. English screens are coming; AI questions can already be asked in English.</p>
+      <div class="titles" id="titles" aria-label="Supported games"></div>
+    </div>
+    <figure class="report" style="margin:0" aria-label="Sample match report: 13-11 on Ascent, round results and first kills">
+      <div class="top">
+        <div><div class="row" style="gap:8px"><span class="tape" style="font-size:10px;padding:2px 10px">SAMPLE</span><span class="lbl">MATCH REPORT ・ VALORANT</span></div><div class="title">Oct 28 scrim ・ Ascent</div></div>
+        <div class="score"><span class="w">13</span><span class="vs">VS</span><span class="l">11</span></div>
+      </div>
+      <div class="callouts" aria-hidden="true">
+        <span class="callout good" style="left:0">PISTOL WIN</span>
+        <span class="callout bad" style="left:22%">R6–9 4 LOSSES / B RETAKE</span>
+      </div>
+      <div class="strip" id="strip"></div>
+      <div class="legend"><span><i style="width:7px;height:7px;background:var(--accent);transform:rotate(45deg);display:inline-block"></i>First kill taken</span><span><i style="width:7px;height:7px;border:1.5px solid var(--muted);transform:rotate(45deg);display:inline-block;box-sizing:border-box"></i>First kill lost</span><span><i style="width:10px;height:10px;background:var(--win);display:inline-block"></i>Win</span><span><i style="width:10px;height:10px;background:var(--loss);display:inline-block"></i>Loss</span></div>
+      <div class="kpis">
+        <div><span class="k">ATK 1ST HALF</span><span class="v">58%</span><span class="s">7 / 12</span></div>
+        <div><span class="k">DEF 2ND HALF</span><span class="v">50%</span><span class="s">6 / 12</span></div>
+        <div><span class="k">FIRST KILL</span><span class="v" style="color:var(--accent)">67%</span><span class="s">16 / 24</span></div>
+      </div>
+    </figure>
+  </section>
+
+  <section style="display:grid;gap:18px">
+    <div style="display:grid;gap:6px"><span class="eyebrow">Ask anything</span><h2>The questions that come up in every review</h2><p class="muted small">Just ask, and TacLog counts it from your saved matches (the numbers below are examples).</p></div>
+    <div class="qa">
+      <div class="row2"><span class="q">What is our pistol round win rate?</span><span class="a">Rounds 1 and 13 → <b>9 / 16</b> (56%)</span></div>
+      <div class="row2"><span class="q">What is our first kill rate?</span><span class="a">Last 8 scrims → <b>98 / 181</b> (54%)</span></div>
+      <div class="row2"><span class="q">How often do we win rounds after getting the first kill?</span><span class="a">Taken <b>71%</b> / Lost <b>32%</b></span></div>
+      <div class="row2"><span class="q">This week on Ascent, how many attack rounds did we win?</span><span class="a">3 matches → <b>22 / 34</b> (65%)</span></div>
+    </div>
+  </section>
+
+  <section style="display:grid;gap:18px">
+    <div style="display:grid;gap:6px"><span class="eyebrow">How it works</span><h2>All you do is stream (or record) as usual</h2><p class="muted small">Change a few recording settings once, and TacLog does the rest.</p></div>
+    <div class="flow">
+      <div class="st"><span class="who">YOU</span><b>Play and record</b><span class="small muted">OBS, NVIDIA, AMD or Windows Game Bar</span></div>
+      <div class="st auto"><span class="who">TACLOG</span><b>Finds and reads the recording</b><span class="small muted">With TacLog open, new recordings are analyzed automatically</span></div>
+      <div class="st auto"><span class="who">TACLOG</span><b>Saves the rounds, deletes the video</b><span class="small muted">No disk space wasted (optional)</span></div>
+      <div class="st"><span class="who">TEAM</span><b>Check results, ask the AI</b><span class="small muted">From a phone too</span></div>
+    </div>
+  </section>
+
+  <section class="promise">
+    <div><b>Recordings are never uploaded</b><span class="small muted">The video is read inside your own PC. Only the resulting numbers are saved.</span></div>
+    <div><b>For reviewing your own team only</b><span class="small muted">There is no way to look up other teams. Safe to use with your scrim partners.</span></div>
+    <div><b>Priced per team</b><span class="small muted">Start free. For weekly scrims, 2,480 JPY/month for the whole team.</span></div>
+  </section>
+
+  <section class="end">
+    <span class="eyebrow">Ready?</span>
+    <h2>Start recording your scrims from the next one.</h2>
+    <a class="btn primary" href="/signup">Start free</a>
+  </section>
+  <div class="wrap" style="padding:0"><div id="adWide" hidden></div></div>
+</main>
+<footer id="footer"></footer>
+<script>TLAds.rail();TLAds.wide(document.getElementById("adWide"));
+TL.header([{href:"/en/pricing",label:"Pricing"},{href:"/en/guide",label:"Setup guide"},{href:"/login",label:"Log in"},{href:"/signup",label:"Start free"}]);TL.footer();
+TL.session().then(s=>{if(s){const n=document.querySelector(".nav");n.replaceChildren(TL.h("a",{href:"/app"},"Open app"))}});
+TL.$("titles").append(...TL.GAMES.map(g=>TL.h("span",{class:"ttl"+(g.ready?" on":""),style:"--c:"+g.color},TL.h("i",{}),g.short||g.name,TL.h("span",{class:"st"},g.ready?"Supported":"Coming soon"))));
+const R="WWLWWLLLLWWW|WLWLLWLWLLWW".split(""),F="uutuutttuuuu|uututtutuuuu".split("");
+const strip=TL.$("strip");let n=0;
+R.forEach((r,i)=>{if(r==="|"){strip.append(TL.h("span",{class:"gap","aria-hidden":"true"}));return}n++;
+  strip.append(TL.h("div",{class:"r"},TL.h("span",{class:"sq "+r,title:"Round "+n+" "+(r==="W"?"win":"loss")}),TL.h("span",{class:"fk "+(F[i]==="u"?"us":"them")}),TL.h("span",{class:"n"},String(n))))});
+</script>
+</body>
+</html>

@@ -122,3 +122,4 @@ footer.site a{color:var(--ink2)}
 .adwidebox{display:grid;justify-items:center;gap:6px;padding:10px 0}.adwidebox .adpr{justify-self:center}
 .adwide{position:relative;display:block;max-width:100%}.adwide img{display:block;max-width:100%;height:auto}
 @media print{.adwidebox{display:none!important}}
+.nav a.lang{font:700 12px var(--f-mono);letter-spacing:.06em;border:1px solid var(--line2);border-radius:999px;padding:3px 10px}

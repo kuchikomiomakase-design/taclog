@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Setup guide: record your scrims for TacLog (OBS, NVIDIA, AMD, Windows Game Bar)</title>
+<meta name="description" content="How to record VALORANT scrims for TacLog with OBS, NVIDIA App, AMD Software or Windows Game Bar, and how to link the recording folder.">
+<link rel="canonical" href="https://taclog.app/en/guide">
+<link rel="alternate" hreflang="en" href="https://taclog.app/en/guide">
+<link rel="alternate" hreflang="ja" href="https://taclog.app/guide">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TacLog">
+<meta property="og:title" content="Setup guide: record your scrims for TacLog (OBS, NVIDIA, AMD, Windows Game Bar)">
+<meta property="og:description" content="How to record VALORANT scrims for TacLog with OBS, NVIDIA App, AMD Software or Windows Game Bar, and how to link the recording folder.">
+<meta property="og:url" content="https://taclog.app/en/guide">
+<meta property="og:image" content="https://taclog.app/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="/assets/config.js"></script>
+<script src="/assets/common.js"></script>
+<script src="/assets/ads.js"></script>
+<style>
+.toc{display:flex;flex-wrap:wrap;gap:8px}.toc a{padding:6px 12px;border:1px solid var(--line2);border-radius:999px;font-size:13px;text-decoration:none;color:var(--ink)}
+.sec{display:grid;gap:12px}.sec h2{margin:0;font:700 20px var(--f-display)}
+.steps2{margin:0;padding:0;list-style:none;display:grid;gap:10px;counter-reset:s}
+.steps2 li{display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start;counter-increment:s}
+.steps2 li::before{content:counter(s);display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font:700 15px var(--f-display)}
+kbd{display:inline-block;padding:1px 7px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;background:var(--raise);font:600 12px var(--f-mono);color:var(--ink)}
+.path{font:600 13px var(--f-mono);color:var(--data)}
+.tip{padding:10px 14px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0;font-size:14px}
+</style>
+</head>
+<body>
+<header id="topbar"></header>
+<main id="main" class="wrap narrow" style="display:grid;gap:18px">
+  <div style="display:grid;gap:10px">
+    <h1 style="margin:0">Setup guide</h1>
+    <p class="lead" style="margin:0">TacLog reads the recordings in one folder on your PC. All you set up is: <strong>save recordings to a “TacLog” folder</strong>, then link that folder once.</p>
+    <nav class="toc" aria-label="Contents"><a href="#folder">1. Folder</a><a href="#obs">OBS</a><a href="#nvidia">NVIDIA</a><a href="#amd">AMD</a><a href="#gamebar">Windows Game Bar</a><a href="#link">Link the folder</a></nav>
+    <p class="small muted" style="margin:0">Menu names may differ slightly between versions. A Japanese version with illustrations: <a href="/guide-obs">OBS</a> / <a href="/guide-rec">other recorders</a>.</p>
+  </div>
+  <section class="card sec" id="folder"><h2>1. Create a “TacLog” folder</h2>
+    <ol class="steps2"><li><div>Open File Explorer and go to <strong>Videos</strong></div></li><li><div>Right-click → New → Folder, and name it <strong>TacLog</strong> (<span class="path">C:\Users\(you)\Videos\TacLog</span>)</div></li></ol>
+    <p class="tip">Use a dedicated folder: TacLog can delete recordings automatically after analysis.</p></section>
+  <section class="card sec" id="obs"><h2>OBS (if you stream)</h2>
+    <ol class="steps2">
+      <li><div>Settings → <strong>General</strong> → check <strong>“Automatically record when streaming”</strong></div></li>
+      <li><div>Settings → <strong>Output</strong> → set <strong>Recording Path</strong> to the TacLog folder, and <strong>Recording Quality</strong> to “Same as stream”</div></li>
+      <li><div>Settings → <strong>Advanced</strong> → check <strong>“Automatically remux to mp4”</strong> (or choose MP4 / Hybrid MP4 as the recording format)</div></li>
+    </ol></section>
+  <section class="card sec" id="nvidia"><h2>NVIDIA (NVIDIA App / GeForce Experience)</h2>
+    <ol class="steps2">
+      <li><div>Press <kbd>Alt</kbd> + <kbd>Z</kbd> → Settings → <strong>Recording</strong> (Capture / Videos)</div></li>
+      <li><div>Change the <strong>save location</strong> to the TacLog folder</div></li>
+      <li><div>Press <kbd>Alt</kbd> + <kbd>F9</kbd> to start recording before the scrim, and again to stop</div></li>
+    </ol><p class="tip">Instant Replay keeps only the last few minutes. Use normal recording for the whole scrim. Recordings go into a per-game subfolder; TacLog looks inside it.</p></section>
+  <section class="card sec" id="amd"><h2>AMD (AMD Software: Adrenalin Edition)</h2>
+    <ol class="steps2">
+      <li><div>Press <kbd>Alt</kbd> + <kbd>R</kbd> → Settings (gear) → <strong>Record &amp; Stream</strong></div></li>
+      <li><div>Set the <strong>recording save location</strong> to the TacLog folder</div></li>
+      <li><div>Press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd> to start and stop recording</div></li>
+    </ol></section>
+  <section class="card sec" id="gamebar"><h2>Windows Game Bar</h2>
+    <ol class="steps2">
+      <li><div>Windows Settings → <strong>Gaming</strong> → <strong>Captures</strong> → set the maximum recording length to <strong>4 hours</strong></div></li>
+      <li><div>Recordings are saved to <span class="path">Videos\Captures</span>. Link that <strong>Captures</strong> folder in TacLog</div></li>
+      <li><div>Press <kbd>Win</kbd> + <kbd>Alt</kbd> + <kbd>R</kbd> to start and stop recording</div></li>
+    </ol><p class="tip">Captures also contains other games' clips. TacLog skips non-VALORANT videos, but if you turn on auto-delete, move videos you want to keep elsewhere.</p></section>
+  <section class="card sec" id="link"><h2>Link the folder in TacLog</h2>
+    <ol class="steps2">
+      <li><div>Open <a href="/app">TacLog</a> in <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> on your PC</div></li>
+      <li><div>Press the button to link the recording folder (録画フォルダを連携する) and choose the TacLog folder</div></li>
+      <li><div>Allow access when the browser asks (it may ask twice)</div></li>
+      <li><div>After a scrim, open TacLog: new recordings are found and analyzed automatically. Keep the page open while it works</div></li>
+    </ol>
+    <p class="small muted" style="margin:0">MP4 recordings work as they are. Recordings are never uploaded.</p></section>
+</main>
+<footer id="footer"></footer>
+<script>TL.header([{href:"/en/pricing",label:"Pricing"},{href:"/en/guide",label:"Setup guide"},{href:"/login",label:"Log in"},{href:"/signup",label:"Start free"}]);TL.footer();</script>
+</body>
+</html>
