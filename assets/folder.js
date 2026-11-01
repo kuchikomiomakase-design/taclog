@@ -45,6 +45,11 @@ window.TLFolder = (function () {
   async function doneList() { return (await get("done")) || []; }
   async function isDone(teamId, v) { return (await doneList()).includes(key(teamId, v)); }
   async function markDone(teamId, v) { const d = await doneList(); d.push(key(teamId, v)); await set("done", d.slice(-1000)); }
+  // recordings that could not be analyzed (not VALORANT, no rounds…): not retried automatically, so AI is not paid for again and again
+  async function failedMap() { return (await get("failed")) || {}; }
+  async function failedReason(teamId, v) { return (await failedMap())[key(teamId, v)] || null; }
+  async function markFailed(teamId, v, reason) { const m = await failedMap(); m[key(teamId, v)] = String(reason || "分析できませんでした"); const ks = Object.keys(m); if (ks.length > 300) delete m[ks[0]]; await set("failed", m); }
+  async function unmarkFailed(teamId, v) { const m = await failedMap(); delete m[key(teamId, v)]; await set("failed", m); }
   async function unmarkDone(teamId, v) { const k = key(teamId, v); await set("done", (await doneList()).filter((x) => x !== k)); }
   // forget every "analyzed" mark for a file name (used when its match is deleted, so the same recording can be analyzed again)
   async function unmarkByFile(teamId, fileName) {
@@ -57,5 +62,5 @@ window.TLFolder = (function () {
   async function getAuto() { const v = await get("autoAnalyze"); return v === undefined ? true : !!v; } // on by default
   async function setAuto(v) { await set("autoAnalyze", !!v); }
 
-  return { supported, link, unlink, handle, permission, videos, isDone, markDone, unmarkDone, unmarkByFile, remove, getDeleteAfter, setDeleteAfter, getAuto, setAuto };
+  return { supported, link, unlink, handle, permission, videos, isDone, markDone, unmarkDone, unmarkByFile, failedReason, markFailed, unmarkFailed, remove, getDeleteAfter, setDeleteAfter, getAuto, setAuto };
 })();

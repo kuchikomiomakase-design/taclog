@@ -183,14 +183,26 @@ function buildRounds(samples,start){
   });
   return Object.values(segs).map(rs=>{const m=new Map();rs.forEach(r=>{if(!m.has(r.n)||m.get(r.n).win==null)m.set(r.n,r)});return[...m.values()].sort((a,b)=>a.n-b.n)});
 }
+// Cheap check before the real analysis: 6 small frames in one image, asked once. Stops non-VALORANT videos before spending more.
+async function isValorant(){
+  const cv=document.createElement("canvas");cv.width=960;cv.height=360;const x=cv.getContext("2d");
+  const ts=[0.12,0.27,0.42,0.57,0.72,0.87];
+  for(let i=0;i<6;i++){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(duration*ts[i]);x.drawImage(video,(i%3)*320,Math.floor(i/3)*180,320,180)}
+  const blob=await new Promise(r=>cv.toBlob(r,"image/jpeg",0.7));
+  try{const r=await SAMPLE.json("These are 6 frames taken from one video. Is this video VALORANT gameplay (the Riot Games tactical shooter: HUD with team scores and round timer at the top center, minimap at top left)? Menus, agent select or the lobby of VALORANT also count as VALORANT. Reply only JSON: {\"valorant\":true} or {\"valorant\":false,\"what\":\"short description in Japanese\"}",{images:[blob],signal:ctl.signal,modelTier:"default"});
+    return r&&r.valorant===false?{ok:false,what:String(r.what||"").slice(0,40)}:{ok:true}}catch(e){if(e&&e.code==="cancelled")throw e;if(e&&["not_granted","sampling_disabled","rate_limited","images_unavailable"].includes(e.code))throw e;return{ok:true}}
+}
+let lastErr=null;
 async function firstError(list){for(const x of list){if(!x.fin)continue;try{await x.job}catch(e){return e}}return null}
 async function runAnalysis(){
   if(!duration)return false;
   ctl=new AbortController();$("go").disabled=true;$("stop").hidden=false;$("result").hidden=true;
   const p=plan(),times=[];for(let i=0;i<p.n;i++)times.push(3+i*p.iv);
-  const samples=[];
+  const samples=[];lastErr=null;
   try{
-    prog(0,"AIの利用を確認しています…");
+    prog(0,"VALORANTの動画か確認しています…");
+    const g=await isValorant();
+    if(!g.ok){lastErr={code:"not_valorant",message:"VALORANTの動画ではないため、読み込みませんでした"+(g.what?"("+g.what+")":"")+"。"};prog(0,lastErr.message);return false}
     const chunks=[];for(let i=0;i<times.length;i+=PER_IMG)chunks.push(times.slice(i,i+PER_IMG));
     let done=0;const pending=[];
     for(let c=0;c<chunks.length;c+=p.per){
@@ -206,6 +218,7 @@ async function runAnalysis(){
     }
     prog(0.9,"AIが画面を読み取っています…");
     for(const pj of pending){const tiles=await pj.job;for(let k=0;k<pj.count;k++){const t=times[pj.from-1+k];samples.push({t,...parseTile(tiles[k])})}}
+    if(!buildRounds(samples,"attack").some(rs=>rs.length)){lastErr={code:"no_rounds",message:"ラウンドを見つけられませんでした(試合の画面が映っていない録画かもしれません)。"};prog(0,lastErr.message);return false}
     prog(0.93,"エージェント構成を読み取っています…");
     const comps=await readComps();
     let segs=buildRounds(samples,"attack");
@@ -226,7 +239,7 @@ async function runAnalysis(){
     return true;
   }catch(e){
     const msg=e&&e.code==="cancelled"?"止めました。":e&&e.code==="not_granted"?"AIの利用が許可されなかったため、分析できません。":e&&e.code==="rate_limited"?"AIの利用回数の上限に達しました。しばらく待ってからもう一度試してください。":e&&e.code==="images_unavailable"?"この環境では画像をAIに送れないため、分析できません。":"分析中に問題が起きました。もう一度試してください。";
-    prog(0,msg);
+    prog(0,msg);lastErr={code:e&&e.code||"error",message:msg};
     return false;
   }finally{$("go").disabled=false;$("stop").hidden=true}
 }
@@ -260,6 +273,6 @@ async function saveLast(meta){
   const R=lastResult;if(!R||!R.segs.length||!R.segs[0].length)throw new Error("ラウンドを見つけられませんでした。");
   for(let si=0;si<R.segs.length;si++){const{error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:meta.date||"",opp:meta.opp||"",map:si===0?(meta.map||""):"",start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:meta.yt||"",file:fileName,part:si+1,comps:R.comps,rounds:R.segs[si]}});if(error)throw error}
 }
-window.ANALYZER={loadFile,runAnalysis,saveLast,result:()=>lastResult,stop:()=>ctl&&ctl.abort()};
+window.ANALYZER={loadFile,runAnalysis,saveLast,result:()=>lastResult,error:()=>lastErr,stop:()=>ctl&&ctl.abort()};
 
 })();

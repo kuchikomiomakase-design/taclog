@@ -242,7 +242,14 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     let vids = [];
     try { vids = await TLFolder.videos(hd); } catch (e) { body.append(h("p", { class: "notice" }, "フォルダを読めませんでした。設定画面から連携し直してください。")); return; }
     const fresh = [], done = [];
-    for (const v of vids) { if (v.recording) continue; if (await TLFolder.isDone(APP.team.id, v)) done.push(v); else fresh.push(v); }
+    const failed = [];
+    for (const v of vids) { if (v.recording) continue; if (await TLFolder.isDone(APP.team.id, v)) done.push(v); else { const why = await TLFolder.failedReason(APP.team.id, v); if (why) failed.push({ v, why }); else fresh.push(v); } }
+    if (failed.length) {
+      const fl = h("div", { style: "display:grid;gap:8px" });
+      failed.slice(0, 10).forEach(({ v, why }) => fl.append(h("div", { class: "member" }, h("div", { style: "display:grid;gap:2px;min-width:0" }, h("strong", { style: "overflow-wrap:anywhere" }, v.name), h("span", { class: "small", style: "color:var(--loss)" }, why)),
+        h("button", { class: "btn small", type: "button", onclick: async () => { await TLFolder.unmarkFailed(APP.team.id, v); autoPaused = false; renderFolder(); } }, "もう一度分析する"))));
+      body.append(h("p", { class: "small muted" }, "分析できなかった録画です。自動ではやり直しません(AIの料金が何度もかからないように)。"), fl);
+    }
     const recheck = h("button", { class: "btn small", type: "button", onclick: () => renderFolder() }, "フォルダをもう一度確認");
     const recNow = vids.filter((v) => v.recording);
     if (recNow.length) body.append(h("p", { class: "small muted" }, "書き込み中のファイルがあります(" + recNow[0].name + ")。録画やコピーが終わってから約1分半で、ここに出てきます。"));
@@ -284,7 +291,12 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
           $("manualBox").open = true;
           await ANALYZER.loadFile(v.file);
           const ok = await ANALYZER.runAnalysis();
-          if (!ok) { set(stopped ? "止めました" : "分析できませんでした", "loss"); continue; }
+          if (!ok) {
+            if (stopped) { set("止めました", "loss"); continue; }
+            const er = (ANALYZER.error && ANALYZER.error()) || {};
+            if (["rate_limited", "not_granted", "images_unavailable", "sampling_disabled"].includes(er.code)) { set((er.message || "分析できませんでした").slice(0, 40), "loss"); stopped = true; autoPaused = true; break; }
+            await TLFolder.markFailed(APP.team.id, v, er.message || "分析できませんでした。"); set(er.code === "not_valorant" ? "VALORANTではない動画" : "分析できませんでした", "loss"); continue;
+          }
           await ANALYZER.saveLast({ date: dateOf(v.mtime), opp: "", map: "", yt: "" });
           await TLFolder.markDone(APP.team.id, v);
           set("保存しました", "win");
@@ -292,7 +304,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
             if (!(await TLFolder.permission(hd, true, "readwrite"))) set("保存しました(削除は許可されませんでした)", "warn");
             else { try { await TLFolder.remove(hd, v.name, v); set("保存して削除しました", "win"); } catch (e) { set("保存しました(削除できませんでした)", "warn"); } }
           }
-        } catch (e) { set(TL.errText(e).slice(0, 40), "loss"); if (String(e.message || "").includes("analysis limit")) break; }
+        } catch (e) { set(TL.errText(e).slice(0, 40), "loss"); if (String(e.message || "").includes("analysis limit")) { stopped = true; autoPaused = true; break; } try { await TLFolder.markFailed(APP.team.id, v, TL.errText(e)); } catch (x) {} }
       }
       folderBusy = false; go.disabled = false; stop.hidden = true; loadMatches();
       document.title = "✓ 分析が終わりました | TacLog"; setTimeout(() => { document.title = "TacLog"; }, 60000);
