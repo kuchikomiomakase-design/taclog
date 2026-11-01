@@ -114,3 +114,4 @@ footer.site a{color:var(--ink2)}
 .adcard{position:relative;display:grid;gap:4px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);text-decoration:none}
 .adcard:hover{border-color:var(--accent)}
 .adcat{font:600 11px var(--f-mono);color:var(--data)}.adprice{font:600 13px var(--f-mono)}
+.adimg{display:block;width:100%;max-width:300px;height:auto;border-radius:6px;margin:2px 0}

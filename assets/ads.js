@@ -4,16 +4,21 @@
 //   cat:   pc | capture | mic | camera | mouse | keyboard | headset | monitor | net
 //   title: product name shown on the card            note: one short line on why it helps (written by you)
 //   url:   the affiliate link (https://...)          pixel: optional impression image URL that A8.net gives with the link
+//   img:   optional banner image URL (A8.net "バナー" ads); shown instead of the text card
 //   price: optional, e.g. "¥12,800"(prices change, so leave it empty if unsure)
 window.TACLOG_ADS = {
   ITEMS: [
     // { cat: "pc", title: "ゲーミングPC ○○", note: "配信しながら録画してもカクつきにくい", url: "https://px.a8.net/...", pixel: "" },
+    { cat: "monitor", title: "Pixio ゲーミングモニター", note: "SNSで話題のカラフルなゲーミングモニター",
+      url: "https://px.a8.net/svt/ejp?a8mat=4BGAV1+A4DB02+XTI+15RZIP",
+      img: "https://www22.a8.net/svt/bgt?aid=261101053612&wid=001&eno=01&mid=s00000004383007017000&mc=1",
+      pixel: "https://www18.a8.net/0.gif?a8mat=4BGAV1+A4DB02+XTI+15RZIP" },
   ],
   // which categories each place shows
   PLACES: {
     guide: ["pc", "capture", "net"],                       // OBS guide: when recording is heavy
     dash: ["mouse", "keyboard", "headset", "monitor"],     // dashboard (free plan only)
-    top: ["pc", "mouse", "headset", "capture"],            // top page
+    top: ["pc", "monitor", "mouse", "headset", "capture"],            // top page
   },
 };
 
@@ -27,7 +32,9 @@ window.TLAds = (function () {
   function card(x) {
     const { h } = TL;
     const a = h("a", { class: "adcard", href: x.url, target: "_blank", rel: "sponsored noopener" },
-      h("span", { class: "adcat" }, CAT[x.cat] || x.cat), h("strong", {}, x.title), x.note ? h("span", { class: "small muted" }, x.note) : null, x.price ? h("span", { class: "adprice" }, x.price) : null);
+      h("span", { class: "adcat" }, CAT[x.cat] || x.cat),
+      ok(x.img) ? h("img", { src: x.img, alt: x.title, loading: "lazy", class: "adimg" }) : null,
+      h("strong", {}, x.title), x.note ? h("span", { class: "small muted" }, x.note) : null, x.price ? h("span", { class: "adprice" }, x.price) : null);
     if (ok(x.pixel)) a.append(h("img", { src: x.pixel, width: "1", height: "1", alt: "", style: "position:absolute;width:1px;height:1px;opacity:0" }));
     return a;
   }
