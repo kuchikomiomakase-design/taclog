@@ -42,7 +42,10 @@ async function getUser(req) {
 // REST call to Supabase. Pass {token} to act as the user (row level security applies), or {service:true} for server-only work.
 async function rest(path, { method = "GET", body, token, service, prefer } = {}) {
   const key = service ? SERVICE() : ANON();
-  const headers = { apikey: key, authorization: "Bearer " + (service ? SERVICE() : token), "content-type": "application/json" };
+  const headers = { apikey: key, "content-type": "application/json" };
+  // Old-style keys are JWTs ("eyJ...") and also go in Authorization. New Supabase secret keys ("sb_secret_...") must only be sent as apikey.
+  const bearer = service ? SERVICE() : token;
+  if (bearer && (!service || String(bearer).startsWith("eyJ"))) headers.authorization = "Bearer " + bearer;
   if (prefer) headers.prefer = prefer;
   const r = await fetch(SB_URL() + "/rest/v1/" + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const text = await r.text();
@@ -136,4 +139,6 @@ const PLAN_LIMITS = TRIAL_UNLIMITED
   ? { free: { questions: 100000, days: 36500 }, team: { questions: 100000, days: 36500 }, org: { questions: 100000, days: 36500 } }
   : { free: { questions: 20, days: 14 }, team: { questions: 300, days: 36500 }, org: { questions: 100000, days: 36500 } };
 
-module.exports = { env, send, fail, readBody, readRaw, getUser, rest, membership, claude, parseJSON, stripe, verifyStripe, discord, noPing, PLAN_LIMITS };
+function serviceHeaders() { const k = SERVICE(); const h = { apikey: k }; if (String(k || "").startsWith("eyJ")) h.authorization = "Bearer " + k; return h; }
+
+module.exports = { serviceHeaders, env, send, fail, readBody, readRaw, getUser, rest, membership, claude, parseJSON, stripe, verifyStripe, discord, noPing, PLAN_LIMITS };

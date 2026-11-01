@@ -1,7 +1,7 @@
 // GET /api/cron-monthly   (run by Vercel Cron every day at 23:00 JST; posts only on the last day of the month)
 // Posts this month's results to the Discord "成果" channel: teams, sign-ups, revenue, costs and the difference.
 // Manual test: open /api/cron-monthly?force=1&secret=<CRON_SECRET> in a browser
-const { send, fail, rest, stripe, discord, env } = require("./_lib");
+const { send, fail, rest, stripe, discord, env, serviceHeaders } = require("./_lib");
 
 const yen = (n) => "¥" + Math.round(n || 0).toLocaleString("ja-JP");
 const JST = 9 * 3600e3;
@@ -17,7 +17,7 @@ function monthRange(now) {
 async function countUsers(start) {
   let page = 1, total = 0, fresh = 0;
   while (page < 50) {
-    const r = await fetch(env("SUPABASE_URL") + "/auth/v1/admin/users?page=" + page + "&per_page=1000", { headers: { apikey: env("SUPABASE_SERVICE_ROLE_KEY"), authorization: "Bearer " + env("SUPABASE_SERVICE_ROLE_KEY") } });
+    const r = await fetch(env("SUPABASE_URL") + "/auth/v1/admin/users?page=" + page + "&per_page=1000", { headers: serviceHeaders() });
     if (!r.ok) break;
     const d = await r.json(), users = d.users || [];
     total += users.length; fresh += users.filter((u) => new Date(u.created_at) >= start).length;
