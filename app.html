@@ -46,6 +46,33 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
 .msg small{display:block;opacity:.75;font-size:11px;margin-top:4px}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--new);margin-left:6px;vertical-align:middle;box-shadow:0 0 8px rgba(240,138,36,.8)}
 @media (max-width:640px){.stats4{grid-template-columns:repeat(2,minmax(0,1fr))}.editgrid{grid-template-columns:1fr 1fr}}
+.dfilters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.dfilters input[type=date]{min-height:38px;width:auto}
+.btn.on{border-color:var(--accent);color:var(--accent-text)}
+.dgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.dgrid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.dtile{display:grid;gap:6px;padding:14px 16px;background:var(--surface);border:1px solid var(--line);clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%)}
+.dtile .dk{font-size:12px;color:var(--muted);font-weight:700}
+.dtile .dv{font:700 34px/1 var(--f-mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+.dtile .dv small{font-size:16px;color:var(--muted);margin-left:2px}
+.dtile .ds{font-size:12px;color:var(--muted);font-family:var(--f-mono)}
+.dmeter{height:4px;background:var(--line);border-radius:2px;overflow:hidden}.dmeter i{display:block;height:100%;background:var(--data);border-radius:2px}
+.dform{display:flex;gap:4px;flex-wrap:wrap}.dform .pill{min-width:28px;justify-content:center}
+.dsec{display:grid;gap:10px}.dsec h3{margin:0;font:700 16px var(--f-display)}.dsec p{margin:0}
+.dcols{display:grid;grid-template-columns:1fr;gap:16px}
+.dchart{position:relative}
+.dsvg{width:100%;height:auto;display:block}
+.dsvg .grid{stroke:var(--line);stroke-width:1}.dsvg .ref{stroke:var(--line2);stroke-width:1;stroke-dasharray:4 4}
+.dsvg .tick{fill:var(--muted);font:11px var(--f-mono)}
+.dsvg .line{fill:none;stroke:var(--data);stroke-width:2;stroke-linejoin:round}
+.dsvg .dot{fill:var(--data);stroke:var(--surface);stroke-width:2}.dsvg .dot.w{fill:var(--win)}.dsvg .dot.l{fill:var(--loss)}
+.dsvg .hit{fill:transparent;cursor:pointer}.dsvg .pt:focus{outline:none}.dsvg .pt:focus .dot,.dsvg .pt:hover .dot{r:6.5}
+.dtip{position:absolute;width:180px;display:grid;gap:2px;padding:8px 10px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;font-size:12px;pointer-events:none;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.dtip strong{font-size:13px}
+.dbar{display:flex;align-items:center;gap:8px}.dtrack{display:block;width:64px;height:6px;background:var(--line);border-radius:3px;overflow:hidden;flex:none}.dtrack i{display:block;height:100%;background:var(--data);border-radius:3px}.dbar b{font:600 13px var(--f-mono);font-variant-numeric:tabular-nums;min-width:40px}
+.dtbl td{white-space:nowrap}
+@media (max-width:640px){.dgrid,.dgrid.two{grid-template-columns:repeat(2,minmax(0,1fr))}.dtile .dv{font-size:28px}}
+@media print{#topbar,#footer,#gameBar,.dfilters .btn,#status{display:none!important}body{background:#fff}}
 @media (prefers-reduced-motion:reduce){.post.new{animation:none}}
 @media (max-width:640px){.preview{grid-template-columns:1fr}}
 </style>
@@ -55,6 +82,12 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
 <main id="main" class="wrap">
   <div id="status" class="notice" hidden></div>
   <div class="gtabs" id="gameBar" style="align-items:center"></div>
+
+  <!-- DASHBOARD -->
+  <div id="view-dash" style="display:grid;gap:16px" hidden>
+    <div><h1 style="margin:0">ダッシュボード</h1><p class="muted small" style="margin:4px 0 0">チームの成績をまとめて見られます。分析した試合から自動で計算します(AIは使わないので無料です)。</p></div>
+    <div id="dashBody" style="display:grid;gap:16px"></div>
+  </div>
 
   <!-- ANALYZE -->
   <div id="view-analyze" style="display:grid;gap:16px" hidden>
@@ -204,5 +237,6 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
 <script src="/assets/folder.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/analyze.js"></script>
+<script src="/assets/dash.js"></script>
 </body>
 </html>

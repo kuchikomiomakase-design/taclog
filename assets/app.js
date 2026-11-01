@@ -10,7 +10,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   const sideJa = (s) => s === "attack" ? "アタック" : s === "defense" ? "ディフェンス" : "?";
   const PLAN_JA = { free: "無料", team: "チーム", org: "コーチ・組織" };
   const status = (t) => { const s = $("status"); s.hidden = !t; s.textContent = t || ""; };
-  const VIEWS = ["analyze", "channel", "ask", "matches", "contact", "settings"];
+  const VIEWS = ["dash", "analyze", "channel", "ask", "matches", "contact", "settings"];
 
   function route() {
     const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "analyze";
@@ -19,6 +19,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     if (v === "settings") renderSettings();
     if (v === "contact") loadContact();
     if (v === "analyze" && APP.team) renderFolder();
+    if (v === "dash" && window.renderDash) window.renderDash();
   }
 
   /* ---------- game titles ---------- */
@@ -42,7 +43,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   }
 
   function renderHeader() {
-    TL.header([{ href: "#analyze", label: "録画を分析" }, { href: "#channel", label: "チャンネル" }, { href: "#ask", label: "AIに質問" }, { href: "#matches", label: "試合一覧" }, { href: "#contact", label: "お問い合わせ" }, { href: "#settings", label: "設定" }]);
+    TL.header([{ href: "#dash", label: "ダッシュボード" }, { href: "#analyze", label: "録画を分析" }, { href: "#channel", label: "チャンネル" }, { href: "#ask", label: "AIに質問" }, { href: "#matches", label: "試合一覧" }, { href: "#contact", label: "お問い合わせ" }, { href: "#settings", label: "設定" }]);
     updateBadge();
     if (APP.teams.length > 1) {
       const sel = h("select", { class: "teamsel", "aria-label": "チームを切り替える" }, APP.teams.map((t) => h("option", { value: t.id }, t.name)));
@@ -55,7 +56,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   async function loadMatches() {
     const { data, error } = await sb.from("matches").select("*").eq("team_id", APP.team.id).eq("game", APP.game || "valorant").order("date", { ascending: false }).order("created_at", { ascending: false });
     if (error) { status(TL.errText(error)); return; }
-    APP.matches = data || []; renderMatches(); renderChannel();
+    APP.matches = data || []; renderMatches(); renderChannel(); if (!$("view-dash").hidden && window.renderDash) window.renderDash();
   }
   APP.reloadMatches = loadMatches;
 
