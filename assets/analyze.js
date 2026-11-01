@@ -26,10 +26,12 @@ async function drawPreview(){
 }
 function syncLabels(){$("cwV").textContent=$("cw").value+"%";$("chV").textContent=$("ch").value+"%";$("ctV").textContent=$("ct").value+"%";estimate()}
 let pvTimer;["cw","ch","ct","pv"].forEach(id=>$(id).addEventListener("input",()=>{syncLabels();clearTimeout(pvTimer);pvTimer=setTimeout(drawPreview,120)}));
-$("iv").addEventListener("change",estimate);
 const TILE_W=300,LABEL_W=46,COLS=4,ROWS=13,PER_IMG=COLS*ROWS;
-function plan(){const iv=Number($("iv").value);const n=duration?Math.floor((duration-3)/iv):0;const imgs=Math.ceil(n/PER_IMG);const per=LIM&&LIM.images?Math.min(LIM.images.maxCount,6):6;return{iv,n,imgs,calls:Math.ceil(imgs/per),per}}
-function estimate(){if(!duration){$("estimate").textContent="";return}const p=plan();$("estimate").textContent="動画 "+fmt(duration)+" ・ "+p.n+"か所をこのパソコンで確認し、AIには要所(約"+Math.max(10,Math.round(p.n*0.15))+"か所)だけ読ませます。";}
+// Fixed: every 4 seconds. The PC checks every frame for free; the AI reads about the same few frames per round whatever the interval,
+// so a short interval costs (almost) nothing extra and makes plant times and round starts more precise (about ±2 s).
+const IV=4;
+function plan(){const iv=IV;const n=duration?Math.floor((duration-3)/iv):0;const imgs=Math.ceil(n/PER_IMG);const per=LIM&&LIM.images?Math.min(LIM.images.maxCount,6):6;return{iv,n,imgs,calls:Math.ceil(imgs/per),per}}
+function estimate(){if(!duration){$("estimate").textContent="";return}const p=plan();$("estimate").textContent="動画 "+fmt(duration)+" ・ "+p.n+"か所(4秒ごと)をこのパソコンで確認し、AIには要所だけ読ませます。";}
 const BAD_FILE="この動画は読み込めませんでした。MP4形式で試してください(OBSの「録画の再多重化」でMP4にできます)。";
 let curUrl=null,curFile=null;
 function loadFile(f){return new Promise((resolve,reject)=>{
@@ -174,21 +176,26 @@ async function readFirstKills(segs,samples){
 }
 
 async function readFirstKillers(segs){
+  // Only the name of whoever got the first kill. Which team got it is already known from the portraits (free), so the AI is told which colour to look for
+  // and answers with just a name per cell (short answers = cheaper).
   const W=video.videoWidth,H=video.videoHeight,cells=[];
   segs.forEach((rs,si)=>rs.forEach((r,ri)=>{if(r.fkT!=null)cells.push({si,ri,t:Math.min(duration-0.2,r.fkT)})}));
+  const BAD=/^(unknown|unk|\?+|-+|不明|none|n\/a)$/i;
   for(let i=0;i<cells.length;i+=16){
     const part=cells.slice(i,i+16);
     const blob=await gridOf(part,440,176,2,(x,ox,oy)=>x.drawImage(video,W*0.66,H*0.035,W*0.34,H*0.17,ox+36,oy,404,174));
-    try{const r=await SAMPLE.json("Each numbered cell is the kill feed from the top-right of a VALORANT screen. In each entry the LEFT name/portrait is the killer and the RIGHT is the victim. A teal/green entry means the killer is on the player's team; a red entry means the killer is on the enemy team. For cells 1 to "+part.length+" in order, list every entry you can read. Reply only JSON: {\"cells\":[[{\"killer\":\"name\",\"victim\":\"name\",\"team\":\"us\"}],[]]} where team is \"us\" or \"them\". Use an empty list for a cell with no readable entry.",{images:[blob],signal:ctl.signal,modelTier:"default"});
-      const arr=Array.isArray(r.cells)?r.cells:[];
-      part.forEach((c,k)=>{const r0=segs[c.si][c.ri],list=Array.isArray(arr[k])?arr[k]:[];
-        const want=r0.fk==="us"?"us":r0.fk==="them"?"them":null;
-        const pick=list.filter(e=>e&&e.killer&&!/^(unknown|unk|\?+|-+|不明|none|n\/a)$/i.test(String(e.killer).trim())&&(!want||e.team===want));
-        if(pick.length){const nm=String(pick[0].killer).slice(0,30);r0.fkBy=/^me$/i.test(nm.trim())?"Me(配信者)":nm;r0.fkVictim=String(pick[0].victim||"").slice(0,30);if(r0.fk==="tie")r0.fk=pick[0].team==="us"?"us":"them"}});
+    const want=part.map((c,k)=>{const f=segs[c.si][c.ri].fk;return (k+1)+":"+(f==="us"?"green":f==="them"?"red":"any")}).join(", ");
+    try{const r=await SAMPLE.json("Each numbered cell is the kill feed (top-right of a VALORANT screen) at the moment of the first kill of a round. In an entry the LEFT name is the killer. Green/teal entries = killer on the player's team, red = enemy team. For each cell take the entry of the given colour (if several, the oldest one; 'any' = whichever entry is there): "+want+". Reply only JSON with one string per cell in order: {\"k\":[\"Jett|g\",\"-\"]} = killer name, then |g for green or |r for red. Use \"-\" if unreadable.",{images:[blob],signal:ctl.signal,modelTier:"default"});
+      const arr=Array.isArray(r.k)?r.k:[];
+      part.forEach((c,k)=>{const r0=segs[c.si][c.ri],m=String(arr[k]||"").match(/^(.*?)\|\s*([gr])\s*$/i),nm=(m?m[1]:String(arr[k]||"")).trim().slice(0,30);
+        if(!nm||BAD.test(nm))return;
+        r0.fkBy=/^me$/i.test(nm)?"Me(配信者)":nm;
+        if(r0.fk==="tie"&&m)r0.fk=m[2].toLowerCase()==="g"?"us":"them"});
     }catch(e){if(e&&e.code==="cancelled")throw e}
   }
   segs.forEach(rs=>rs.forEach(r=>{delete r.fkT}));
 }
+
 function flip(s){return s==="attack"?"defense":"attack"}
 function startFrom(n,side){return n<=12?side:n<=24?flip(side):((n-25)%2===0?side:flip(side))}
 function sideOf(n,start){const sw=start==="attack"?"defense":"attack";return n<=12?start:n<=24?sw:((n-25)%2===0?start:sw)}
@@ -296,7 +303,7 @@ async function sparseScores(loc,readFn,onProg){
   const want=new Set();
   const segIdx={};loc.forEach((x,i)=>{(segIdx[segOf[i]]=segIdx[segOf[i]]||[]).push(i)});
   Object.values(segIdx).forEach(ix=>{
-    if(ix.length<3)return;           // too short to be a round (flicker, other screens)
+    if(loc[ix[ix.length-1]].t-loc[ix[0]].t<16)return;   // too short to be a round (flicker, other screens)
     const t0=loc[ix[0]].t,t1=loc[ix[ix.length-1]].t;
     for(let t=t0+44;t<=t1;t+=100){let k=ix.find(i=>loc[i].t>=t&&!loc[i].spike);if(k==null)k=ix[Math.floor(ix.length/2)];want.add(k)}
     if(t1-t0<44)want.add(ix[Math.floor(ix.length/2)]);
@@ -318,7 +325,7 @@ async function sparseScores(loc,readFn,onProg){
       const ta=a.L+a.R,tb=b.L+b.R,reset=tb===0&&ta>=3;
       const unfinished=reset&&Math.max(a.L,a.R)<13;                    // new map, but the last one did not reach 13 yet: maybe its last rounds were not read
       const jump=unfinished||(!reset&&(tb-ta>1||b.L<a.L||b.R<a.R));  // rounds skipped (or a new map whose 0-0 was not read yet)
-      const missed=!reset&&tb-ta===1&&segOf[ia]===segOf[ib]&&ib-ia>3;   // a change the PC check did not see: find roughly where
+      const missed=!reset&&tb-ta===1&&segOf[ia]===segOf[ib]&&loc[ib].t-loc[ia].t>24;   // a change the PC check did not see: find roughly where
       if(jump||missed){   // read the middle of the widest stretch between ia and ib that has no reading yet (closest to ib first)
         const rr=[];for(let i=ia;i<=ib;i++)if(reads.has(i))rr.push(i);let g=null;
         for(let q=rr.length-1;q>0;q--){if(rr[q]-rr[q-1]>1&&(!g||rr[q]-rr[q-1]>g[1]-g[0]))g=[rr[q-1],rr[q]]}
@@ -326,7 +333,7 @@ async function sparseScores(loc,readFn,onProg){
       }
     }
     Object.values(segIdx).forEach(ix=>{
-      if(ix.length<8)return;
+      if(loc[ix[ix.length-1]].t-loc[ix[0]].t<60)return;
       const rs=ix.filter(i=>reads.has(i)),good=rs.some(i=>{const x=reads.get(i).x;return typeof x==="number"&&x>30&&x<=100});
       if(good||!rs.some(i=>reads.get(i).L!=null))return;
       const last=Math.max(...rs),nt=loc[last].t+30,k=ix.find(i=>loc[i].t>=nt&&!loc[i].spike&&!reads.has(i));if(k!=null)want.add(k);
