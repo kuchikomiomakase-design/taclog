@@ -256,6 +256,24 @@ async function isValorant(){
 // Which map, and which agent the streamer (the player whose screen this is) plays: one small AI call per map segment.
 // The map comes from minimap crops; the agent from the bottom-centre HUD (ability icons), which is visible even when names are hidden.
 let COACH={};   // per map segment: recorded by a coach / spectator (no personal numbers)
+// The last round of a map has no "next score" to compare with, so its result is read from the screens right after it:
+// the round banner (WON / LOST) or the end screen (VICTORY / DEFEAT, final score). One small cheap request per map.
+async function readFinals(segs){
+  const W=video.videoWidth,H=video.videoHeight;
+  for(let si=0;si<segs.length;si++){
+    const rs=segs[si],r=rs[rs.length-1];if(!r||r.win!=null)continue;
+    const nextStart=segs[si+1]&&segs[si+1][0]?segs[si+1][0].start:duration;
+    const cells=[];for(let t=r.start+15;t<Math.min(nextStart,r.start+200,duration-0.3);t+=6)cells.push({t});
+    if(!cells.length)continue;
+    try{
+      const blob=await gridOf(cells.slice(0,32),320,180,4,(x,ox,oy)=>x.drawImage(video,0,0,W,H,ox,oy,320,180));
+      const res=await SAMPLE.json("Numbered frames, in time order, from the end of the LAST round of a VALORANT map (round "+r.n+", score before it "+r.score+" = recording team-enemy). Find how this round ended for the recording player's team: a round banner 'WON'/'LOST' (or 勝利/敗北), the match end screen 'VICTORY'/'DEFEAT' (or 勝利/敗北), or the final score at the top. Reply only JSON: {\"result\":\"win\"|\"loss\"|\"-\",\"final\":\"15-9\"}",{images:[blob],signal:ctl.signal,modelTier:"fast",task:"final"});
+      const fm=String(res&&res.final||"").match(/(\d{1,2})\s*-\s*(\d{1,2})/),[a,b]=String(r.score).split("-").map(Number);
+      if(fm&&+fm[1]+ +fm[2]===a+b+1)r.win=+fm[1]===a+1;            // the final score decides (one more round than before)
+      else if(res&&res.result==="win")r.win=true;else if(res&&res.result==="loss")r.win=false;
+    }catch(e){if(e&&e.code==="cancelled")throw e}
+  }
+}
 async function readMaps(segs){
   const keys=(window.TACLOG_MAPS||[]).map(m=>m[0]);const W=video.videoWidth,H=video.videoHeight,maps=[],me=[];
   for(const rs of segs){
@@ -650,6 +668,8 @@ async function runAnalysis(){
     cands.slice(0,12).forEach((c,k)=>{const v=sides[k];if(v==="attack"||v==="defense"){const st=startFrom(c.n,v);(votes[c.si]=votes[c.si]||{attack:0,defense:0})[st]++}});
     const starts=segs.map((rs,si)=>{const v=votes[si];if(v&&v.attack!==v.defense)return{side:v.attack>v.defense?"attack":"defense",auto:true};return{side:$("mSide").value,auto:false}});
     segs=buildRounds(samples,"attack").map((rs,si)=>rs.map(r=>({...r,side:sideOf(r.n,starts[si].side)})));
+    prog(0.955,"最後のラウンドの勝敗を確認しています…");
+    await readFinals(segs);
     prog(0.96,"ファーストキルを読み取っています…");
     await readFirstKills(segs,samples);
     prog(0.97,"設置したサイトを読み取っています…");
