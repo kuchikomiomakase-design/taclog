@@ -131,7 +131,7 @@
 </main>
 <footer id="footer"></footer>
 <script>
-TL.header([]);TL.footer();
+TL.header([{href:"/billing",label:"お支払いの管理"}]);TL.footer();
 let step=1,teamId=null,game=null,hasValo=true;
 document.querySelectorAll("p").forEach(p=>{if(p.textContent.includes("${TL_ADDON}"))p.textContent=p.textContent.replace("${TL_ADDON}",TL.ADDON_YEN)});
 TL.$("gamePick").append(...TL.GAMES.map(g=>{const id="g_"+g.id;const inp=TL.h("input",{type:"radio",name:"game",id,value:g.id});

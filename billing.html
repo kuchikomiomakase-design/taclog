@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>お支払いの管理 | TacLog</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="/assets/config.js"></script>
+<script src="/assets/common.js"></script>
+<style>.sub{display:grid;gap:8px;padding:14px 16px;border:1px solid var(--line2);border-radius:12px;background:var(--raise)}</style>
+</head>
+<body>
+<header id="topbar"></header>
+<main id="main" class="wrap narrow" style="display:grid;gap:16px">
+  <div style="display:grid;gap:6px">
+    <h1>お支払いの管理</h1>
+    <p class="small muted" style="margin:0">このアカウントのお支払いを、チームに関係なくまとめて表示します。チームを削除したあとのプランも、ここから解約できます。</p>
+  </div>
+  <div id="list" style="display:grid;gap:12px"><p class="small muted">読み込んでいます…</p></div>
+  <p class="small muted">解約すると、すでに支払った月の終わりまでは使えて、その後は無料プランに戻ります。データは消えません。</p>
+</main>
+<footer id="footer"></footer>
+<script>
+TL.header([{ href: "/app", label: "アプリへ" }]); TL.footer();
+const { $, h } = TL;
+const ymd = (s) => { const d = new Date(s * 1000); return d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate(); };
+async function load() {
+  const box = $("list");
+  try {
+    const r = await TL.api("/api/billing", { action: "list" });
+    if (r.off) { box.replaceChildren(h("p", { class: "notice" }, "有料プランは現在準備中です。お支払いはありません。")); return; }
+    if (!r.subs.length) { box.replaceChildren(h("p", { class: "small muted" }, "いま続いているお支払いはありません。")); return; }
+    box.replaceChildren(...r.subs.map((s) => {
+      const total = s.items.reduce((a, it) => a + (it.yen || 0) * it.qty, 0);
+      const btn = h("button", { class: "btn", type: "button" }, s.cancelAt ? "解約をやめる(続ける)" : "解約する");
+      const msg = h("span", { class: "small muted" });
+      btn.onclick = async () => {
+        if (!s.cancelAt && !confirm("このお支払いを解約しますか?\n" + ymd(s.periodEnd) + " までは今のプランのまま使えて、その後は無料プランに戻ります。")) return;
+        btn.disabled = true; msg.textContent = "処理しています…";
+        try { await TL.api("/api/billing", { action: s.cancelAt ? "resume" : "cancel", sub: s.id }); load(); } catch (e) { msg.textContent = TL.errText(e); btn.disabled = false; }
+      };
+      const card = h("button", { class: "btn ghost", type: "button" }, "カード・領収書");
+      card.onclick = async () => { try { const p = await TL.api("/api/billing", { action: "portal", customer: s.customer }); location.href = p.url; } catch (e) { msg.textContent = TL.errText(e); } };
+      return h("div", { class: "sub" },
+        h("div", { class: "spread" }, h("strong", {}, s.team || "チーム不明"), h("span", { class: "pill " + (s.cancelAt ? "warn" : "win") }, s.cancelAt ? ymd(s.cancelAt) + " に終了" : s.status === "past_due" ? "支払いが遅れています" : "継続中")),
+        h("span", { class: "small" }, s.items.map((it) => it.name + (it.qty > 1 ? " ×" + it.qty : "")).join(" + ") + " ・ 月" + total.toLocaleString() + "円"),
+        h("span", { class: "small muted" }, s.cancelAt ? "解約済み(期間の終わりまで使えます)" : "次の更新日:" + ymd(s.periodEnd)),
+        h("div", { class: "row" }, btn, card, msg));
+    }));
+  } catch (e) { box.replaceChildren(h("p", { class: "notice" }, TL.errText(e))); }
+}
+(async () => { if (!TL.sb) { TL.notConfigured(); return; } const s = await TL.requireLogin(); if (!s) return; load(); })();
+</script>
+</body>
+</html>

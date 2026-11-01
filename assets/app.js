@@ -88,7 +88,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   }
 
   function renderHeader() {
-    TL.header([{ href: "#dash", label: "ダッシュボード" }, { href: "#analyze", label: "録画を分析" }, { href: "#channel", label: "チャンネル" }, { href: "#ask", label: "AIに質問" }, { href: "#matches", label: "試合一覧" }, { href: "#contact", label: "お問い合わせ" }, { href: "#settings", label: "設定" }]);
+    TL.header([{ href: "#dash", label: "ダッシュボード" }, { href: "#analyze", label: "録画を分析" }, { href: "#channel", label: "チャンネル" }, { href: "#ask", label: "AIに質問" }, { href: "#matches", label: "試合一覧" }, { href: "#contact", label: "お問い合わせ" }, { href: "/billing", label: "お支払い" }, { href: "#settings", label: "設定" }]);
     updateBadge();
     renderTeamBar();
   }
@@ -478,7 +478,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     // deleting never changes the plan: say so (people may only want to start over)
     const t = APP.team, pay = $("delTeamPay"), kids = APP.teams.filter((x) => x.parent_team === t.id).length;
     const warn = t.plan === "free" ? "" : t.parent_team ? "このチームは組織プランで追加したチームです。削除すると、組織の追加チームの料金(月1,980円)は1チーム分減ります。" :
-      "プランは変わりません。チームを削除しても、プランを変更(解約)しない限り、毎月の料金はそのまま続きます。解約したい場合は、先に上の「プランの管理」から解約してください。" + (t.plan === "org" ? "組織プランで追加したチームは、無料プランに戻ります。" : "");
+      "プランは変わりません。チームを削除しても、プランを変更(解約)しない限り、毎月の料金はそのまま続きます。解約は、削除の前でも後でも、アカウントの「お支払いの管理」からできます。" + (t.plan === "org" ? "組織プランで追加したチームは、無料プランに戻ります。" : "");
     pay.hidden = !warn; pay.textContent = warn;
     inp.oninput = () => { btn.disabled = inp.value.trim() !== APP.team.name.trim(); };
     btn.onclick = async () => {
