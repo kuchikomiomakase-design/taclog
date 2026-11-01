@@ -29,7 +29,7 @@ let pvTimer;["cw","ch","ct","pv"].forEach(id=>$(id).addEventListener("input",()=
 $("iv").addEventListener("change",estimate);
 const TILE_W=300,LABEL_W=46,COLS=4,ROWS=13,PER_IMG=COLS*ROWS;
 function plan(){const iv=Number($("iv").value);const n=duration?Math.floor((duration-3)/iv):0;const imgs=Math.ceil(n/PER_IMG);const per=LIM&&LIM.images?Math.min(LIM.images.maxCount,6):6;return{iv,n,imgs,calls:Math.ceil(imgs/per),per}}
-function estimate(){if(!duration){$("estimate").textContent="";return}const p=plan();$("estimate").textContent="動画 "+fmt(duration)+" ・ "+p.n+"か所を読み取ります(AIへの問い合わせ 約"+(p.calls+1)+"回)。";}
+function estimate(){if(!duration){$("estimate").textContent="";return}const p=plan();$("estimate").textContent="動画 "+fmt(duration)+" ・ "+p.n+"か所をこのパソコンで確認し、AIには要所(約"+Math.max(10,Math.round(p.n*0.15))+"か所)だけ読ませます。";}
 const BAD_FILE="この動画は読み込めませんでした。MP4形式で試してください(OBSの「録画の再多重化」でMP4にできます)。";
 let curUrl=null,curFile=null;
 function loadFile(f){return new Promise((resolve,reject)=>{
@@ -256,6 +256,91 @@ async function readMaps(segs){
   return out;
 }
 let lastErr=null;
+// Free check on this PC for one frame: white digits of both scores (to notice a change) and the red spike icon.
+const locCv=document.createElement("canvas");locCv.width=200;locCv.height=24;const locX=locCv.getContext("2d",{willReadFrequently:true});
+function localSig(){
+  const c=crop();locX.drawImage(video,c.sx,c.sy,c.sw,c.sh,0,0,200,24);const d=locX.getImageData(0,0,200,24).data;
+  const reg=(x0,x1)=>{const v=[];for(let y=3;y<21;y++)for(let x=Math.round(x0*200);x<Math.round(x1*200);x++){const i=(y*200+x)*4,mx=Math.max(d[i],d[i+1],d[i+2]),mn=Math.min(d[i],d[i+1],d[i+2]);v.push(mn>205&&mx-mn<35?100:0)}return v};
+  let red=0,n=0;for(let y=0;y<24;y++)for(let x=76;x<124;x++){const i=(y*200+x)*4;n++;if(d[i]>160&&d[i+1]<80&&d[i+2]<90)red++}
+  return{mL:reg(0.13,0.33),mR:reg(0.67,0.87),spike:red/n>0.06};
+}
+function sigDist(a,b){const f=(x,y)=>{let s=0;for(let i=0;i<x.length;i++)s+=Math.abs(x[i]-y[i]);return s/x.length};return Math.max(f(a.mL,b.mL),f(a.mR,b.mR))}
+let lastReads=0;
+// Read the score/timer tiles at the given times with the AI (52 tiles per image, up to 6 images per request, 3 requests at once)
+async function readTimes(ts){
+  const p=plan(),out=new Array(ts.length).fill(null),jobs=[];
+  for(let c=0;c<ts.length;c+=PER_IMG*p.per){
+    const part=ts.slice(c,c+PER_IMG*p.per),blobs=[];
+    for(let i=0;i<part.length;i+=PER_IMG)blobs.push(await buildImage(part.slice(i,i+PER_IMG),i+1));
+    const job=readTiles(blobs,1,part.length).catch(e=>{if(e&&e.code==="cancelled")throw e;if(e&&["not_granted","sampling_disabled","rate_limited","images_unavailable"].includes(e.code))throw e;return[]})
+      .then(arr=>{part.forEach((_,k)=>out[c+k]=arr[k])});
+    job.catch(()=>{});jobs.push(job);
+    while(jobs.length-jobs.filter(j=>j.done).length>=3){await Promise.race(jobs.filter(j=>!j.done).map(j=>j.then(()=>{j.done=true},()=>{j.done=true})))}
+  }
+  await Promise.all(jobs);return out;
+}
+async function sparseScores(loc,readFn,onProg){
+  const samples=[];
+  // 2) Split into stretches where the score stays the same
+  const segOf=new Array(loc.length).fill(0);let seg=0;
+  for(let i=1;i<loc.length;i++){
+    const d=sigDist(loc[i],loc[i-1]),nx=loc[i+1]?sigDist(loc[i+1],loc[i]):0;
+    if(d>12&&nx<=8)seg++;            // changed, and stays like that
+    segOf[i]=seg;
+  }
+  // 3) Ask the AI only about a few moments
+  const reads=new Map();             // index -> parsed tile
+  const want=new Set();
+  const segIdx={};loc.forEach((x,i)=>{(segIdx[segOf[i]]=segIdx[segOf[i]]||[]).push(i)});
+  Object.values(segIdx).forEach(ix=>{
+    if(ix.length<3)return;           // too short to be a round (flicker, other screens)
+    const t0=loc[ix[0]].t,t1=loc[ix[ix.length-1]].t;
+    for(let t=t0+44;t<=t1;t+=100){let k=ix.find(i=>loc[i].t>=t&&!loc[i].spike);if(k==null)k=ix[Math.floor(ix.length/2)];want.add(k)}
+    if(t1-t0<44)want.add(ix[Math.floor(ix.length/2)]);
+  });
+  for(let i=1;i<loc.length;i++)if(loc[i].spike&&!loc[i-1].spike)want.add(i-1);   // just before the plant: the timer tells when it was planted
+  // never leave more than ~90 seconds without any reading (in case the PC check is confused, e.g. bright backgrounds)
+  {const all=[...want].sort((x,y)=>x-y);let last=-1e9;for(let i=0;i<loc.length;i++){if(all.includes(i)){last=loc[i].t;continue}if(loc[i].t-last>=90&&!loc[i].spike){want.add(i);last=loc[i].t}}}
+  const readNow=async(label)=>{
+    const ix=[...want].filter(i=>!reads.has(i)).sort((x,y)=>x-y);want.clear();if(!ix.length)return 0;
+    onProg(label+"("+ix.length+"コマ)");
+    const res=await readFn(ix.map(i=>loc[i].t));ix.forEach((i,k)=>reads.set(i,parseTile(res[k])));return ix.length;
+  };
+  await readNow("AIが要所の画面を読み取っています…");
+  // 4) Check: a round can only add 1 point. If two readings jump more, or a round has no usable timer, read a little more.
+  for(let pass=0;pass<8;pass++){
+    const ok=[...reads.entries()].filter(([i,r])=>r.L!=null&&r.R!=null).sort((x,y)=>x[0]-y[0]);
+    for(let k=1;k<ok.length;k++){
+      const [ia,a]=ok[k-1],[ib,b]=ok[k];if(ib-ia<2)continue;
+      const ta=a.L+a.R,tb=b.L+b.R,reset=tb===0&&ta>=3;
+      const jump=!reset&&(tb-ta>1||b.L<a.L||b.R<a.R);              // rounds skipped (or a new map whose 0-0 was not read yet)
+      const missed=!reset&&tb-ta===1&&segOf[ia]===segOf[ib]&&ib-ia>3;   // a change the PC check did not see: find roughly where
+      if(jump||missed){   // read the middle of the widest stretch between ia and ib that has no reading yet (closest to ib first)
+        const rr=[];for(let i=ia;i<=ib;i++)if(reads.has(i))rr.push(i);let g=null;
+        for(let q=rr.length-1;q>0;q--){if(rr[q]-rr[q-1]>1&&(!g||rr[q]-rr[q-1]>g[1]-g[0]))g=[rr[q-1],rr[q]]}
+        if(g){let m=Math.floor((g[0]+g[1])/2);if(loc[m].spike){for(let i=g[0]+1;i<g[1];i++)if(!loc[i].spike){m=i;break}}want.add(m)}
+      }
+    }
+    Object.values(segIdx).forEach(ix=>{
+      if(ix.length<8)return;
+      const rs=ix.filter(i=>reads.has(i)),good=rs.some(i=>{const x=reads.get(i).x;return typeof x==="number"&&x>30&&x<=100});
+      if(good||!rs.some(i=>reads.get(i).L!=null))return;
+      const last=Math.max(...rs),nt=loc[last].t+30,k=ix.find(i=>loc[i].t>=nt&&!loc[i].spike&&!reads.has(i));if(k!=null)want.add(k);
+    });
+    if(!(await readNow("念のため、もう少し読み取っています…")))break;
+  }
+  // 5) Give every sample a score: the nearest reading in the same stretch (or the one before)
+  const okR=[...reads.entries()].filter(([i,r])=>r.L!=null&&r.R!=null).sort((x,y)=>x[0]-y[0]);
+  loc.forEach((l,i)=>{
+    let best=null;
+    for(const [j,r] of okR){if(segOf[j]!==segOf[i])continue;if(!best||Math.abs(j-i)<Math.abs(best[0]-i))best=[j,r]}
+    if(!best){for(const [j,r] of okR){if(j<=i)best=[j,r];else break}}
+    const own=reads.get(i);
+    const x=own&&own.x!=null?own.x:(l.spike?"S":null);
+    samples.push({t:l.t,L:best?best[1].L:null,R:best?best[1].R:null,x,ai:!!own});
+  });
+  return{samples,reads:reads.size};
+}
 async function firstError(list){for(const x of list){if(!x.fin)continue;try{await x.job}catch(e){return e}}return null}
 async function runAnalysis(){
   if(!duration)return false;
@@ -266,21 +351,15 @@ async function runAnalysis(){
     prog(0,"VALORANTの動画か確認しています…");
     const g=await isValorant();
     if(!g.ok){lastErr={code:"not_valorant",message:"VALORANTの動画ではないため、読み込みませんでした"+(g.what?"("+g.what+")":"")+"。"};prog(0,lastErr.message);return false}
-    const chunks=[];for(let i=0;i<times.length;i+=PER_IMG)chunks.push(times.slice(i,i+PER_IMG));
-    let done=0;const pending=[];
-    for(let c=0;c<chunks.length;c+=p.per){
-      const group=chunks.slice(c,c+p.per),blobs=[];const from=c*PER_IMG+1;
-      for(let gi=0;gi<group.length;gi++){prog((done)/times.length*0.9,"動画から画面を切り出しています… "+fmt(group[gi][0])+" / "+fmt(duration));blobs.push(await buildImage(group[gi],from+gi*PER_IMG));}
-      const count=group.reduce((a,x)=>a+x.length,0),to=from+count-1;
-      // send to AI in the background and keep cutting out the next frames (up to 3 requests at once)
-      const job=readTiles(blobs,from,to).catch(e=>{if(e&&e.code==="cancelled")throw e;if(e&&["not_granted","sampling_disabled","rate_limited","images_unavailable"].includes(e.code))throw e;return[]});
-      job.catch(()=>{});pending.push({job,from,count});
-      done+=count;
-      while(pending.filter(x=>!x.fin).length>=3){await Promise.race(pending.filter(x=>!x.fin).map(x=>x.job.then(()=>{x.fin=true},()=>{x.fin=true})))}
-      if(pending.some(x=>x.fin)){const bad=await firstError(pending);if(bad)throw bad}
+    // 1) Look at every sample on this PC (free): has the score changed? is the spike icon (red) shown instead of the timer?
+    const loc=[];
+    for(let i=0;i<times.length;i++){
+      if(ctl.signal.aborted)throw{code:"cancelled"};
+      if(i%10===0)prog(i/times.length*0.75,"録画を確認しています… "+fmt(times[i])+" / "+fmt(duration));
+      await seek(times[i]);loc.push({t:times[i],...localSig()});
     }
-    prog(0.9,"AIが画面を読み取っています…");
-    for(const pj of pending){const tiles=await pj.job;for(let k=0;k<pj.count;k++){const t=times[pj.from-1+k];samples.push({t,...parseTile(tiles[k])})}}
+    const sp=await sparseScores(loc,readTimes,(m)=>prog(0.8,m));sp.samples.forEach(x=>samples.push(x));
+    lastReads=sp.reads;
     if(!buildRounds(samples,"attack").some(rs=>rs.length)){lastErr={code:"no_rounds",message:"ラウンドを見つけられませんでした(試合の画面が映っていない録画かもしれません)。"};prog(0,lastErr.message);return false}
     prog(0.93,"エージェント構成を読み取っています…");
     const comps=await readComps();
