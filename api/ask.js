@@ -20,7 +20,7 @@ const clean = (s) => String(s || "").replace(/[,\s]+/g, "_").slice(0, 30);
 const myMarks = (r) => (r.myFk === true ? "+MK" : "") + (r.myFd === true ? "+MD" : "") + (r.myDead === false ? "+SV" : r.myDead === true ? "+DT" + r.myDeathT : "");
 // Round-by-round details (abilities, alive counts, every fight) only for the most recent matches; all matches are covered by the totals below.
 // Keeps each question small (cheap) without losing older matches.
-const DETAIL = 8;
+const DETAIL = 3;
 function dataText(matches, povs) {
   return matches.map((m, mi) => {
     const pv = (povs && povs[m.id]) || [], detail = mi < DETAIL;
