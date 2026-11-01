@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NVIDIA・AMD・Windowsの録画機能でスクリムを録る設定|TacLog</title>
+<meta name="description" content="OBSを使わずに、NVIDIA App(ShadowPlay)、AMD Software、Windowsのゲームバーでスクリムを録画して、TacLogで分析する設定方法。録画の保存先をTacLogフォルダにするだけです。">
+<link rel="canonical" href="https://taclog.app/guide-rec">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TacLog">
+<meta property="og:title" content="NVIDIA・AMD・Windowsの録画機能でスクリムを録る設定|TacLog">
+<meta property="og:url" content="https://taclog.app/guide-rec">
+<meta property="og:image" content="https://taclog.app/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="/assets/config.js"></script>
+<script src="/assets/common.js"></script>
+<script src="/assets/ads.js"></script>
+<style>
+.toc{display:flex;flex-wrap:wrap;gap:8px}.toc a{padding:6px 12px;border:1px solid var(--line2);border-radius:999px;font-size:13px;text-decoration:none;color:var(--ink)}
+.toc a:hover{border-color:var(--accent)}
+.sec{display:grid;gap:12px}.sec h2{margin:0;font:700 20px var(--f-display)}
+.steps2{margin:0;padding:0;list-style:none;display:grid;gap:10px;counter-reset:s}
+.steps2 li{display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start;counter-increment:s}
+.steps2 li::before{content:counter(s);display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font:700 15px var(--f-display)}
+kbd{display:inline-block;padding:1px 7px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;background:var(--raise);font:600 12px var(--f-mono);color:var(--ink)}
+.path{font:600 13px var(--f-mono);color:var(--data)}
+.tip{padding:10px 14px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0;font-size:14px}
+</style>
+</head>
+<body>
+<header id="topbar"></header>
+<main id="main" class="wrap narrow" style="display:grid;gap:18px">
+  <div style="display:grid;gap:10px">
+    <h1 style="margin:0">OBSを使わない人の録画設定</h1>
+    <p class="lead" style="margin:0">NVIDIA・AMD・Windowsの録画機能でも、TacLogで分析できます。やることは<strong>録画の保存先を「TacLog」フォルダにするだけ</strong>です。配信している人は、<a href="/guide-obs">OBSの設定ガイド</a>のほうが自動で録画できて楽です。</p>
+    <nav class="toc" aria-label="目次"><a href="#folder">1. フォルダを作る</a><a href="#nvidia">NVIDIA</a><a href="#amd">AMD</a><a href="#gamebar">Windowsのゲームバー</a><a href="#link">最後に:TacLogと連携</a></nav>
+    <p class="small muted" style="margin:0">画面の名前は、ソフトのバージョンによって少し違うことがあります。</p>
+  </div>
+
+  <section class="card sec" id="folder">
+    <h2>1. 録画用のフォルダ「TacLog」を作る(どの録画機能でも共通)</h2>
+    <ol class="steps2">
+      <li><div>エクスプローラーを開いて、左の <strong>「ビデオ」</strong> フォルダを開く</div></li>
+      <li><div>何もないところで右クリック →「新規作成」→「フォルダー」</div></li>
+      <li><div>名前を <strong>TacLog</strong> にする(場所は <span class="path">C:\Users\(あなたの名前)\Videos\TacLog</span> になります)</div></li>
+    </ol>
+    <p class="tip">分析が終わった録画は自動で消せるので、ほかの動画と混ざらない専用のフォルダにしておくのが安全です。</p>
+  </section>
+
+  <section class="card sec" id="nvidia">
+    <h2>NVIDIA(NVIDIA App / GeForce Experience の録画)</h2>
+    <p class="small muted" style="margin:0">NVIDIAのグラフィックボードを使っている人向けです。</p>
+    <ol class="steps2">
+      <li><div>ゲーム中か、デスクトップで <kbd>Alt</kbd> + <kbd>Z</kbd> を押して、NVIDIAのオーバーレイを開く</div></li>
+      <li><div>歯車(<strong>設定</strong>)→ <strong>録画</strong>(または「キャプチャ」「ビデオ」)を開く</div></li>
+      <li><div><strong>保存場所</strong>(ビデオの保存先)の <strong>変更</strong> を押して、さっき作った <strong>TacLog</strong> フォルダを選ぶ</div></li>
+      <li><div>スクリムを始める前に <kbd>Alt</kbd> + <kbd>F9</kbd> で <strong>録画開始</strong>、終わったらもう一度 <kbd>Alt</kbd> + <kbd>F9</kbd> で <strong>録画停止</strong></div></li>
+    </ol>
+    <p class="tip">「インスタントリプレイ」は直前の数分しか残らないので、スクリム全体を録るには、ふつうの<strong>録画</strong>(<kbd>Alt</kbd> + <kbd>F9</kbd>)を使ってください。録画はゲームごとのフォルダ(例:TacLog\VALORANT)に入りますが、TacLogはその中も探すので大丈夫です。</p>
+  </section>
+
+  <section class="card sec" id="amd">
+    <h2>AMD(AMD Software: Adrenalin Edition の録画)</h2>
+    <p class="small muted" style="margin:0">AMDのグラフィックボード(Radeon)を使っている人向けです。</p>
+    <ol class="steps2">
+      <li><div><kbd>Alt</kbd> + <kbd>R</kbd> でAMD Softwareを開く(またはデスクトップで右クリック →「AMD Software」)</div></li>
+      <li><div>右上の歯車(<strong>設定</strong>)→ <strong>録画とストリーミング</strong>(Record &amp; Stream)を開く</div></li>
+      <li><div><strong>録画の保存場所</strong> の <strong>参照</strong> を押して、<strong>TacLog</strong> フォルダを選ぶ</div></li>
+      <li><div>スクリムを始める前に <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd> で <strong>録画開始</strong>、終わったらもう一度押して <strong>録画停止</strong></div></li>
+    </ol>
+    <p class="tip">「インスタントリプレイ」は直前の数分だけなので、スクリム全体は<strong>録画</strong>で録ってください。</p>
+  </section>
+
+  <section class="card sec" id="gamebar">
+    <h2>Windowsのゲームバー(Xbox Game Bar)</h2>
+    <p class="small muted" style="margin:0">グラフィックボードの録画機能がない人でも、Windowsに最初から入っている機能で録画できます。</p>
+    <ol class="steps2">
+      <li><div>Windowsの <strong>設定</strong> → <strong>ゲーム</strong> → <strong>キャプチャ</strong> を開く</div></li>
+      <li><div><strong>「記録する最大時間」</strong>(録画の長さの上限)を <strong>4時間</strong> にする(初期設定の2時間だと、長いスクリムが途中で止まります)</div></li>
+      <li><div>保存先は「キャプチャ」フォルダ(<span class="path">ビデオ\キャプチャ</span>)に決まっているので、TacLogで連携するときに、この <strong>「キャプチャ」</strong> フォルダを選んでください</div></li>
+      <li><div>スクリムを始める前に <kbd>Win</kbd> + <kbd>Alt</kbd> + <kbd>R</kbd> で <strong>録画開始</strong>、終わったらもう一度押して <strong>録画停止</strong></div></li>
+    </ol>
+    <p class="tip">「キャプチャ」フォルダには、ほかのゲームの録画やスクリーンショットも入ります。TacLogはVALORANT以外の動画を自動で見分けて読み込みませんが、「分析後に自動で削除」をオンにする場合は、消したくない動画をほかの場所に移しておいてください。</p>
+  </section>
+
+  <section class="card sec" id="link">
+    <h2>最後に:TacLogと録画フォルダを連携する</h2>
+    <ol class="steps2">
+      <li><div>パソコンの <strong>Google Chrome</strong> か <strong>Microsoft Edge</strong> で <a href="/app">TacLog</a> を開く</div></li>
+      <li><div>「録画を分析」→ <strong>「録画フォルダを連携する」</strong> を押して、<strong>TacLog</strong> フォルダ(ゲームバーの人は「キャプチャ」フォルダ)を選ぶ</div></li>
+      <li><div>ブラウザの確認で <strong>「許可」</strong> を押す(2回出ることがあります)</div></li>
+      <li><div>スクリムのあとにTacLogを開くと、新しい録画を見つけて自動で分析します。分析中はページを開いたままにしてください</div></li>
+    </ol>
+    <p class="small muted" style="margin:0">録画はMP4のままでOKです(NVIDIA・AMD・ゲームバーはどれもMP4で保存されます)。録画そのものはアップロードせず、パソコンの中で読み取ります。</p>
+  </section>
+  <div id="adWide" hidden></div>
+</main>
+<footer id="footer"></footer>
+<script>TL.header([{href:"/pricing",label:"料金"}]);TL.footer();TLAds.rail();TLAds.wide(document.getElementById("adWide"));</script>
+</body>
+</html>

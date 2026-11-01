@@ -74,10 +74,11 @@
       <li><span class="n">0</span><div><strong>録画用のフォルダ「TacLog」を作って、OBSの保存先にする</strong><div class="small muted">ビデオフォルダの中に「TacLog」フォルダを作り、設定 → 出力 →「録画ファイルのパス」で選ぶ(分析後に録画を自動で消すので、専用のフォルダにします)</div></div></li>
       <li data-stream><span class="n">1</span><div><strong>配信したら自動で録画する</strong><div class="small muted">設定 → 一般 →「出力」の欄の「配信時に自動的に録画する」にチェック</div></div></li>
       <li data-stream><span class="n">2</span><div><strong>録画品質を「配信と同じ」にする</strong><div class="small muted">設定 → 出力 →「録画品質」を「配信と同じ」に(ファイルが軽くなります)</div></div></li>
-      <li data-rec hidden><span class="n">1</span><div><strong>試合の前に録画を始める</strong><div class="small muted">OBSなら右下の「録画開始」を押す。NVIDIA・AMDの録画機能やWindowsのゲームバー(Win+Alt+R)を使う場合も、保存先を TacLog フォルダにすればOKです。スクリムや練習の最初から最後まで1本で録画してかまいません</div></div></li>
+      <li data-rec hidden><span class="n">1</span><div><strong>試合の前に録画を始める</strong><div class="small muted">OBSなら右下の「録画開始」を押す。NVIDIA・AMDの録画機能やWindowsのゲームバー(Win+Alt+R)を使う場合も、保存先を TacLog フォルダにすればOKです(下のボタンに手順があります)。スクリムや練習の最初から最後まで1本で録画してかまいません</div></div></li>
       <li><span class="n" data-mp4n>3</span><div><strong>録画をMP4にする</strong><div class="small muted">設定 → 詳細設定 →「録画」の欄の「自動的に mp4 に再多重化する」にチェック(または、設定 → 出力 →「録画フォーマット」を「MP4」か「ハイブリッドMP4」に)</div></div></li>
     </ol>
     <a class="btn" href="/guide-obs" target="_blank" rel="noopener" style="justify-self:start">やり方がわからない人はここへ(画像つき手順:フォルダの作り方・連携のしかたも)</a>
+    <a class="btn" href="/guide-rec" target="_blank" rel="noopener" style="justify-self:start" data-rec hidden>OBSを使わない人(NVIDIA・AMD・Windowsのゲームバー)の設定はこちら</a>
     <label class="check" for="obsDone"><input id="obsDone" type="checkbox"><span><strong>ここまで全部設定できた</strong></span></label>
     <div style="display:grid;gap:10px;padding:16px;border-radius:12px;border:1px solid var(--line)">
       <strong>録画が保存されるフォルダを連携する</strong>
