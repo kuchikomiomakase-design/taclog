@@ -45,11 +45,17 @@ window.TLFolder = (function () {
   async function doneList() { return (await get("done")) || []; }
   async function isDone(teamId, v) { return (await doneList()).includes(key(teamId, v)); }
   async function markDone(teamId, v) { const d = await doneList(); d.push(key(teamId, v)); await set("done", d.slice(-1000)); }
+  async function unmarkDone(teamId, v) { const k = key(teamId, v); await set("done", (await doneList()).filter((x) => x !== k)); }
+  // forget every "analyzed" mark for a file name (used when its match is deleted, so the same recording can be analyzed again)
+  async function unmarkByFile(teamId, fileName) {
+    if (!fileName) return; const base = String(fileName).split("/").pop();
+    await set("done", (await doneList()).filter((x) => { if (!x.startsWith(teamId + "|")) return true; const n = x.slice(teamId.length + 1).replace(/\|\d+$/, ""); return n.split("/").pop() !== base; }));
+  }
   async function remove(h, name, v) { await ((v && v.dir) || h).removeEntry((v && v.entryName) || name); }
   async function getDeleteAfter() { const v = await get("deleteAfter"); return v === undefined ? true : !!v; } // on by default
   async function setDeleteAfter(v) { await set("deleteAfter", !!v); }
   async function getAuto() { const v = await get("autoAnalyze"); return v === undefined ? true : !!v; } // on by default
   async function setAuto(v) { await set("autoAnalyze", !!v); }
 
-  return { supported, link, unlink, handle, permission, videos, isDone, markDone, remove, getDeleteAfter, setDeleteAfter, getAuto, setAuto };
+  return { supported, link, unlink, handle, permission, videos, isDone, markDone, unmarkDone, unmarkByFile, remove, getDeleteAfter, setDeleteAfter, getAuto, setAuto };
 })();

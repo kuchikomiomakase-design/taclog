@@ -74,7 +74,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
       const del = h("button", { class: "btn small danger", type: "button" }, "削除");
       let armed = false;
       del.onclick = async () => { if (!armed) { armed = true; del.textContent = "もう一度押すと削除"; setTimeout(() => { armed = false; del.textContent = "削除"; }, 3000); return; }
-        const { error } = await sb.from("matches").delete().eq("id", m.id); if (error) status(TL.errText(error)); else loadMatches(); };
+        const { error } = await sb.from("matches").delete().eq("id", m.id); if (error) status(TL.errText(error)); else { try { if (window.TLFolder) await TLFolder.unmarkByFile(APP.team.id, m.file); } catch (e) {} loadMatches(); renderFolder(); } };
       return h("div", { class: "matchrow" },
         h("div", { style: "display:grid;gap:4px;min-width:0" },
           h("div", { class: "row" }, h("strong", {}, fmtDate(m.date) + (m.opp ? " vs " + m.opp : "")), h("span", { class: "pill " + (w > l ? "win" : w < l ? "loss" : "mute") }, w + "−" + l), sel,
@@ -241,17 +241,24 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     }
     let vids = [];
     try { vids = await TLFolder.videos(hd); } catch (e) { body.append(h("p", { class: "notice" }, "フォルダを読めませんでした。設定画面から連携し直してください。")); return; }
-    const fresh = [];
-    for (const v of vids) if (!v.recording && !(await TLFolder.isDone(APP.team.id, v))) fresh.push(v);
+    const fresh = [], done = [];
+    for (const v of vids) { if (v.recording) continue; if (await TLFolder.isDone(APP.team.id, v)) done.push(v); else fresh.push(v); }
     const recheck = h("button", { class: "btn small", type: "button", onclick: () => renderFolder() }, "フォルダをもう一度確認");
     const recNow = vids.filter((v) => v.recording);
-    if (recNow.length) body.append(h("p", { class: "small muted" }, "録画中のファイルがあります(" + recNow[0].name + ")。配信が終わってから分析できます。"));
+    if (recNow.length) body.append(h("p", { class: "small muted" }, "書き込み中のファイルがあります(" + recNow[0].name + ")。録画やコピーが終わってから約1分半で、ここに出てきます。"));
     const autoOn = await TLFolder.getAuto();
     if (!fresh.length) {
       const st = vids.stats || { files: 0, others: [] };
       const why = !vids.length ? (st.files ? "このフォルダに動画ファイルが見つかりません(見つかったファイル:" + st.others.join("、") + (st.files > st.others.length ? " ほか" : "") + ")。MP4・MKVなどの動画を入れてください。" : "このフォルダ「" + hd.name + "」は空です。動画を入れたフォルダと、連携したフォルダが同じか確認してください。")
-        : "フォルダ内の動画 " + vids.length + "本は、すべて分析ずみです。";
-      body.append(h("p", { class: "small muted" }, why), h("div", { class: "row" }, recheck, h("a", { href: "#settings", class: "small" }, "連携するフォルダを変える")));
+        : done.length ? "フォルダ内の動画 " + done.length + "本は、このパソコンで分析ずみです。もう一度分析したいときは、下の「もう一度分析する」を押してください。" : "";
+      if (why) body.append(h("p", { class: "small muted" }, why));
+      if (done.length) {
+        const dl = h("div", { style: "display:grid;gap:8px" });
+        done.slice(0, 10).forEach((v) => dl.append(h("div", { class: "member" }, h("div", { style: "display:grid;gap:2px;min-width:0" }, h("strong", { style: "overflow-wrap:anywhere" }, v.name), h("span", { class: "small muted" }, new Date(v.mtime).toLocaleString("ja-JP") + " ・ " + Math.round(v.size / 1048576) + "MB")),
+          h("button", { class: "btn small", type: "button", onclick: async () => { await TLFolder.unmarkDone(APP.team.id, v); autoPaused = false; renderFolder(); } }, "もう一度分析する"))));
+        body.append(dl);
+      }
+      body.append(h("div", { class: "row" }, recheck, h("a", { href: "#settings", class: "small" }, "連携するフォルダを変える")));
     }
     if (!fresh.length) { body.append(h("div", { class: "empty" }, h("strong", {}, "新しい録画はありません"), h("span", {}, autoOn ? "このページを開いている間は、1分ごとにフォルダを確認して、新しい録画ができたら自動で分析します。" : "配信が終わったら、このページを開くと自動で見つかります。"))); return; }
     const list = h("div", { style: "display:grid;gap:8px" });
