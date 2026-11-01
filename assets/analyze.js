@@ -241,6 +241,20 @@ async function isValorant(){
     const second=await askValorant(await sheetAt(B.map(t=>Math.min(t,0.98))));return second.ok?second:{ok:false,what:second.what||first.what};
   }catch(e){if(e&&e.code==="cancelled")throw e;if(e&&["not_granted","sampling_disabled","rate_limited","images_unavailable"].includes(e.code))throw e;return{ok:true}}
 }
+// Which map: a few minimap + location-name crops per map segment, one small AI call per segment.
+async function readMaps(segs){
+  const keys=(window.TACLOG_MAPS||[]).map(m=>m[0]);if(!keys.length)return segs.map(()=>null);
+  const W=video.videoWidth,H=video.videoHeight,out=[];
+  for(const rs of segs){
+    if(!rs.length){out.push(null);continue}
+    const pick=[Math.floor(rs.length*0.25),Math.floor(rs.length*0.5),Math.floor(rs.length*0.75)].map(i=>rs[Math.min(i,rs.length-1)]);
+    const cells=pick.map(r=>({t:Math.min(duration-0.2,r.start+35)}));
+    try{const blob=await gridOf(cells,260,270,3,(x,ox,oy)=>x.drawImage(video,0,0,W*0.22,H*0.42,ox,oy,260,268));
+      const r=await SAMPLE.json("Each numbered cell is the top-left of a VALORANT screen during a round: the minimap and the current location name (e.g. 'A Site', 'Mid Courtyard', or Japanese names). All cells are from the SAME map. Which VALORANT map is it? Choose one of: "+keys.join(", ")+". If you cannot tell, use \"-\". Reply only JSON: {\"map\":\"ascent\"}",{images:[blob],signal:ctl.signal,modelTier:"default"});
+      const m=String(r&&r.map||"").toLowerCase().trim();out.push(keys.includes(m)?m:null)}catch(e){if(e&&e.code==="cancelled")throw e;out.push(null)}
+  }
+  return out;
+}
 let lastErr=null;
 async function firstError(list){for(const x of list){if(!x.fin)continue;try{await x.job}catch(e){return e}}return null}
 async function runAnalysis(){
@@ -283,7 +297,9 @@ async function runAnalysis(){
     const pc=[];segs.forEach((rs,si)=>rs.forEach((r,ri)=>{if(r.plantAt!=null)pc.push({si,ri,t:Math.min(duration-0.2,r.plantAt+4)})}));
     const sites=await readSites(pc);pc.forEach((c,k)=>{segs[c.si][c.ri].site=sites[k]||null});
     prog(1,"完了しました");
-    lastResult={segs,comps,starts,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
+    prog(0.99,"マップを確認しています…");
+    const maps=await readMaps(segs);
+    lastResult={segs,comps,starts,maps,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
     showResult();
     return true;
   }catch(e){
@@ -303,14 +319,14 @@ function showResult(){
     R.comps.left.length?h("span",{class:"pill mute"},"自チーム:"+R.comps.left.join(" / ")):null,R.comps.right.length?h("span",{class:"pill mute"},"相手:"+R.comps.right.join(" / ")):null));
   R.segs.forEach((rs,si)=>{
     const w=rs.filter(r=>r.win===true).length,l=rs.filter(r=>r.win===false).length;
-    box.append(h("h3",{style:"margin:6px 0 0;font:700 16px var(--f-display)"},(R.segs.length>1?"マップ"+(si+1)+" ・ ":"")+rs.length+"ラウンド ・ "+w+"勝 "+l+"敗"+(rs.some(r=>r.win==null)?"(最後のラウンドは判定なし)":"")));
+    box.append(h("h3",{style:"margin:6px 0 0;font:700 16px var(--f-display)"},(R.segs.length>1?"マップ"+(si+1)+" ・ ":"")+(R.maps&&R.maps[si]?(((window.TACLOG_MAPS||[]).find(m=>m[0]===R.maps[si])||[0,R.maps[si]])[1])+" ・ ":"")+rs.length+"ラウンド ・ "+w+"勝 "+l+"敗"+(rs.some(r=>r.win==null)?"(最後のラウンドは判定なし)":"")));
     box.append(h("div",{class:"tblbox"},h("table",{class:"tbl"},h("thead",{},h("tr",{},["R","攻守","結果","ファーストキル","設置","サイト","設置時の残り","動画の位置"].map(x=>h("th",{},x)))),
       h("tbody",{},rs.map(r=>h("tr",{},h("td",{class:"num"},r.n),h("td",{},sideJa(r.side)),h("td",{},r.win==null?h("span",{class:"pill mute"},"?"):r.win?h("span",{class:"pill win"},"勝ち"):h("span",{class:"pill loss"},"負け")),
         h("td",{},(r.fk==="us"?"自チーム":r.fk==="them"?"相手":r.fk==="tie"?"同時":"—")+(r.fkBy?":"+r.fkBy:"")),h("td",{},r.planted?(r.side==="attack"?"自チームが設置":"相手が設置"):"—"),h("td",{},r.site||"—"),h("td",{class:"num"},r.plant!=null?mmss(r.plant):"—"),h("td",{class:"num"},fmt(r.plantAt??r.start))))))));
   });
   if(R.segs.every(rs=>rs.every(r=>!r.fk)))box.append(h("div",{class:"notice"},"この録画ではファーストキルを読み取れませんでした。画面上の顔アイコン(生存状況)の位置がいつもと違う可能性があります。試合中の画面のスクリーンショットを1枚お問い合わせから送ってください。"));
-  if(R.segs.length>1)box.append(h("p",{class:"small muted",style:"margin:0"},"途中でスコアが0-0に戻ったので、別のマップとして分けました。2つ目以降のマップ名は、保存後に試合一覧で設定してください。"));
-  box.append(h("p",{class:"small muted",style:"margin:0"},"設置時の残り時間は、読み取り間隔の半分くらいの誤差があります。ファーストキルは生存人数の変化から1秒単位で判定し、その瞬間のキルログから取った人を読んでいます。"+(R.starts&&R.starts.every(x=>x.auto)?" 攻守は画面の表示から自動で判定しました。":" 攻守を自動で判定できなかったマップは、手順2で選んだ「最初の攻守」を使っています。")));
+  if(R.segs.length>1)box.append(h("p",{class:"small muted",style:"margin:0"},"途中でスコアが0-0に戻ったので、別のマップとして分けました。"));
+  box.append(h("p",{class:"small muted",style:"margin:0"},"マップは録画のミニマップから自動で判定しました。違っていたら、保存後に試合チャンネルで直せます。設置時の残り時間は、読み取り間隔の半分くらいの誤差があります。ファーストキルは生存人数の変化から1秒単位で判定し、その瞬間のキルログから取った人を読んでいます。"+(R.starts&&R.starts.every(x=>x.auto)?" 攻守は画面の表示から自動で判定しました。":" 攻守を自動で判定できなかったマップは、手順2で選んだ「最初の攻守」を使っています。")));
   const save=h("button",{type:"button",class:"btn primary"},"この結果を保存する");
   save.onclick=async()=>{save.disabled=true;try{
     await saveLast({date:$("mDate").value,opp:$("mOpp").value.trim(),map:$("mMap").value,yt:$("mYt").value.trim()});
@@ -321,7 +337,7 @@ function showResult(){
 
 async function saveLast(meta){
   const R=lastResult;if(!R||!R.segs.length||!R.segs[0].length)throw new Error("ラウンドを見つけられませんでした。");
-  for(let si=0;si<R.segs.length;si++){const{error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:meta.date||"",opp:meta.opp||"",map:si===0?(meta.map||""):"",start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:meta.yt||"",file:fileName,part:si+1,comps:R.comps,rounds:R.segs[si]}});if(error)throw error}
+  for(let si=0;si<R.segs.length;si++){const{error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:meta.date||"",opp:meta.opp||"",map:(si===0&&meta.map)?meta.map:((R.maps&&R.maps[si])||""),start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:meta.yt||"",file:fileName,part:si+1,comps:R.comps,rounds:R.segs[si]}});if(error)throw error}
 }
 window.ANALYZER={loadFile,runAnalysis,saveLast,result:()=>lastResult,error:()=>lastErr,stop:()=>ctl&&ctl.abort()};
 
