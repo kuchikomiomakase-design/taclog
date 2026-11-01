@@ -3,8 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>TacLog | スクリムの反省会を、数字で</title>
-<meta name="description" content="配信した録画を読み込むだけで、ラウンドごとの勝ち負け・ファーストキル・設置の秒数とサイトを記録。チームの傾向をAIに聞けます。">
+<title>TacLog|VALORANTのスクリム分析ツール ― 録画からラウンドを自動記録</title>
+<meta name="description" content="スクリムの録画を読み込むだけで、ラウンドごとの勝敗・攻守・ファーストキル・設置サイトを自動で記録。ファーストキル取得率やマップ別のアタック取得率をAIに質問できる、VALORANTのスクリム分析・振り返りツールです。無料で始められます。">
+<link rel="canonical" href="https://taclog.app/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TacLog">
+<meta property="og:title" content="TacLog|VALORANTのスクリム分析ツール ― 録画からラウンドを自動記録">
+<meta property="og:description" content="スクリムの録画を読み込むだけで、ラウンドごとの勝敗・攻守・ファーストキル・設置サイトを自動で記録。ファーストキル取得率やマップ別のアタック取得率をAIに質問できる、VALORANTのスクリム分析・振り返りツールです。無料で始められます。">
+<meta property="og:url" content="https://taclog.app/">
+<meta property="og:image" content="https://taclog.app/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
 <link rel="stylesheet" href="/assets/style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -66,6 +75,7 @@
 @media (max-width:880px){.hero{grid-template-columns:1fr}.qa .row2{grid-template-columns:1fr;gap:4px}.promise{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.flow .st,.flow .st:first-child{clip-path:none;padding-left:18px}}
 @media (max-width:480px){.callouts{display:none}.flow{grid-template-columns:1fr}.kpis .v{font-size:22px}.end{padding:26px 20px}}
 </style>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"TacLog","url":"https://taclog.app/","applicationCategory":"GameApplication","operatingSystem":"Windows, macOS (Chrome / Edge)","description":"VALORANTのスクリム録画を読み込んで、ラウンドごとの勝敗・攻守・ファーストキル・設置サイトを記録し、AIに質問できるスクリム分析ツール","offers":{"@type":"Offer","price":"0","priceCurrency":"JPY"},"inLanguage":"ja"}</script>
 </head>
 <body>
 <header id="topbar"></header>

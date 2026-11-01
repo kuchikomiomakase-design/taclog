@@ -1,0 +1,7 @@
+User-agent: *
+Disallow: /app
+Disallow: /onboarding
+Disallow: /invite
+Disallow: /reset
+Disallow: /api/
+Sitemap: https://taclog.app/sitemap.xml
