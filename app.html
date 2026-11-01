@@ -124,7 +124,7 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
       </div>
       <p class="small muted">画面の左側のスコアを自分のチームとして扱います(自分の視点の配信なら左が自チームです)。</p>
     </section>
-    <section class="card">
+    <section class="card" hidden aria-hidden="true"><!-- reading area is fixed automatically (kept only for the analyzer's internal values) -->
       <div class="stephead"><span class="stepno">3</span><h2>読み取る場所を確認</h2></div>
       <p class="small muted">右の切り抜きに、スコアと残り時間が入っているか確認してください。ずれていたらスライダーで調整します。</p>
       <div class="preview">
@@ -139,7 +139,7 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
       </div>
     </section>
     <section class="card">
-      <div class="stephead"><span class="stepno">4</span><h2>分析する</h2></div>
+      <div class="stephead"><span class="stepno">3</span><h2>分析する</h2></div>
       
       <p class="small muted" id="estimate"></p>
       <div class="row"><button type="button" class="btn primary" id="go" disabled>分析を始める</button><button type="button" class="btn" id="stop" hidden>止める</button></div>

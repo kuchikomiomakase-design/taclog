@@ -707,7 +707,7 @@ $("stop").onclick=()=>ctl&&ctl.abort();
 function showResult(){
   const R=lastResult,box=$("result");box.hidden=false;box.replaceChildren();
   const rate=R.samples?Math.round(R.read/R.samples*100):0;
-  if(!R.segs.length||!R.segs[0].length){box.append(h("div",{class:"status"},"ラウンドを見つけられませんでした(読み取れた画面 "+rate+"%)。手順3の切り抜きにスコアと残り時間が入っているか確認して、もう一度試してください。"));return}
+  if(!R.segs.length||!R.segs[0].length){box.append(h("div",{class:"status"},"ラウンドを見つけられませんでした(読み取れた画面 "+rate+"%)。試合の画面(上のスコアと残り時間)が映っている録画か確認してください。"));return}
   box.append(h("div",{class:"row"},h("span",{class:"pill win"},"読み取れた画面 "+rate+"%"),h("span",{class:"pill"},R.segs.length>1?R.segs.length+"マップ分":"1マップ"),
     R.comps.left.length?h("span",{class:"pill mute"},"自チーム:"+R.comps.left.join(" / ")):null,R.comps.right.length?h("span",{class:"pill mute"},"相手:"+R.comps.right.join(" / ")):null,
     R.coach&&Object.keys(R.coach).length?h("span",{class:"pill warn",title:"観戦している画面なので、チームの数字と撃ち合いだけを記録しました(個人のスキルや生存は、選手本人の録画から取ります)"},"コーチ・観戦視点"):null));
