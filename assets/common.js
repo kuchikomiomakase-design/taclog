@@ -98,6 +98,8 @@
     if (m.includes("question limit")) return "今月の質問回数の上限に達しました。プランを変えると回数が増えます。";
     if (m.includes("member limit")) return "このチームはメンバーの上限に達しています。";
     if (m.includes("invalid invite")) return "この招待リンクは無効か、期限が切れています。チームの管理者に新しいリンクをもらってください。";
+    if (m.includes("org plan required")) return "2つ目のチームを作るには、コーチ・組織プランが必要です。";
+    if (m.includes("team limit")) return "1人で作れるチームは10チームまでです。";
     if (m.includes("game limit")) return "使えるタイトルの数を超えています。タイトルを追加してください。";
     if (m.includes("Invalid login")) return "メールアドレスかパスワードが違います。";
     if (m.includes("already registered")) return "このメールアドレスはすでに登録されています。ログインしてください。";

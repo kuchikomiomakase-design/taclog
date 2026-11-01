@@ -42,9 +42,10 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     const bar = $("teamBar"); if (!bar) return;
     const add = h("button", { type: "button", class: "gtab addteam", title: "チームを追加", "aria-label": "チームを追加" }, "＋");
     add.onclick = () => {
-      const paid = APP.teams.some((t) => t.plan && t.plan !== "free");
-      const msg = "新しいチームを作ります。\n\n" + (paid ? "有料プランのチームをお持ちの場合、2チーム目からは1チームにつき月500円の予定です(今は準備中のため無料です)。" : "無料プランで作られます。") + "\n\n続けますか?";
-      if (confirm(msg)) location.href = "/onboarding?new=1";
+      // several teams = coach / organization plan (the new team gets that plan too)
+      const org = APP.teams.some((t) => t.plan === "org" && t.role === "admin");
+      if (org) { location.href = "/onboarding?new=1"; return; }
+      if (confirm("複数のチームを見るには、コーチ・組織プランが必要です。\n組織プランなら、チームをいくつでも(10チームまで)追加でき、追加したチームも組織プランになります。\n\n料金プランを見ますか?")) location.href = "/pricing";
     };
     bar.replaceChildren(h("span", { class: "eyebrow" }, "Team"),
       ...APP.teams.map((t) => { const b = h("button", { type: "button", class: "gtab", "aria-pressed": t.id === APP.team.id ? "true" : "false" }, t.name);
