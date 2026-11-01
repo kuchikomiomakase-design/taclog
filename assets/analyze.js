@@ -183,7 +183,7 @@ async function readFirstKillers(segs){
       const arr=Array.isArray(r.cells)?r.cells:[];
       part.forEach((c,k)=>{const r0=segs[c.si][c.ri],list=Array.isArray(arr[k])?arr[k]:[];
         const want=r0.fk==="us"?"us":r0.fk==="them"?"them":null;
-        const pick=list.filter(e=>e&&e.killer&&(!want||e.team===want));
+        const pick=list.filter(e=>e&&e.killer&&!/^(unknown|unk|\?+|-+|不明|none|n\/a)$/i.test(String(e.killer).trim())&&(!want||e.team===want));
         if(pick.length){const nm=String(pick[0].killer).slice(0,30);r0.fkBy=/^me$/i.test(nm.trim())?"Me(配信者)":nm;r0.fkVictim=String(pick[0].victim||"").slice(0,30);if(r0.fk==="tie")r0.fk=pick[0].team==="us"?"us":"them"}});
     }catch(e){if(e&&e.code==="cancelled")throw e}
   }
@@ -195,14 +195,17 @@ function sideOf(n,start){const sw=start==="attack"?"defense":"attack";return n<=
 function buildRounds(samples,start){
   // stabilise scores
   let cur=null;const valid=i=>samples[i].L!=null&&samples[i].R!=null;
-  const confirm=i=>{for(let j=i+1;j<Math.min(samples.length,i+4);j++){if(valid(j))return samples[j].L===samples[i].L&&samples[j].R===samples[i].R}return true};
+  const sparse=samples.some(x=>x.ai!=null);   // scores already cleaned up from a few AI readings: no need to wait for a second look
+  const confirm=i=>{if(sparse)return true;for(let j=i+1;j<Math.min(samples.length,i+4);j++){if(valid(j))return samples[j].L===samples[i].L&&samples[j].R===samples[i].R}return true};
+  const steady=i=>{let n=0;for(let j=i;j<samples.length&&n<4;j++){if(!valid(j))continue;if(samples[j].L!==samples[i].L||samples[j].R!==samples[i].R)return false;n++}return n>=3};
   let seg=0;
   samples.forEach((s,i)=>{
     if(valid(i)){
       if(!cur){if(confirm(i))cur={L:s.L,R:s.R,seg}}
       else{const d=(s.L+s.R)-(cur.L+cur.R);
         if(d===1&&((s.L===cur.L+1&&s.R===cur.R)||(s.R===cur.R+1&&s.L===cur.L))&&confirm(i))cur={L:s.L,R:s.R,seg};
-        else if(s.L+s.R===0&&cur.L+cur.R>=3&&confirm(i)){seg++;cur={L:0,R:0,seg}}}
+        else if(s.L+s.R===0&&cur.L+cur.R>=3&&confirm(i)){seg++;cur={L:0,R:0,seg}}
+        else if(d>1&&d<=4&&s.L>=cur.L&&s.R>=cur.R&&steady(i))cur={L:s.L,R:s.R,seg};}  // a round or two were not seen: carry on instead of getting stuck
     }
     s.score=cur;
   });
@@ -313,7 +316,8 @@ async function sparseScores(loc,readFn,onProg){
     for(let k=1;k<ok.length;k++){
       const [ia,a]=ok[k-1],[ib,b]=ok[k];if(ib-ia<2)continue;
       const ta=a.L+a.R,tb=b.L+b.R,reset=tb===0&&ta>=3;
-      const jump=!reset&&(tb-ta>1||b.L<a.L||b.R<a.R);              // rounds skipped (or a new map whose 0-0 was not read yet)
+      const unfinished=reset&&Math.max(a.L,a.R)<13;                    // new map, but the last one did not reach 13 yet: maybe its last rounds were not read
+      const jump=unfinished||(!reset&&(tb-ta>1||b.L<a.L||b.R<a.R));  // rounds skipped (or a new map whose 0-0 was not read yet)
       const missed=!reset&&tb-ta===1&&segOf[ia]===segOf[ib]&&ib-ia>3;   // a change the PC check did not see: find roughly where
       if(jump||missed){   // read the middle of the widest stretch between ia and ib that has no reading yet (closest to ib first)
         const rr=[];for(let i=ia;i<=ib;i++)if(reads.has(i))rr.push(i);let g=null;
@@ -329,15 +333,28 @@ async function sparseScores(loc,readFn,onProg){
     });
     if(!(await readNow("念のため、もう少し読み取っています…")))break;
   }
-  // 5) Give every sample a score: the nearest reading in the same stretch (or the one before)
+  // 5) Give every sample a score. Between two readings with different scores, put the change where it most likely happened:
+  //    the timer of the later reading tells when its round started (more reliable), otherwise the biggest change of the score digits on screen.
   const okR=[...reads.entries()].filter(([i,r])=>r.L!=null&&r.R!=null).sort((x,y)=>x[0]-y[0]);
+  const sc=new Array(loc.length).fill(null);
+  if(okR.length){
+    for(let i=okR[0][0];i<loc.length;i++)sc[i]=okR[okR.length-1][1];
+    for(let k=0;k<okR.length;k++){
+      const [ia,a]=okR[k],nx=okR[k+1];
+      if(!nx){for(let i=ia;i<loc.length;i++)sc[i]=a;break}
+      const [ib,b]=nx;let cut=ib;                                  // first index that gets the score of b
+      if(a.L!==b.L||a.R!==b.R){
+        let byTimer=null;
+        if(typeof b.x==="number"&&b.x>30&&b.x<=100){const change=loc[ib].t-(100-b.x)-30-5;for(let i=ia+1;i<=ib;i++)if(loc[i].t>=change){byTimer=i;break}}
+        if(byTimer!=null)cut=byTimer;
+        else{let best=-1;for(let i=ia+1;i<=ib;i++){const d=sigDist(loc[i],loc[i-1]);if(d>best){best=d;cut=i}}}
+      }
+      for(let i=ia;i<ib;i++)sc[i]=i<cut?a:b;
+    }
+  }
   loc.forEach((l,i)=>{
-    let best=null;
-    for(const [j,r] of okR){if(segOf[j]!==segOf[i])continue;if(!best||Math.abs(j-i)<Math.abs(best[0]-i))best=[j,r]}
-    if(!best){for(const [j,r] of okR){if(j<=i)best=[j,r];else break}}
-    const own=reads.get(i);
-    const x=own&&own.x!=null?own.x:(l.spike?"S":null);
-    samples.push({t:l.t,L:best?best[1].L:null,R:best?best[1].R:null,x,ai:!!own});
+    const own=reads.get(i),x=own&&own.x!=null?own.x:(l.spike?"S":null);
+    samples.push({t:l.t,L:sc[i]?sc[i].L:null,R:sc[i]?sc[i].R:null,x,ai:!!own});
   });
   return{samples,reads:reads.size};
 }
