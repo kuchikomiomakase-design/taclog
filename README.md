@@ -60,7 +60,7 @@ Supabase の **Authentication → Providers → Google** をオンにします�
 
 ### 6. 決済(Riot の承認後)
 1. Stripe でアカウントを作り、本人確認と振込先を登録
-2. 商品を3つ作る:「チーム」月1,980円、「コーチ・組織」月4,980円、「タイトル追加」月500円(どれも毎月の定期支払い)
+2. 商品を3つ作る:「チーム」月2,480円、「コーチ・組織」月4,980円、「タイトル追加」月500円(どれも毎月の定期支払い)
 3. **Developers → Webhooks** で `https://(サイトのURL)/api/webhook` を登録し、次のイベントを選ぶ
    `checkout.session.completed` / `customer.subscription.created` / `customer.subscription.updated` / `customer.subscription.deleted`
 4. **Settings → Billing → Customer portal** を有効にする(解約・カード変更の画面)
@@ -123,7 +123,7 @@ Supabase の SQL Editor で `supabase/003_games.sql` を実行してください
 | | 無料 | チーム | コーチ・組織 |
 |---|---|---|---|
 | 録画の分析 | 月2本 | 無制限 | 無制限 |
-| AIへの質問 | 月20回 | 月300回 | 無制限 |
+| AIへの質問 | 月20回 | 月150回 | 無制限 |
 | 見られるデータ | 直近14日 | 全期間 | 全期間 |
 | メンバー | 3人 | 無制限 | 無制限 |
 

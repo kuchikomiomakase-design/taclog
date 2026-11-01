@@ -1,6 +1,6 @@
 // POST /api/webhook  (Stripe -> TacLog). Keeps teams.plan in sync with the subscription.
 const { send, fail, readRaw, rest, stripe, verifyStripe, discord, env } = require("./_lib");
-const PLAN_JA = { free: "無料", team: "チーム(月1,980円)", org: "コーチ・組織(月4,980円〜)" };
+const PLAN_JA = { free: "無料", team: "チーム(月2,480円)", org: "コーチ・組織(月4,980円〜)" };
 
 // Tells the Discord "申し込み" channel when a team starts, changes or cancels a paid plan.
 async function notify(team, before, after) {

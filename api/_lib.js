@@ -63,27 +63,34 @@ async function membership(teamId, auth) {
   return rows && rows[0] ? rows[0] : null;
 }
 
-async function claude({ content, maxTokens = 4000, teamId = null, kind = "other" }) {
+async function claude({ content, maxTokens = 4000, teamId = null, kind = "other", model = null }) {
+  // a cheaper model can be asked for (e.g. AI questions); if it is not available, fall back to the default model once
+  if (model && !model.startsWith("__use__") && model !== env("ANTHROPIC_MODEL", "claude-sonnet-5-5")) {
+    try { return await claude({ content, maxTokens, teamId, kind, model: "__use__" + model }); }
+    catch (e) { if (e.code === "rate_limited") throw e; return claude({ content, maxTokens, teamId, kind }); }
+  }
+  const useModel = model && model.startsWith("__use__") ? model.slice(7) : env("ANTHROPIC_MODEL", "claude-sonnet-5-5");
   const key = env("ANTHROPIC_API_KEY");
   if (!key) { const e = new Error("AIの設定(ANTHROPIC_API_KEY)がまだ入っていません。"); e.status = 503; throw e; }
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: env("ANTHROPIC_MODEL", "claude-sonnet-5-5"), max_tokens: maxTokens, messages: [{ role: "user", content }] })
+    body: JSON.stringify({ model: useModel, max_tokens: maxTokens, messages: [{ role: "user", content }] })
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
     const e = new Error((data.error && data.error.message) || "AI error"); e.status = r.status === 429 ? 429 : 502; e.code = r.status === 429 ? "rate_limited" : "upstream_error"; throw e;
   }
-  logUsage(teamId, kind, data.usage).catch(() => {});
+  logUsage(teamId, kind, data.usage, useModel).catch(() => {});
   return (data.content || []).filter((c) => c.type === "text").map((c) => c.text).join("");
 }
 // Records token usage so the monthly report can show AI costs. Never blocks the user's request on failure.
-async function logUsage(teamId, kind, u) {
+async function logUsage(teamId, kind, u, model) {
   if (!u || !SERVICE()) return;
   const inT = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0), outT = u.output_tokens || 0;
-  const cost = inT / 1e6 * Number(env("AI_INPUT_USD_PER_MTOK", "2")) + outT / 1e6 * Number(env("AI_OUTPUT_USD_PER_MTOK", "10"));
-  await rest("ai_usage", { method: "POST", service: true, body: { team_id: teamId, kind, input_tokens: inT, output_tokens: outT, cost_usd: Number(cost.toFixed(6)) } });
+  const cheap = /haiku/i.test(String(model || ""));   // rough price per million tokens (set the env vars to your real prices)
+  const cost = inT / 1e6 * Number(env(cheap ? "AI_HAIKU_INPUT_USD_PER_MTOK" : "AI_INPUT_USD_PER_MTOK", cheap ? "1" : "3")) + outT / 1e6 * Number(env(cheap ? "AI_HAIKU_OUTPUT_USD_PER_MTOK" : "AI_OUTPUT_USD_PER_MTOK", cheap ? "5" : "15"));
+  await rest("ai_usage", { method: "POST", service: true, body: { team_id: teamId, kind: cheap ? kind + ":haiku" : kind, input_tokens: inT, output_tokens: outT, cost_usd: Number(cost.toFixed(6)) } });
 }
 
 // ---- Discord (bot over REST; no always-on connection needed) ----
@@ -140,7 +147,7 @@ async function verifyStripe(raw, header, secret) {
 const TRIAL_UNLIMITED = true;
 const PLAN_LIMITS = TRIAL_UNLIMITED
   ? { free: { questions: 100000, days: 36500 }, team: { questions: 100000, days: 36500 }, org: { questions: 100000, days: 36500 } }
-  : { free: { questions: 20, days: 14 }, team: { questions: 300, days: 36500 }, org: { questions: 100000, days: 36500 } };
+  : { free: { questions: 20, days: 14 }, team: { questions: 150, days: 36500 }, org: { questions: 100000, days: 36500 } };
 
 function serviceHeaders() { const k = SERVICE(); const h = { apikey: k }; if (String(k || "").startsWith("eyJ")) h.authorization = "Bearer " + k; return h; }
 
