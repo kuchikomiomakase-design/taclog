@@ -287,7 +287,10 @@ async function readMaps(segs){
       const m=String(r&&r.map||"").toLowerCase().trim();maps.push(keys.includes(m)?m:null);
       // the player's own agent only if every look shows the same agent in their own view; a coach / spectator recording has none
       const ag=(Array.isArray(r&&r.me)?r.me:[r&&r.me]).map(a=>String(a||"").trim().slice(0,20)).filter(a=>a&&a!=="-"&&!/unknown/i.test(a));
-      const spec=Array.isArray(r&&r.spec)&&r.spec.some(x=>x===true);
+      // spectating while nobody has died yet (5v5) = a coach / spectator recording (a player only spectates after dying)
+      const full=[];for(const c of cells){await seek(c.t);const a=aliveNow();full.push(a[0]===5&&a[1]===5)}
+      const specs=Array.isArray(r&&r.spec)?r.spec:[];
+      const spec=specs.some((x,k)=>x===true&&full[k]);
       const same=ag.length>=2&&ag.every(a=>agentKey(a)===agentKey(ag[0]));
       me.push(!spec&&same?ag[0]:null);if(spec||(ag.length>=2&&!same))COACH[maps.length-1]=true;
     }catch(e){if(e&&e.code==="cancelled")throw e;maps.push(null);me.push(null)}
