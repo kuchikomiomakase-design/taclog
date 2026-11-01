@@ -6,10 +6,14 @@
 // Customers are found by the login email (TacLog creates them with it).
 const { send, fail, readBody, getUser, rest, stripe, env } = require("./_lib");
 
-async function myCustomers(email) {
-  if (!email) return [];
-  const r = await stripe("customers?limit=20&email=" + encodeURIComponent(email), null, "GET");
-  return (r.data || []).map((c) => c.id);
+// the person's Stripe customers: by login email, by their user id (saved on new customers), and those of teams they manage
+// (so a changed email on the Stripe page does not hide a payment)
+async function myCustomers(user) {
+  const ids = new Set();
+  if (user.email) { const r = await stripe("customers?limit=20&email=" + encodeURIComponent(user.email), null, "GET"); (r.data || []).forEach((c) => ids.add(c.id)); }
+  try { const r = await stripe("customers/search?limit=20&query=" + encodeURIComponent("metadata['user_id']:'" + user.id + "'"), null, "GET"); (r.data || []).forEach((c) => ids.add(c.id)); } catch (e) {}
+  try { const t = await rest("team_members?select=teams(stripe_customer_id)&role=eq.admin&user_id=eq." + user.id, { service: true }) || []; t.forEach((x) => x.teams && x.teams.stripe_customer_id && ids.add(x.teams.stripe_customer_id)); } catch (e) {}
+  return [...ids];
 }
 
 module.exports = async (req, res) => {
@@ -18,7 +22,7 @@ module.exports = async (req, res) => {
     const auth = await getUser(req); if (!auth) return fail(res, 401, "ログインしてください。");
     const body = await readBody(req);
     if (!env("STRIPE_SECRET_KEY")) return send(res, 200, { subs: [], off: true });
-    const custs = await myCustomers(auth.user.email);
+    const custs = await myCustomers(auth.user);
     if (body.action === "list") {
       const subs = [];
       for (const c of custs) {

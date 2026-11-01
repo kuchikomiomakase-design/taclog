@@ -12,7 +12,7 @@ module.exports = async (req, res) => {
     if (!price) return fail(res, 503, "料金の設定がまだ入っていません。");
     let customer = m.teams && m.teams.stripe_customer_id;
     if (!customer) {
-      const c = await stripe("customers", { email: auth.user.email, metadata: { team_id: body.teamId } });
+      const c = await stripe("customers", { email: auth.user.email, metadata: { team_id: body.teamId, user_id: auth.user.id } });
       customer = c.id;
       await rest("teams?id=eq." + body.teamId, { method: "PATCH", service: true, body: { stripe_customer_id: customer } });
     }

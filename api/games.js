@@ -42,7 +42,7 @@ module.exports = async (req, res) => {
 
     // No subscription yet: start one for the add-on only.
     let customer = t.stripe_customer_id;
-    if (!customer) { const c = await stripe("customers", { email: auth.user.email, metadata: { team_id: body.teamId } }); customer = c.id; await save({ stripe_customer_id: customer }); }
+    if (!customer) { const c = await stripe("customers", { email: auth.user.email, metadata: { team_id: body.teamId, user_id: auth.user.id } }); customer = c.id; await save({ stripe_customer_id: customer }); }
     const s = await stripe("checkout/sessions", {
       mode: "subscription", customer, client_reference_id: body.teamId, locale: "ja",
       line_items: { 0: { price, quantity: needExtra } },
