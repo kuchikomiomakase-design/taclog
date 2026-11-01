@@ -255,6 +255,7 @@ async function isValorant(){
 // Which map: a few minimap + location-name crops per map segment, one small AI call per segment.
 // Which map, and which agent the streamer (the player whose screen this is) plays: one small AI call per map segment.
 // The map comes from minimap crops; the agent from the bottom-centre HUD (ability icons), which is visible even when names are hidden.
+let COACH={};   // per map segment: recorded by a coach / spectator (no personal numbers)
 async function readMaps(segs){
   const keys=(window.TACLOG_MAPS||[]).map(m=>m[0]);const W=video.videoWidth,H=video.videoHeight,maps=[],me=[];
   for(const rs of segs){
@@ -264,9 +265,13 @@ async function readMaps(segs){
     try{
       const mapBlob=await gridOf(cells,260,270,3,(x,ox,oy)=>x.drawImage(video,0,0,W*0.22,H*0.42,ox,oy,260,268));
       const hudBlob=await gridOf(cells,560,120,1,(x,ox,oy)=>x.drawImage(video,W*0.28,H*0.86,W*0.44,H*0.14,ox+36,oy,524,118));
-      const r=await SAMPLE.json("Image 1: numbered cells showing the top-left of a VALORANT screen during a round (minimap and location name such as 'A Site'). Image 2: the bottom-centre HUD of the same moments (health and the player's ability icons). All cells are from the SAME map and the SAME player. 1) Which map? Choose one of: "+keys.join(", ")+" (or \"-\"). 2) Which agent is this player playing, judging from the ability icons? English agent name (or \"-\"). Reply only JSON: {\"map\":\"ascent\",\"me\":\"Jett\"}",{images:[mapBlob,hudBlob],signal:ctl.signal,modelTier:"default",task:"map"});
+      const r=await SAMPLE.json("Image 1: numbered cells showing the top-left of a VALORANT screen during a round (minimap and location name such as 'A Site'). Image 2: the bottom-centre HUD of the same moments (health and the ability icons of the player being shown). All cells are from the SAME map. 1) Which map? Choose one of: "+keys.join(", ")+" (or \"-\"). 2) For EACH cell of image 2: which agent's abilities are shown (English agent name or \"-\"), and is it a spectator/coach view (a 'SPECTATING'/観戦中 label, an observer layout, or no ability HUD)? A recording by a coach who keeps watching teammates shows different agents in different cells. Reply only JSON: {\"map\":\"ascent\",\"me\":[\"Jett\",\"Jett\",\"Jett\"],\"spec\":[false,false,false]}",{images:[mapBlob,hudBlob],signal:ctl.signal,modelTier:"default",task:"map"});
       const m=String(r&&r.map||"").toLowerCase().trim();maps.push(keys.includes(m)?m:null);
-      const a=String(r&&r.me||"").trim().slice(0,20);me.push(a&&a!=="-"&&!/unknown/i.test(a)?a:null);
+      // the player's own agent only if every look shows the same agent in their own view; a coach / spectator recording has none
+      const ag=(Array.isArray(r&&r.me)?r.me:[r&&r.me]).map(a=>String(a||"").trim().slice(0,20)).filter(a=>a&&a!=="-"&&!/unknown/i.test(a));
+      const spec=Array.isArray(r&&r.spec)&&r.spec.some(x=>x===true);
+      const same=ag.length>=2&&ag.every(a=>agentKey(a)===agentKey(ag[0]));
+      me.push(!spec&&same?ag[0]:null);if(spec||(ag.length>=2&&!same))COACH[maps.length-1]=true;
     }catch(e){if(e&&e.code==="cancelled")throw e;maps.push(null);me.push(null)}
   }
   return{maps,me};
@@ -621,7 +626,7 @@ async function runAnalysis(){
   if(!duration)return false;
   ctl=new AbortController();$("go").disabled=true;$("stop").hidden=false;$("result").hidden=true;
   const p=plan(),times=[];for(let i=0;i<p.n;i++)times.push(3+i*p.iv);
-  const samples=[];lastErr=null;SNAPS={};
+  const samples=[];lastErr=null;SNAPS={};COACH={};
   try{
     prog(0,"VALORANTの動画か確認しています…");
     const g=await isValorant();
@@ -657,7 +662,7 @@ async function runAnalysis(){
     await readKit(segs,me,maps,known);
     segs.forEach(rs=>rs.forEach(r=>{delete r._st;delete r._next}));
     prog(1,"完了しました");
-    lastResult={snaps:SNAPS,segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
+    lastResult={coach:COACH,snaps:SNAPS,segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
     showResult();
     return true;
   }catch(e){
@@ -674,7 +679,8 @@ function showResult(){
   const rate=R.samples?Math.round(R.read/R.samples*100):0;
   if(!R.segs.length||!R.segs[0].length){box.append(h("div",{class:"status"},"ラウンドを見つけられませんでした(読み取れた画面 "+rate+"%)。手順3の切り抜きにスコアと残り時間が入っているか確認して、もう一度試してください。"));return}
   box.append(h("div",{class:"row"},h("span",{class:"pill win"},"読み取れた画面 "+rate+"%"),h("span",{class:"pill"},R.segs.length>1?R.segs.length+"マップ分":"1マップ"),
-    R.comps.left.length?h("span",{class:"pill mute"},"自チーム:"+R.comps.left.join(" / ")):null,R.comps.right.length?h("span",{class:"pill mute"},"相手:"+R.comps.right.join(" / ")):null));
+    R.comps.left.length?h("span",{class:"pill mute"},"自チーム:"+R.comps.left.join(" / ")):null,R.comps.right.length?h("span",{class:"pill mute"},"相手:"+R.comps.right.join(" / ")):null,
+    R.coach&&Object.keys(R.coach).length?h("span",{class:"pill warn",title:"観戦している画面なので、チームの数字と撃ち合いだけを記録しました(個人のスキルや生存は、選手本人の録画から取ります)"},"コーチ・観戦視点"):null));
   R.segs.forEach((rs,si)=>{
     const w=rs.filter(r=>r.win===true).length,l=rs.filter(r=>r.win===false).length;
     box.append(h("h3",{style:"margin:6px 0 0;font:700 16px var(--f-display)"},(R.segs.length>1?"マップ"+(si+1)+" ・ ":"")+(R.maps&&R.maps[si]?(((window.TACLOG_MAPS||[]).find(m=>m[0]===R.maps[si])||[0,R.maps[si]])[1])+" ・ ":"")+rs.length+"ラウンド ・ "+w+"勝 "+l+"敗"+(rs.some(r=>r.win==null)?"(最後のラウンドは判定なし)":"")));
@@ -717,6 +723,7 @@ async function findSame(date,map,rs,part){
   return (data||[]).find(m=>(!map||!m.map||m.map===map)&&sameMatch(m.rounds||[],rs))||null;
 }
 async function savePov(matchId,si,R){
+  if(R.coach&&R.coach[si])return;   // a coach / spectator view has no player of its own: team numbers only
   const {error}=await TL.sb.from("match_povs").insert({match_id:matchId,team_id:APP.team.id,agent:(R.me&&R.me[si])||"",file:fileName,rounds:povRounds(R.segs[si])});
   if(error&&!/match_povs/.test(error.message||""))throw error;   // before 007_match_povs.sql is run, just skip the per-view data
 }
