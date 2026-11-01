@@ -16,5 +16,14 @@ module.exports = async (req, res) => {
     if (!/^\d{15,22}$/.test(id)) { out["channel_" + label] = id ? "NG: 数字のチャンネルIDではありません" : "未設定"; continue; }
     try { const c = await discord("channels/" + id); out["channel_" + label] = "OK (#" + c.name + ")"; } catch (e) { out["channel_" + label] = "NG: " + e.message + "(BOTがそのチャンネルを見られない/IDが違う)"; }
   }
+  if (url.searchParams.get("test") === "1") {   // actually post (and make a thread) in the contact channel, like a real inquiry
+    const id = String(env("DISCORD_CONTACT_CHANNEL_ID") || "").trim();
+    try {
+      const m = await discord("channels/" + id + "/messages", { method: "POST", body: { content: "🔧 TacLog 接続テスト(このメッセージは消してOKです)", allowed_mentions: { parse: [] } } });
+      out.test_post = "OK";
+      try { await discord("channels/" + id + "/messages/" + m.id + "/threads", { method: "POST", body: { name: "接続テスト", auto_archive_duration: 60 } }); out.test_thread = "OK"; }
+      catch (e) { out.test_thread = "NG: " + e.message + "(BOTに「公開スレッドの作成」の権限がない可能性)"; }
+    } catch (e) { out.test_post = "NG: " + e.message + "(BOTに「メッセージを送信」の権限がない可能性)"; }
+  }
   send(res, 200, out);
 };
