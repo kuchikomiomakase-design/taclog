@@ -358,6 +358,16 @@ function newMarks(A,B,s,mh,C){   // A: 2 s before, B: now, C: 2 s later (a death
   for(const v of top){const c=[v.x/v.n,v.y/v.n];if(out.every(o=>Math.hypot(o[0]-c[0],o[1]-c[1])>18))out.push(c);if(out.length>=2)break}
   return out;
 }
+// Is the minimap fixed? With "rotate" or "keep player centred" the map turns and moves all the time, so a death marker cannot be placed
+// on it reliably. The grey floor of a fixed minimap stays in the same pixels; compare it between moments.
+async function mmFixed(times){
+  const s=120,mh=Math.round(s*video.videoHeight*MM.h/(video.videoWidth*MM.w)),masks=[];
+  for(const t of times.slice(0,10)){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const d=mmPixels(s,mh),m=new Uint8Array(s*mh);
+    for(let i=0;i<m.length;i++){const r=d[i*4],g=d[i*4+1],b=d[i*4+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b);m[i]=mx-mn<18&&mx>100&&mx<215?1:0}masks.push(m)}
+  if(masks.length<3)return true;
+  const iou=[];for(let k=1;k<masks.length;k++){let a=0,u=0;for(let i=0;i<masks[k].length;i++){const x=masks[k][i],y=masks[k-1][i];if(x&&y)a++;if(x||y)u++}iou.push(u?a/u:1)}
+  iou.sort((a,b)=>a-b);return iou[Math.floor(iou.length/2)]>=0.55;
+}
 async function readKit(segs,me,maps,known){
   const jobs=[];
   segs.forEach((rs,si)=>rs.forEach(r=>{
@@ -422,26 +432,29 @@ async function readKit(segs,me,maps,known){
   // 3) every death: minimap 2 s before / at the moment + kill feed -> who killed whom, and where (new X marker on the minimap)
   const bySeg={};events.forEach(e=>{(bySeg[e.j.si]=bySeg[e.j.si]||[]).push(e)});
   for(const si of Object.keys(bySeg)){
-    const evs=bySeg[si],sheet=await sheetOf(+si);
+    const evs=bySeg[si],fixed=await mmFixed(evs.filter((_,k)=>k%Math.max(1,Math.floor(evs.length/10))===0).map(e=>e.t));
+    const sheet=fixed?await sheetOf(+si):null;
     const names=sheet?[...refBy[si].values()].map(x=>x.name):[];
     const dict=window.TLKit&&maps&&maps[si]&&TLKit.CALLOUTS[maps[si]]?TLKit.CALLOUTS[maps[si]]:"";
     for(let i=0;i<evs.length;i+=36){
       const part=evs.slice(i,i+36),blobs=[];prog(0.996,"撃ち合いの場所と相手を読み取っています…("+Math.min(evs.length,i+36)+"/"+evs.length+")");
-      const s=200,mh=Math.round(s*H*MM.h/(W*MM.w));
+      const s=fixed?200:0,mh=fixed?Math.round(s*H*MM.h/(W*MM.w)):0;
       for(let g=0;g<part.length;g+=12){
-        const cells=part.slice(g,g+12),cw=34+s+260,chh=Math.max(mh,120),cols=2,cv=document.createElement("canvas");cv.width=cols*cw;cv.height=Math.ceil(cells.length/cols)*chh;
+        const cells=part.slice(g,g+12),cw=34+s+260,chh=Math.max(mh,120),cols=fixed?2:3,cv=document.createElement("canvas");cv.width=cols*cw;cv.height=Math.ceil(cells.length/cols)*chh;
         const x=cv.getContext("2d");x.fillStyle="#000";x.fillRect(0,0,cv.width,cv.height);x.font="bold 18px monospace";x.textBaseline="top";
         for(let k=0;k<cells.length;k++){const c=cells[k],ox=(k%cols)*cw,oy=Math.floor(k/cols)*chh;
-          await seek(Math.max(c.j.a,c.t-KSTEP));const before=mmPixels(s,mh);
-          await seek(Math.min(c.j.end,c.t+KSTEP));const later=mmPixels(s,mh);
-          await seek(c.t);const after=mmPixels(s,mh);drawMM(x,ox+34,oy,s);
-          newMarks(before,after,s,mh,later).forEach(([px,py])=>{x.strokeStyle="#FF00FF";x.lineWidth=3;x.beginPath();x.arc(ox+34+px,oy+py,13,0,Math.PI*2);x.stroke()});
+          if(fixed){
+            await seek(Math.max(c.j.a,c.t-KSTEP));const before=mmPixels(s,mh);
+            await seek(Math.min(c.j.end,c.t+KSTEP));const later=mmPixels(s,mh);
+            await seek(c.t);const after=mmPixels(s,mh);drawMM(x,ox+34,oy,s);
+            newMarks(before,after,s,mh,later).forEach(([px,py])=>{x.strokeStyle="#FF00FF";x.lineWidth=3;x.beginPath();x.arc(ox+34+px,oy+py,13,0,Math.PI*2);x.stroke()});
+          }else await seek(c.t);
           x.drawImage(video,W*0.68,H*0.05,W*0.32,H*0.2,ox+34+s,oy,260,Math.round(260*H*0.2/(W*0.32)));
           x.fillStyle="#F2B33D";x.fillRect(ox,oy,34,24);x.fillStyle="#000";x.fillText(String(i+g+k+1),ox+4,oy+3)}
         blobs.push(await new Promise(r=>cv.toBlob(r,"image/jpeg",0.85)));
       }
       try{
-        const r=await SAMPLE.json((sheet?"Image 1 is a reference sheet from the SAME match: each tile is the minimap with the recording player's own icon, labelled with the name of the place where that player stood at that moment. ":"")+
+        const r=await SAMPLE.json(!fixed?"Each numbered cell is the kill feed (top-right of a VALORANT screen) right after someone died. For each cell give the newest death(s): killer agent > victim agent (identify AGENTS from the portraits; names may be player names or hidden; green/teal entry = killer on the recording team, red = enemy). Reply only JSON, one list per cell in order (usually 1 death, sometimes 2): {\"f\":[[{\"k\":\"Jett\",\"v\":\"Sova\",\"g\":true}],[]]} (g = true if the killer is on the recording team; use \"?\" for anything you cannot tell).":(sheet?"Image 1 is a reference sheet from the SAME match: each tile is the minimap with the recording player's own icon, labelled with the name of the place where that player stood at that moment. ":"")+
           "The other images have numbered cells. Each cell shows the minimap and the kill feed (top-right of the screen) right after someone died. Each death leaves an X marker on the minimap (blue/teal X = a player of the recording team, red X = an enemy); a magenta circle marks where a NEW X appeared in the last 2 seconds (found automatically, it can be missing or slightly off: then use the newest kill feed entry and the X closest to it). "+
           "For each cell give the newest death(s): killer agent > victim agent (identify AGENTS from the kill feed portraits; green/teal entry = killer on the recording team, red = enemy), and the place of the NEW X marker (the circled one)"+(sheet?", named by comparing its position with the reference tiles (use those names; for a spot between tiles pick the nearest)":"")+(dict?". Known place names on this map: "+dict:"")+
           ". Reply only JSON, one list per cell in order (usually 1 death, sometimes 2): {\"f\":[[{\"k\":\"Jett\",\"v\":\"Sova\",\"g\":true,\"p\":\"A Main\"}],[]]} (g = true if the killer is on the recording team; use \"?\" for anything you cannot tell).",
@@ -449,10 +462,24 @@ async function readKit(segs,me,maps,known){
         const arr=Array.isArray(r.f)?r.f:[];
         part.forEach((c,k)=>{const list=Array.isArray(arr[k])?arr[k]:[];list.slice(0,Math.max(1,c.n)+1).forEach(e=>{if(!e||typeof e!=="object")return;
           const f={t:Math.round(c.t-c.j.r._st),k:String(e.k||"?").slice(0,20),v:String(e.v||"?").slice(0,20),g:e.g===true?true:e.g===false?false:null,p:String(e.p||"?").slice(0,40)};
+          if(!fixed)f.p="?";f._t=c.t;
           if(!c.j.r.fights.some(x=>agentKey(x.v)===agentKey(f.v)&&agentKey(f.v)))c.j.r.fights.push(f)})});
       }catch(e){if(e&&e.code==="cancelled")throw e}
     }
   }
+  // the recording player's own fights: the place is the location name the game shows for them (exact, even with a rotating minimap)
+  const own=[];
+  for(const j of jobs){if(!j.me||j.b==null)continue;const mine=agentKey(j.me);(j.r.fights||[]).forEach(f=>{if(f._t==null)return;
+    if(f.g!==false&&agentKey(f.k)===mine&&f._t<=j.b+KSTEP)own.push({f,t:Math.min(f._t,j.b)});
+    else if(agentKey(f.v)===mine)own.push({f,t:Math.max(j.a,j.b)})})}
+  for(let i=0;i<own.length;i+=30){
+    const part=own.slice(i,i+30);prog(0.998,"撃ち合いの場所を確認しています…");
+    const blob=await gridOf(part,330,52,3,(x,ox,oy)=>x.drawImage(video,W*0.03,H*0.004,W*0.16,H*0.036,ox+34,oy+2,296,48));
+    try{const r=await SAMPLE.json("Each numbered cell is the top-left corner of a VALORANT screen, where the game shows the name of the player's current location (e.g. 'A Main', 'Mid Courtyard'). Ignore any 'Client FPS' or 'Packet Loss' text. Copy the location name exactly as written for each cell, or \"-\" if there is none. Reply only JSON: {\"p\":[\"A Main\",\"-\"]}",{images:[blob],signal:ctl.signal,modelTier:"fast",task:"places"});
+      const arr=Array.isArray(r.p)?r.p:[];part.forEach((c,k)=>{const v=String(arr[k]||"").trim().slice(0,40);if(v&&v!=="-")c.f.p=v});
+    }catch(e){if(e&&e.code==="cancelled")throw e}
+  }
+  jobs.forEach(j=>(j.r.fights||[]).forEach(f=>{delete f._t}));
   // the recording player's kills (and kills while their ult was ready) from the fights
   for(const j of jobs){const kt=j.r.kit;if(!kt||!j.me)continue;const mine=agentKey(j.me);
     const ultAt=t=>{let v=null;for(const x of j.S)if(x.ok&&x.t<=j.r._st+t)v=x.bars[3]===1;return v};
