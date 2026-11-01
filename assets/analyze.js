@@ -118,7 +118,7 @@ async function readFirstKills(segs,samples){
     let ok=null,fk=null,fkT=null;const memo={};
     const at=async(t)=>{if(memo[t])return memo[t];if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);return memo[t]=aliveNow()};
     const dead=async(t)=>{const a=await at(t);return a[0]<5||a[1]<5};
-    for(let t=Math.ceil(j.st+2);t<=Math.min(j.st+12,j.end);t+=3){const a=await at(t);if(a[0]===5&&a[1]===5){ok=t;break}}
+    for(const d of [2,5,0,8,11,14,17,20]){const t=Math.ceil(j.st+d);if(t>j.end||t<0)continue;const a=await at(t);if(a[0]===5&&a[1]===5){ok=t;break}} // round start can be a few seconds off
     if(ok!=null){
       // find any moment with someone dead (near the end of the round first; step back in case the next round already started)
       let hi=null;
