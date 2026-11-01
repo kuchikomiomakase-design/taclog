@@ -367,6 +367,13 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     const lim = TL.C.TRIAL_UNLIMITED ? { a: null, q: null } : t.plan === "free" ? { a: 2, q: 20 } : t.plan === "team" ? { a: null, q: 300 } : { a: null, q: null };
     $("usageText").textContent = "今月:分析 " + ((u && u.analyses) || 0) + (lim.a ? "/" + lim.a : "") + "本 ・ 質問 " + ((u && u.questions) || 0) + (lim.q ? "/" + lim.q : "") + "回" + (TL.C.TRIAL_UNLIMITED ? "(試作期間中は無制限)" : "");
     const br = $("billingRow"); br.replaceChildren();
+    if (t.comp_until && new Date(t.comp_until) > new Date()) br.append(h("span", { class: "pill data" }, "テスター特典:" + new Date(t.comp_until).toLocaleDateString("ja-JP") + "まで" + (PLAN_JA[t.plan] || t.plan) + "プランを無料で利用中"));
+    if (isAdmin && t.plan === "free") {   // tester / invite code: paid plan for free for a while
+      const inp = h("input", { type: "text", placeholder: "招待コード", "aria-label": "招待コード", style: "max-width:200px;text-transform:uppercase" });
+      const go = h("button", { class: "btn small", type: "button" }, "コードを使う");
+      go.onclick = async () => { go.disabled = true; try { const r = await TL.api("/api/redeem", { teamId: t.id, code: inp.value }); status("招待コードを使いました。" + new Date(r.until).toLocaleDateString("ja-JP") + "まで" + (PLAN_JA[r.plan] || r.plan) + "プランを無料で使えます。"); setTimeout(() => location.reload(), 1500); } catch (e) { status(TL.errText(e)); go.disabled = false; } };
+      br.append(h("div", { class: "row", style: "gap:6px;width:100%" }, inp, go));
+    }
     if (isAdmin) {
       if (!TL.C.BILLING_ENABLED) br.append(h("span", { class: "small muted" }, "有料プランは準備中です。"));
       else if (t.plan === "free") { ["team", "org"].forEach((p) => br.append(h("button", { class: "btn small" + (p === "team" ? " primary" : ""), type: "button", onclick: () => billing("/api/checkout", { plan: p }) }, PLAN_JA[p] + "プランにする"))); }

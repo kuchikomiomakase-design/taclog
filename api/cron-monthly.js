@@ -50,6 +50,8 @@ module.exports = async (req, res) => {
   try {
     const force = url.searchParams.get("force") === "1";
     await rest("teams?select=id&limit=1", { service: true }); // daily touch so the free database is never paused for inactivity
+    // tester plans that reached their end date go back to free (teams paying through Stripe are left alone)
+    try { await rest("teams?comp_until=lt." + new Date().toISOString() + "&stripe_subscription_id=is.null&plan=neq.free", { method: "PATCH", service: true, body: { plan: "free", comp_until: null } }); } catch (e) {}
     const { start, end, label, lastDay } = monthRange(new Date());
     if (!lastDay && !force) return send(res, 200, { skipped: "not the last day of the month" });
 

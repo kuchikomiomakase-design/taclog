@@ -60,9 +60,10 @@
 
   async function myTeams() {
     const s = await session(); if (!s) return [];
-    const { data, error } = await sb.from("team_members").select("team_id, role, display_name, can_stream, teams(id, name, plan, games, extra_games)").eq("user_id", s.user.id);
+    let { data, error } = await sb.from("team_members").select("team_id, role, display_name, can_stream, teams(id, name, plan, games, extra_games, comp_until)").eq("user_id", s.user.id);
+    if (error && /comp_until/.test(error.message || "")) ({ data, error } = await sb.from("team_members").select("team_id, role, display_name, can_stream, teams(id, name, plan, games, extra_games)").eq("user_id", s.user.id)); // before 006_promo_codes.sql is run
     if (error) throw error;
-    return (data || []).filter((r) => r.teams).map((r) => ({ id: r.teams.id, name: r.teams.name, plan: r.teams.plan, games: r.teams.games || ["valorant"], extra_games: r.teams.extra_games || 0, role: r.role, display_name: r.display_name, can_stream: r.can_stream }));
+    return (data || []).filter((r) => r.teams).map((r) => ({ id: r.teams.id, name: r.teams.name, plan: r.teams.plan, games: r.teams.games || ["valorant"], extra_games: r.teams.extra_games || 0, comp_until: r.teams.comp_until || null, role: r.role, display_name: r.display_name, can_stream: r.can_stream }));
   }
 
   function currentTeam(teams) {

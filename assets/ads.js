@@ -94,7 +94,13 @@ window.TLAds = (function () {
       const els = [col("adRail", "r", right)];
       if (left.length) els.push(col("adRailL", "l", left));
       els.forEach((e) => document.body.append(e));
-      const fit = () => els.forEach((e) => { e.hidden = window.innerWidth < 1660; });
+      // sit at the screen edges, and only where there is room next to the page content (never on top of it)
+      const fit = () => {
+        const m = document.querySelector("main"), r = m ? m.getBoundingClientRect() : { left: 0, right: window.innerWidth };
+        const cs = m ? getComputedStyle(m) : null, padL = cs ? parseFloat(cs.paddingLeft) || 0 : 0, padR = cs ? parseFloat(cs.paddingRight) || 0 : 0;
+        const left = r.left + padL, right = window.innerWidth - (r.right - padR);
+        els.forEach((e) => { e.hidden = (e.classList.contains("l") ? left : right) < 300 + 40; });
+      };
       fit(); window.addEventListener("resize", fit);
     });
   }

@@ -144,3 +144,12 @@ Supabase の SQL Editor で `supabase/003_games.sql` を実行してください
 { cat: "pc", title: "ゲーミングPC ○○", note: "配信しながら録画しても軽い", url: "https://px.a8.net/...", pixel: "https://www10.a8.net/0.gif?..." },
 ```
 `cat` は pc / capture / mic / camera / mouse / keyboard / headset / monitor / net のどれか。
+
+## テスター用の招待コード(お金なしで有料プランを使ってもらう)
+1. Supabase の SQL Editor で `supabase/006_promo_codes.sql` を実行(最初の1回だけ)
+2. コードを作る(例:チームプランを3か月、10チームまで使えるコード)
+```sql
+insert into promo_codes (code, plan, months, max_uses, note) values ('TACLOG-TESTER', 'team', 3, 10, '知り合いのテスター用');
+```
+3. チームの管理者が、アプリの「設定 → チーム → プラン」の欄に入れて「コードを使う」を押す
+期限が来ると、毎晩の自動処理で無料プランに戻ります。使われた数は `select * from promo_codes;` で見られます。
