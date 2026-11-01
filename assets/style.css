@@ -115,3 +115,6 @@ footer.site a{color:var(--ink2)}
 .adcard:hover{border-color:var(--accent)}
 .adcat{font:600 11px var(--f-mono);color:var(--data)}.adprice{font:600 13px var(--f-mono)}
 .adimg{display:block;width:100%;max-width:300px;height:auto;border-radius:6px;margin:2px 0}
+.adrail{position:fixed;top:96px;left:calc(50% + 524px);width:300px;max-height:calc(100vh - 120px);overflow:auto;display:grid;gap:10px;z-index:5}
+.adrail .adcard{padding:10px}
+@media print{.adrail{display:none!important}}

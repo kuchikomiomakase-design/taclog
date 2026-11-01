@@ -62,5 +62,21 @@ window.TLAds = (function () {
       h("p", { class: "small muted", style: "margin:0" }, "広告(アフィリエイト)です。リンクから購入されると、TacLogの運営費になります。"));
     return true;
   }
-  return { fill, items, card, CAT, isPaid };
+  // Right-hand banner column on wide screens (the empty space beside the 1000px content). Hidden on narrow screens and for paid teams.
+  function rail() {
+    const all = window.TACLOG_ADS.ITEMS.filter((x) => ok(x.url));
+    if (!all.length || document.getElementById("adRail")) return;
+    isPaid().then((paid) => {
+      if (paid) return;
+      const { h } = TL;
+      const pick = all.filter((x) => ok(x.img)).concat(all.filter((x) => !ok(x.img))).slice(0, 3);
+      const el = h("aside", { id: "adRail", class: "adrail", "aria-label": "広告" },
+        h("div", { class: "adhead" }, h("span", { class: "adpr" }, "PR"), h("a", { href: "/gear", class: "small" }, "おすすめ機材")),
+        ...pick.map(card));
+      document.body.append(el);
+      const fit = () => { el.hidden = window.innerWidth < 1660; };
+      fit(); window.addEventListener("resize", fit);
+    });
+  }
+  return { fill, items, card, CAT, isPaid, rail };
 })();
