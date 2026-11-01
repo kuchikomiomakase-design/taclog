@@ -224,6 +224,9 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     const body = $("folderBody"), name = $("folderName");
     body.replaceChildren(); name.textContent = "";
     if (!TLFolder.supported) { body.append(h("p", { class: "small muted" }, "録画フォルダの自動読み取りは、パソコン版のGoogle ChromeかMicrosoft Edgeで使えます。下の「手動で選んで分析する」から録画を選んでください。")); return; }
+    const delBox = h("input", { type: "checkbox", id: "delAfterQuick" }); delBox.checked = await TLFolder.getDeleteAfter();
+    delBox.onchange = async () => { await TLFolder.setDeleteAfter(delBox.checked); const hh = await TLFolder.handle(); if (hh && delBox.checked) await TLFolder.permission(hh, true, "readwrite"); if ($("delAfter")) $("delAfter").checked = delBox.checked; };
+    body.append(h("label", { class: "check", for: "delAfterQuick" }, delBox, h("span", {}, h("strong", {}, "分析後、録画を自動で削除する"), h("span", { class: "small muted" }, "オンにすると、パソコンの容量を圧迫しません(YouTubeのアーカイブは残ります)。"))));
     const hd = await TLFolder.handle();
     if (!hd) {
       body.append(h("p", { class: "small muted" }, "OBSの録画が保存されるフォルダを連携すると、ここに新しい録画が自動で出てきます。"),
