@@ -309,6 +309,82 @@ async function readMyDeaths(segs,me){
     j.r.myDead=true;j.r.myDeathT=Math.max(0,Math.round(at-j.r._st));
   }
 }
+// Abilities and ult from the player's OWN HUD (bottom centre), free on this PC. Only from the barrier drop (combat phase) until the player
+// dies or the round ends: the buy phase is never counted.
+//  - charge bar under each slot: teal = still has it, grey = used up. The X (ult) bar is teal while the ult is ready.
+//  - an ability taken out (held, not the gun) shows a small framed mouse hint above its slot, and the ammo counter disappears.
+// Positions are measured on 1080p and scale with the height (x from the screen centre; stretched 4:3 is found automatically).
+const KIT_DX=[-170,-58,55,168],KIT_MID=[-226,-114,0,112,224],KX0=-260,KX1=400,KY0=860,KY1=1060,KSTEP=2;
+const kitCv=document.createElement("canvas");kitCv.width=KX1-KX0;kitCv.height=KY1-KY0;const kitX=kitCv.getContext("2d",{willReadFrequently:true});
+let KIT_KX=1;
+function kitNow(kx){
+  const W=video.videoWidth,H=video.videoHeight,s=H/1080,cw=KX1-KX0,chh=KY1-KY0;
+  kitX.drawImage(video,W/2+KX0*s*kx,KY0*s,cw*s*kx,chh*s,0,0,cw,chh);
+  const d=kitX.getImageData(0,0,cw,chh).data;
+  const frac=(x0,x1,y0,y1,f)=>{let n=0,k=0;for(let y=y0-KY0;y<y1-KY0;y++)for(let x=x0-KX0;x<x1-KX0;x++){const i=(y*cw+x)*4;n++;if(f(d[i],d[i+1],d[i+2]))k++}return n?k/n:0};
+  const white=(r,g,b)=>{const mn=Math.min(r,g,b),mx=Math.max(r,g,b);return mn>200&&mx-mn<40};
+  const teal=(r,g,b)=>g>150&&b>120&&r<140&&g-r>60;
+  const grey=(r,g,b)=>{const mn=Math.min(r,g,b),mx=Math.max(r,g,b);return mn>110&&mx-mn<30};
+  const bars=KIT_DX.map(dx=>{const t=frac(dx-30,dx+30,1043,1049,teal);if(t>0.4)return 1;return frac(dx-30,dx+30,1043,1049,grey)>0.4?0:null});
+  const bg=Math.max(...KIT_MID.map(dx=>frac(dx-15,dx+15,872,946,white)));
+  const ok=bars.every(b=>b!=null)&&bg<0.5;     // menus, the map, the desktop: no HUD
+  let held=null;
+  if(ok&&bg<0.01&&frac(310,385,1008,1046,white)<0.1){
+    const hint=KIT_DX.map(dx=>frac(dx-22,dx+22,872,946,white)),o=hint.map((v,i)=>[v,i]).sort((a,b)=>b[0]-a[0]);
+    if(o[0][0]>0.025&&o[0][0]<0.3&&o[1][0]<0.6*o[0][0])held=o[0][1];
+  }
+  return{ok,bars,held};
+}
+async function readKit(segs,me){
+  const jobs=[];
+  segs.forEach((rs,si)=>rs.forEach(r=>{
+    if(r._st==null||r.myDead==null)return;   // only rounds where we know when the player died (after that the HUD is a teammate's)
+    const end=Math.min(r._next!=null?r._next-1:(r.plantAt!=null?r.plantAt+44:r._st+99),r._st+145,duration-0.3);
+    const stop=r.myDead?Math.min(end,r._st+(r.myDeathT||0)-1):end;
+    if(stop>r._st+3)jobs.push({si,r,a:r._st+1,b:stop,died:!!r.myDead,me:me[si]});
+  }));
+  if(!jobs.length)return;
+  // which horizontal scale fits the HUD (normal 16:9 or stretched 4:3)
+  const probe=jobs.slice(0,12).map(j=>j.a+4).filter(t=>t<duration-0.3);let best=[-1,1];
+  for(const kx of [1,4/3]){let n=0;for(const t of probe){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);if(kitNow(kx).ok)n++}if(n>best[0])best=[n,kx]}
+  if(best[0]<Math.max(2,probe.length*0.3))return;   // no ability HUD found (e.g. HUD hidden): skip quietly
+  KIT_KX=best[1];
+  const kills=[];let done=0;
+  for(const j of jobs){
+    prog(0.99,"スキルとウルトを確認しています… ("+(++done)+"/"+jobs.length+"ラウンド)");
+    const S=[];
+    for(let t=j.a;t<=j.b;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);S.push({t,...kitNow(KIT_KX),en:aliveNow()[1]})}
+    for(let i=1;i<S.length-1;i++)if(S[i].ok&&S[i].held==null&&S[i-1].held!=null&&S[i-1].held===S[i+1].held)S[i].held=S[i-1].held;   // one missed look in the middle of a hold
+    const V=S.filter(x=>x.ok);if(V.length<2)continue;
+    const h=[0,0,0,0];let hn=0;V.forEach((x,i)=>{if(x.held!=null){h[x.held]+=KSTEP;if(i===0||V[i-1].held!==x.held)hn++}});
+    const maj=(arr,f)=>arr.filter(f).length*2>arr.length;
+    const head=V.slice(0,3),tail=V.slice(-2),last=V[V.length-1];
+    const us=maj(head,x=>x.bars[3]===1);
+    let uu=false;if(us)for(let i=1;i<V.length;i++){if(V[i].bars[3]===0&&(V[i+1]?V[i+1].bars[3]===0:true)){uu=true;break}}
+    const ultNow=x=>x&&x.bars[3]===1;
+    const kit={al:Math.round(j.b-j.a+1),h,hn,lf:last.bars.slice(0,3),dead:j.died,us,uu,ud:j.died&&maj(tail,x=>x.bars[3]===1),k:null,ku:null};
+    j.r.kit=kit;
+    // enemy portraits that turned grey while this player was alive: candidates for this player's kills (who got it is read from the kill feed)
+    if(j.me)for(let i=1;i<S.length;i++){const a=S[i-1].en,b=S[i].en;if(b<a&&(!S[i+1]||S[i+1].en<=b)){let pv=null;for(let q=i-1;q>=0;q--)if(S[q].ok){pv=S[q];break}kills.push({j,t:S[i].t,ult:ultNow(pv)})}}
+    if(j.me)kit.k=0,kit.ku=0;
+  }
+  if(!kills.length)return;
+  // read the kill feed at those moments: green entries "killer>victim"; the player's kills are entries whose killer is their agent (each victim counted once per round)
+  const W=video.videoWidth,H=video.videoHeight,seen=new Map();
+  for(let i=0;i<kills.length;i+=16){
+    const part=kills.slice(i,i+16);
+    prog(0.995,"キルを読み取っています…("+Math.min(kills.length,i+16)+"/"+kills.length+")");
+    const blob=await gridOf(part,440,176,2,(x,ox,oy)=>x.drawImage(video,W*0.66,H*0.035,W*0.34,H*0.17,ox+36,oy,404,174));
+    try{
+      const r=await SAMPLE.json("Each numbered cell is the kill feed (top-right of a VALORANT screen). An entry is: killer agent portrait (and name), weapon icon, victim agent portrait (and name). Green/teal entries = killer on the player's team, red = enemy team. For each cell list ALL green entries, identifying both AGENTS from the portraits (names may be hidden or blurred). Reply only JSON with one list per cell in order: {\"k\":[[\"Jett>Sova\",\"Omen>Reyna\"],[]]}. Use ? for an agent you cannot identify.",{images:[blob],signal:ctl.signal,modelTier:"default",task:"kills"});
+      const arr=Array.isArray(r.k)?r.k:[];
+      part.forEach((c,k)=>{
+        const list=Array.isArray(arr[k])?arr[k]:[],mine=agentKey(c.j.me),key=c.j.r;if(!seen.has(key))seen.set(key,new Set());const vs=seen.get(key);
+        if(c.j.r.kit.k==null)return;list.forEach(e=>{const [kn,vn]=String(e||"").split(">").map(x=>agentKey(x));if(!kn||kn!==mine||!vn||vs.has(vn))return;vs.add(vn);c.j.r.kit.k++;if(c.ult)c.j.r.kit.ku++});
+      });
+    }catch(e){if(e&&e.code==="cancelled")throw e;part.forEach(c=>{c.j.r.kit.k=null;c.j.r.kit.ku=null})}
+  }
+}
 function markMine(segs,me){
   segs.forEach((rs,si)=>{const mine=agentKey(me[si]);rs.forEach(r=>{
     if(!mine||!r.fk||r.fk==="tie"){r.myFk=null;r.myFd=null;return}
@@ -454,6 +530,7 @@ async function runAnalysis(){
     prog(0.99,"マップと、配信者のエージェントを確認しています…");
     const mm=await readMaps(segs),maps=mm.maps,me=mm.me;markMine(segs,me);
     await readMyDeaths(segs,me);
+    await readKit(segs,me);
     segs.forEach(rs=>rs.forEach(r=>{delete r._st;delete r._next}));
     prog(1,"完了しました");
     lastResult={segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
@@ -501,7 +578,7 @@ function sameMatch(a,b){ // a, b: round lists
   let same=0,cmp=0;for(let i=0;i<Math.min(A.length,B.length);i++){if(A[i]==="?"||B[i]==="?")continue;cmp++;if(A[i]===B[i])same++}
   return cmp>=6&&same/cmp>=0.9;
 }
-const povRounds=rs=>rs.map(r=>({n:r.n,side:r.side,win:r.win,fk:r.fk??null,fkBy:r.fkBy??null,fkVictim:r.fkVictim??null,myFk:r.myFk??null,myFd:r.myFd??null,myDead:r.myDead??null,myDeathT:r.myDeathT??null}));
+const povRounds=rs=>rs.map(r=>({n:r.n,side:r.side,win:r.win,fk:r.fk??null,fkBy:r.fkBy??null,fkVictim:r.fkVictim??null,myFk:r.myFk??null,myFd:r.myFd??null,myDead:r.myDead??null,myDeathT:r.myDeathT??null,kit:r.kit??null}));
 async function findSame(date,map,rs,part){
   if(!date)return null;
   const d=new Date(date+"T00:00:00"),iso=x=>new Date(d.getTime()+x*864e5).toISOString().slice(0,10);

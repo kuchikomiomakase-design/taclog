@@ -126,6 +126,29 @@
       h("div", { class: "tblbox" }, h("table", { class: "tbl dtbl" }, h("thead", {}, h("tr", {}, ["エージェント", "試合", "ラウンド", "ファーストキル率", "ファーストデス率", "生存率", "平均生存時間"].map((t) => h("th", {}, t)))), h("tbody", {}, rows))));
   }
 
+  // Abilities and ult per agent (from each recorded view; only the combat phase after the barrier drops, while alive)
+  function kitTable(ms) {
+    if (!window.TLKit) return null;
+    const rows = [];
+    ms.forEach((m) => { const pv = POVS[m.id] || []; if (pv.length) pv.forEach((p) => rows.push({ agent: p.agent, rounds: p.rounds })); else if (m.comps && m.comps.me) rows.push({ agent: m.comps.me, rounds: m.rounds }); });
+    const list = TLKit.summarize(rows);
+    if (!list.length) return null;
+    const flag = (txt, bad, why) => h("td", { class: "num" }, txt, bad ? h("span", { class: "pill warn", style: "margin-left:6px", title: why }, "多い") : null);
+    const tr = list.map((s) => {
+      const holdMax = Math.max(...s.holdPerRound.slice(0, 3));
+      return h("tr", {}, h("td", {}, s.agent), h("td", { class: "num" }, s.rounds),
+        ...s.holdPerRound.map((v, i) => h("td", { class: "num" }, v + "秒", i < 3 && v >= 10 && v === holdMax ? h("span", { class: "pill warn", style: "margin-left:6px", title: "1ラウンドに10秒以上構えています" }, "長い") : null)),
+        flag(s.holdShare == null ? "—" : s.holdShare + "%", s.holdShare > 15, "生きている時間の15%以上スキルを構えています"),
+        flag(s.leftAtDeath == null ? "—" : s.leftAtDeath + "個", s.leftAtDeath >= 1.5, "倒されたときにスキルが平均1.5個以上残っています"),
+        flag(s.ultHeld + "R(最長" + s.ultStreakMax + "連続)", s.ultStreakMax >= 3, "ウルトを3ラウンド以上続けて温存しました"),
+        h("td", { class: "num" }, s.ultDeaths + "回"),
+        h("td", { class: "num" }, s.killsRounds ? s.kills + "(" + s.killsUlt + ")" : "—"));
+    });
+    return h("section", { class: "card dsec" }, h("h3", {}, "スキルとウルト(エージェント別)"),
+      h("p", { class: "small muted" }, "録画した人の視点から数えています。バリアが消えてから(購入フェーズは含みません)倒されるかラウンドが終わるまでの分です。C・Q・E・X は画面下のスキル欄の左から順番(Xはウルト)。"),
+      h("div", { class: "tblbox" }, h("table", { class: "tbl dtbl" }, h("thead", {}, h("tr", {}, ["エージェント", "ラウンド", "構え C", "構え Q", "構え E", "構え X", "構えていた割合", "倒されたときの残りスキル", "ウルト温存", "ウルトを持ったままデス", "キル(ウルト中)"].map((t) => h("th", {}, t)))), h("tbody", {}, tr))));
+  }
+
   function filters() {
     const sel = h("select", { "aria-label": "マップ", class: "teamsel" }, h("option", { value: "" }, "すべてのマップ"), ...MAPS().map(([v, n]) => h("option", { value: v }, n)));
     sel.value = F.map; sel.onchange = () => { F.map = sel.value; render(); };
@@ -163,6 +186,7 @@
       h("div", { class: "dgrid" }, tile("試合勝率", W, W + Lo, "ラウンド勝率 " + pctText(wins(all), all.length)), tile("アタック取得率", wins(att), att.length), tile("ディフェンス取得率", wins(def), def.length), recent),
       h("div", { class: "dgrid" }, tile("ファーストキル取得率", fkUs.length, fk.length), tile("FKを取ったラウンドの勝率", wins(known(fkUs)), known(fkUs).length), tile("FKを取られたラウンドの勝率", wins(known(fkThem)), known(fkThem).length), tile("ピストル(1・13R)取得率", wins(pistol), pistol.length)),
       playerTable(ms) || (myK.length || myD.length || sv.length ? h("div", { class: "dgrid" }, tile("配信者のファーストキル率", myK.filter((r) => r.myFk).length, myK.length, "録画した人"), tile("配信者のファーストデス率", myD.filter((r) => r.myFd).length, myD.length, "録画した人"), tile("配信者の生存率", sv.filter((r) => r.myDead === false).length, sv.length, "最後まで生き残ったラウンド"), lifeTile) : null),
+      kitTable(ms),
       h("section", { class: "card dsec" }, h("h3", {}, "ラウンド勝率の推移(直近20試合)"), h("p", { class: "small muted" }, "点にマウスを乗せると、その試合の内容が出ます。点線は50%。緑の点は勝った試合、赤は負けた試合です。"), trendChart(ms)),
       h("div", { class: "dcols" },
         h("section", { class: "card dsec" }, h("h3", {}, "マップ別"), mapTable(ms)),
