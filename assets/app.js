@@ -363,8 +363,8 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     $("planName").textContent = PLAN_JA[t.plan] || t.plan;
     const mon = new Date().toISOString().slice(0, 7);
     const { data: u } = await sb.from("usage").select("*").eq("team_id", t.id).eq("month", mon).maybeSingle();
-    const lim = t.plan === "free" ? { a: 2, q: 20 } : t.plan === "team" ? { a: null, q: 300 } : { a: null, q: null };
-    $("usageText").textContent = "今月:分析 " + ((u && u.analyses) || 0) + (lim.a ? "/" + lim.a : "") + "本 ・ 質問 " + ((u && u.questions) || 0) + (lim.q ? "/" + lim.q : "") + "回";
+    const lim = TL.C.TRIAL_UNLIMITED ? { a: null, q: null } : t.plan === "free" ? { a: 2, q: 20 } : t.plan === "team" ? { a: null, q: 300 } : { a: null, q: null };
+    $("usageText").textContent = "今月:分析 " + ((u && u.analyses) || 0) + (lim.a ? "/" + lim.a : "") + "本 ・ 質問 " + ((u && u.questions) || 0) + (lim.q ? "/" + lim.q : "") + "回" + (TL.C.TRIAL_UNLIMITED ? "(試作期間中は無制限)" : "");
     const br = $("billingRow"); br.replaceChildren();
     if (isAdmin) {
       if (!TL.C.BILLING_ENABLED) br.append(h("span", { class: "small muted" }, "有料プランは準備中です。"));

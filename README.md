@@ -114,6 +114,12 @@ Supabase の SQL Editor で `supabase/003_games.sql` を実行してください
 
 ## 料金プランと制限
 
+**いまは試作期間なので、すべてのプランが無制限です。** 制限を戻すときは次の3つを行います。
+1. Supabase の SQL Editor で `supabase/005_restore_limits.sql` を実行
+2. `api/_lib.js` の `TRIAL_UNLIMITED` を `false` に
+3. `assets/config.js` の `TRIAL_UNLIMITED` を `false` に
+
+
 | | 無料 | チーム | コーチ・組織 |
 |---|---|---|---|
 | 録画の分析 | 月2本 | 無制限 | 無制限 |
