@@ -114,16 +114,21 @@ async function readFirstKills(segs,samples){
   let done=0;
   for(const j of jobs){
     prog(0.95,"ファーストキルを読み取っています… ("+(++done)+"/"+jobs.length+"ラウンド)");
-    // look every 3 seconds; when someone has died, check 1 second later (to ignore flicker), then step back second by second to find the exact moment
-    let ok=null,fk=null,fkT=null;const at=async(t)=>{if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);return aliveNow()};
-    for(let t=j.st+2;t<=j.end;t+=3){
-      const a=await at(t);
-      if(ok==null){if(a[0]===5&&a[1]===5)ok=t;continue}          // wait until both teams show 5 alive
-      if(a[0]===5&&a[1]===5){ok=t;continue}
-      const b=await at(t+1);if(b[0]===5&&b[1]===5){ok=t+1;continue} // flicker
-      let hit={t,a};
-      for(let u=ok+1;u<t;u++){const c=await at(u);if(c[0]<5||c[1]<5){hit={t:u,a:c};break}}
-      fk=hit.a[0]<5&&hit.a[1]<5?"tie":hit.a[1]<5?"us":"them";fkT=hit.t;break;
+    // Only a few frames per round: confirm everyone is alive at the start, then jump (binary search) to the moment the first player dies, then skip to the next round.
+    let ok=null,fk=null,fkT=null;const memo={};
+    const at=async(t)=>{if(memo[t])return memo[t];if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);return memo[t]=aliveNow()};
+    const dead=async(t)=>{const a=await at(t);return a[0]<5||a[1]<5};
+    for(let t=Math.ceil(j.st+2);t<=Math.min(j.st+12,j.end);t+=3){const a=await at(t);if(a[0]===5&&a[1]===5){ok=t;break}}
+    if(ok!=null){
+      // find any moment with someone dead (near the end of the round first; step back in case the next round already started)
+      let hi=null;
+      for(let t=Math.floor(j.end);t>ok;t-=8){if(await dead(t)&&await dead(t-1>ok?t-1:t)){hi=t;break}}
+      if(hi!=null){
+        let lo=ok;                                   // lo: everyone alive, hi: someone dead
+        while(hi-lo>1){const mid=Math.floor((lo+hi)/2);if(await dead(mid))hi=mid;else lo=mid}
+        if(hi+1<=j.end&&!(await dead(hi+1))){/* flicker: keep the result anyway, it is the best guess */}
+        const a=await at(hi);fk=a[0]<5&&a[1]<5?"tie":a[1]<5?"us":"them";fkT=hi;
+      }
     }
     const r=segs[j.si][j.ri];r.fk=fk;r.fkT=fkT;
   }
