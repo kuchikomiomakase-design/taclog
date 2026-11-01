@@ -9,8 +9,9 @@ import games from "../../api/games.js";
 import contact from "../../api/contact.js";
 import cronMonthly from "../../api/cron-monthly.js";
 import backup from "../../api/backup.js";
+import diag from "../../api/diag.js";
 
-const ROUTES = { ask, vision, checkout, portal, webhook, games, contact, "cron-monthly": cronMonthly, backup };
+const ROUTES = { ask, vision, checkout, portal, webhook, games, contact, "cron-monthly": cronMonthly, backup, diag };
 
 export async function onRequest(context) {
   const { request, env, params } = context;
