@@ -15,7 +15,7 @@ const SAMPLE={json:async(prompt,o)=>{if(o.signal&&o.signal.aborted)throw{code:"c
 const video=document.createElement("video");video.muted=true;video.playsInline=true;video.preload="auto";
 let duration=0,fileName="";
 function crop(){const W=video.videoWidth,H=video.videoHeight,w=W*$("cw").value/100,hgt=H*$("ch").value/100;return{sx:(W-w)/2,sy:H*$("ct").value/100,sw:w,sh:hgt}}
-function seek(t){return new Promise((res,rej)=>{const on=()=>{video.removeEventListener("seeked",on);video.removeEventListener("error",er);res()};const er=()=>{video.removeEventListener("seeked",on);rej(new Error("seek"))};video.addEventListener("seeked",on);video.addEventListener("error",er);video.currentTime=Math.min(Math.max(0,t),Math.max(0,duration-0.1))})}
+function seek(t){return new Promise((res,rej)=>{const on=()=>{video.removeEventListener("seeked",on);video.removeEventListener("error",er);if(video.requestVideoFrameCallback){let ok=false;const fin=()=>{if(!ok){ok=true;res()}};video.requestVideoFrameCallback(fin);setTimeout(fin,400)}else res()};const er=()=>{video.removeEventListener("seeked",on);rej(new Error("seek"))};video.addEventListener("seeked",on);video.addEventListener("error",er);video.currentTime=Math.min(Math.max(0,t),Math.max(0,duration-0.1))})}
 async function drawPreview(){
   if(!duration)return;const t=duration*$("pv").value/100;await seek(t);
   const f=$("frameCv"),fx=f.getContext("2d");f.width=640;f.height=Math.round(640*video.videoHeight/video.videoWidth)||360;
@@ -92,32 +92,40 @@ async function readSites(cells){
 }
 
 function roundStartOf(r,samples,next){const it=samples.filter(x=>x.t>=r.start&&(next==null||x.t<next)&&typeof x.x==="number"&&x.x>30&&x.x<=100);return it.length?it[0].t-(100-it[0].x):null}
+// First kill without AI: each agent portrait in the top bar loses its detail when that player dies.
+// Measure the texture of the 10 portrait boxes and find the first moment either side drops below 5 alive.
+const SLOT_L=[0.2427,0.277,0.310,0.3458,0.3797],SLOT_R=[0.6208,0.6557,0.6896,0.7234,0.7573],ALIVE_EDGE=15.5;
+const slotCv=document.createElement("canvas");slotCv.width=32;slotCv.height=40;const slotX=slotCv.getContext("2d",{willReadFrequently:true});
+function slotAlive(cx){
+  const W=video.videoWidth,H=video.videoHeight;
+  slotX.drawImage(video,W*(cx-0.011),H*0.014,W*0.022,H*0.042,0,0,32,40);
+  const d=slotX.getImageData(0,0,32,40).data,lum=new Float32Array(32*40);
+  for(let i=0;i<lum.length;i++)lum[i]=(d[i*4]+d[i*4+1]+d[i*4+2])/3;
+  let gx=0,gy=0;
+  for(let y=0;y<40;y++)for(let x=0;x<31;x++)gx+=Math.abs(lum[y*32+x+1]-lum[y*32+x]);
+  for(let y=0;y<39;y++)for(let x=0;x<32;x++)gy+=Math.abs(lum[(y+1)*32+x]-lum[y*32+x]);
+  return gx/(40*31)+gy/(39*32)>ALIVE_EDGE;
+}
+function aliveNow(){return[SLOT_L.filter(slotAlive).length,SLOT_R.filter(slotAlive).length]}
 async function readFirstKills(segs,samples){
-  const W=video.videoWidth,H=video.videoHeight,cells=[];
+  const jobs=[];
   segs.forEach((rs,si)=>rs.forEach((r,ri)=>{const next=rs[ri+1]?rs[ri+1].start:null;const st=roundStartOf(r,samples,next);if(st==null)return;
-    const end=Math.min(st+50,r.plantAt??Infinity,next??Infinity,duration-0.3);for(let t=Math.max(0,st+1);t<=end;t+=2)cells.push({si,ri,t})}));
-  if(!cells.length)return;
-  const SW=560,SH=36,LW=46,COLSF=2,ROWSF=28,PER=COLSF*ROWSF,per=LIM&&LIM.images?Math.min(LIM.images.maxCount,6):6;
-  const res=new Array(cells.length).fill(null);
-  for(let c=0;c<cells.length;c+=PER*per){
-    const blobs=[],from=c;
-    for(let g=c;g<Math.min(cells.length,c+PER*per);g+=PER){
-      const part=cells.slice(g,g+PER),cv=document.createElement("canvas");cv.width=COLSF*(SW+LW);cv.height=Math.ceil(part.length/COLSF)*SH;const x=cv.getContext("2d");
-      x.fillStyle="#000";x.fillRect(0,0,cv.width,cv.height);x.font="bold 15px monospace";x.textBaseline="middle";
-      for(let i=0;i<part.length;i++){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(part[i].t);const ox=(i%COLSF)*(SW+LW),oy=Math.floor(i/COLSF)*SH;
-        x.fillStyle="#F2B33D";x.fillRect(ox,oy,LW-4,SH-2);x.fillStyle="#000";x.fillText(String(g+i+1),ox+3,oy+SH/2);x.drawImage(video,W*0.2,0,W*0.6,H*0.075,ox+LW,oy,SW,SH-2)}
-      blobs.push(await new Promise(r=>cv.toBlob(r,"image/jpeg",0.9)));
+    jobs.push({si,ri,st,end:Math.min(st+75,r.plantAt!=null?r.plantAt+40:Infinity,next??Infinity,duration-0.3)})}));
+  let done=0;
+  for(const j of jobs){
+    prog(0.95,"ファーストキルを読み取っています… ("+(++done)+"/"+jobs.length+"ラウンド)");
+    let prev=null,cand=null,fk=null,fkT=null;
+    for(let t=j.st+2;t<=j.end;t+=1){
+      if(ctl.signal.aborted)throw{code:"cancelled"};
+      await seek(t);const a=aliveNow();
+      if(!prev){if(a[0]===5&&a[1]===5)prev=a;continue}       // wait until both teams show 5 alive
+      const dl=a[0]<prev[0],dr=a[1]<prev[1];
+      if(!dl&&!dr){cand=null;continue}
+      if(!cand){cand={dl,dr,t};continue}                          // must still be lower one second later
+      fk=cand.dl&&cand.dr?"tie":cand.dr?"us":"them";fkT=cand.t;break;
     }
-    const to=Math.min(cells.length,c+PER*per);
-    prog(0.96,"ファーストキルを読み取っています… ("+Math.ceil(to/(PER*per))+"/"+Math.ceil(cells.length/(PER*per))+")");
-    try{const r=await SAMPLE.json("Each numbered strip is the top bar of a VALORANT screen: the player's team agent portraits on the LEFT of the scores and the enemy team portraits on the RIGHT. A portrait disappears or turns dark when that player is dead. For strips "+(from+1)+" to "+to+" in number order, count how many players are alive on each side and output 'left-right' (e.g. '5-4'), or '-' if the bar is not visible. Reply only JSON: {\"alive\":[\"5-5\",\"5-4\"]} with exactly "+(to-from)+" strings.",{images:blobs,signal:ctl.signal,modelTier:"default"});
-      const arr=Array.isArray(r.alive)?r.alive:[];for(let k=0;k<to-from;k++){const m=String(arr[k]||"").match(/^(\d)\s*-\s*(\d)$/);res[from+k]=m?[Number(m[1]),Number(m[2])]:null}}
-    catch(e){if(e&&e.code==="cancelled")throw e}
+    const r=segs[j.si][j.ri];r.fk=fk;r.fkT=fkT;
   }
-  const by={};cells.forEach((c,i)=>{(by[c.si+"_"+c.ri]=by[c.si+"_"+c.ri]||[]).push({a:res[i],t:c.t})});
-  Object.entries(by).forEach(([k,list])=>{const[si,ri]=k.split("_").map(Number);let prev=null,fk=null,fkT=null;
-    for(const it of list){const a=it.a;if(!a)continue;if(prev){const dl=a[0]<prev[0],dr=a[1]<prev[1];if(dl||dr){fk=dl&&dr?"tie":dr?"us":"them";fkT=it.t;break}}prev=a}
-    segs[si][ri].fk=fk;segs[si][ri].fkT=fkT});
   await readFirstKillers(segs);
 }
 
