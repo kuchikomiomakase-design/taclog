@@ -164,13 +164,13 @@
   function placeTable(ms) {
     if (!window.TLKit) return null;
     const rows = [];
-    ms.forEach((m) => { const pv = POVS[m.id] || []; if (pv.length) pv.forEach((p) => rows.push({ agent: p.agent, rounds: p.rounds })); else if (m.comps && m.comps.me) rows.push({ agent: m.comps.me, rounds: m.rounds }); });
+    ms.forEach((m) => { const pv = POVS[m.id] || []; if (pv.length) pv.forEach((p) => rows.push({ agent: p.agent, rounds: p.rounds, map: m.map })); else if (m.comps && m.comps.me) rows.push({ agent: m.comps.me, rounds: m.rounds, map: m.map }); });
     const list = TLKit.places(rows).filter((x) => x.agent !== "*" && x.k + x.d >= 2).slice(0, 30);
     if (!list.length) return null;
     return h("section", { class: "card dsec" }, h("h3", {}, "場所ごとの撃ち合い(エージェント別)"),
       h("p", { class: "small muted" }, "録画した人がキルした場所と、倒された場所(ゲームがミニマップの下に出す場所の名前)。撃ち合い勝率 = キル ÷(キル+デス)。"),
-      h("div", { class: "tblbox" }, h("table", { class: "tbl dtbl" }, h("thead", {}, h("tr", {}, ["エージェント", "場所", "キル", "デス", "撃ち合い勝率"].map((x) => h("th", {}, x)))),
-        h("tbody", {}, list.map((x) => h("tr", {}, h("td", {}, x.agent), h("td", {}, x.place), h("td", { class: "num" }, x.k), h("td", { class: "num" }, x.d), h("td", {}, bar(rate(x.k, x.k + x.d)))))))));
+      h("div", { class: "tblbox" }, h("table", { class: "tbl dtbl" }, h("thead", {}, h("tr", {}, ["エージェント", "マップ ・ 場所", "キル", "デス", "撃ち合い勝率"].map((x) => h("th", {}, x)))),
+        h("tbody", {}, list.map((x) => h("tr", {}, h("td", {}, x.agent), h("td", {}, (() => { const i = x.place.indexOf(":"), mp = i > 0 ? x.place.slice(0, i) : "", nm = i > 0 ? x.place.slice(i + 1) : x.place; const j = (window.TACLOG_MAPS || []).find((y) => y[0] === mp); return (j ? j[1] + " ・ " : "") + nm; })()), h("td", { class: "num" }, x.k), h("td", { class: "num" }, x.d), h("td", {}, bar(rate(x.k, x.k + x.d)))))))));
   }
 
   function filters() {

@@ -1,5 +1,5 @@
 // TacLog app shell: routing, matches, AI questions, settings
-window.TACLOG_MAPS = [["ascent","アセント"],["bind","バインド"],["haven","ヘイヴン"],["split","スプリット"],["icebox","アイスボックス"],["breeze","ブリーズ"],["fracture","フラクチャー"],["pearl","パール"],["lotus","ロータス"],["sunset","サンセット"],["abyss","アビス"],["corrode","カロード"]];
+window.TACLOG_MAPS = [["ascent","アセント"],["bind","バインド"],["haven","ヘイヴン"],["split","スプリット"],["icebox","アイスボックス"],["breeze","ブリーズ"],["fracture","フラクチャー"],["pearl","パール"],["lotus","ロータス"],["sunset","サンセット"],["abyss","アビス"],["corrode","カロード"],["summit","サミット"]];
 window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () => {} };
 (function () {
   const { $, h, sb } = TL;
