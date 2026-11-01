@@ -41,7 +41,7 @@
   function footer() {
     const el = $("footer"); if (!el) return;
     el.className = "site";
-    el.innerHTML = '<span><a href="/legal/terms">利用規約</a> ・ <a href="/legal/privacy">プライバシーポリシー</a> ・ <a href="/legal/tokushoho">特定商取引法に基づく表記</a> ・ <a href="/pricing">料金</a> ・ <a href="/app#contact">お問い合わせ</a></span>' +
+    el.innerHTML = '<span><a href="/legal/terms">利用規約</a> ・ <a href="/legal/privacy">プライバシーポリシー</a> ・ <a href="/legal/tokushoho">特定商取引法に基づく表記</a> ・ <a href="/pricing">料金</a> ・ <a href="/gear">おすすめ機材</a> ・ <a href="/app#contact">お問い合わせ</a></span>' +
       "<span>TacLogは非公式のファンメイドツールで、各ゲームの開発・運営会社(Riot Games、Valve、Blizzard Entertainment、Electronic Arts、Epic Gamesなど)が承認・後援するものではありません。VALORANTはRiot Games, Inc.の、その他のゲーム名はそれぞれの権利者の商標または登録商標です。</span>";
   }
 

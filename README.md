@@ -135,3 +135,12 @@ Supabase の SQL Editor で `supabase/003_games.sql` を実行してください
 - Riotアカウント連携(Riot の承認後に追加)
 - Googleドライブ・YouTubeチャンネル連携
 - 公開前に、`legal/` の下書きの [ ] の部分を埋めて、内容を確認してください
+
+## 広告(アフィリエイト)
+`assets/ads.js` の `ITEMS` に、A8.net・もしもアフィリエイトで作ったリンクを1行ずつ足すと、次の場所に「PR」つきで表示されます(リンクがないあいだは何も表示されません)。
+- トップページの下、OBSガイドの「録画すると重い・カクつくとき」、ダッシュボードの下(無料プランのチームだけ)、`/gear`(おすすめ機材のページ)
+
+```js
+{ cat: "pc", title: "ゲーミングPC ○○", note: "配信しながら録画しても軽い", url: "https://px.a8.net/...", pixel: "https://www10.a8.net/0.gif?..." },
+```
+`cat` は pc / capture / mic / camera / mouse / keyboard / headset / monitor / net のどれか。

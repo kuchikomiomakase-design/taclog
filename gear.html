@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>おすすめ機材 | TacLog</title>
+<meta name="description" content="VALORANTのスクリムを録画・配信するときの機材の選び方。録画が重いときのPC、キャプチャーボード、マウスやヘッドセットの選び方をまとめています。">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="/assets/config.js"></script>
+<script src="/assets/common.js"></script>
+<script src="/assets/ads.js"></script>
+<style>
+.gsec{display:grid;gap:10px}.gsec h2{margin:0;font:700 20px var(--f-display)}
+.gsec ul{margin:0;padding-left:1.2em;display:grid;gap:4px}
+</style>
+</head>
+<body>
+<header id="topbar"></header>
+<main id="main" class="wrap narrow" style="display:grid;gap:18px">
+  <div style="display:grid;gap:8px">
+    <h1 style="margin:0">スクリムの録画・配信に<br>おすすめの機材</h1>
+    <p class="lead" style="margin:0">VALORANTのスクリムを配信しながら録画して、TacLogで振り返るときに役立つ機材の選び方です。</p>
+    <p class="small muted" style="margin:0"><span class="adpr">PR</span> このページには広告(アフィリエイトリンク)が含まれます。リンクから購入されると、TacLogの運営費になります。</p>
+  </div>
+
+  <section class="card gsec" data-cat="pc">
+    <h2>ゲーミングPC</h2>
+    <p class="small muted" style="margin:0">ゲーム・配信・録画を1台で同時にやると、PCの負担はかなり大きくなります。</p>
+    <ul class="small">
+      <li>録画と配信を同時にするなら、ハードウェアエンコーダ(NVIDIAのNVENCなど)が使えるグラフィックボードが楽です</li>
+      <li>メモリは16GB以上、できれば32GBあると、ブラウザやDiscordを開いたままでも安定します</li>
+      <li>録画は1時間で数GBになります。TacLogで分析後に自動で消せますが、保存先のSSDは余裕を持っておくと安心です</li>
+    </ul>
+  </section>
+
+  <section class="card gsec" data-cat="capture">
+    <h2>キャプチャーボード・配信機材</h2>
+    <ul class="small">
+      <li>ゲーム用と配信用でPCを分ける「2PC配信」をするなら、キャプチャーボードがあるとゲーム側のPCが軽くなります</li>
+      <li>コーチや観戦役がスクリムを録画するときにも使えます</li>
+      <li>声を入れて配信するなら、マイクを変えるだけで聞きやすさがかなり変わります</li>
+    </ul>
+  </section>
+
+  <section class="card gsec" data-cat="mouse">
+    <h2>マウス・キーボード</h2>
+    <ul class="small">
+      <li>マウスは軽さと形が一番大事です。手の大きさと持ち方(かぶせ・つかみ・つまみ)に合うものを選びましょう</li>
+      <li>キーボードは、反応の速さを調整できるものや、マウスを大きく動かせる小さめの配列が人気です</li>
+    </ul>
+  </section>
+
+  <section class="card gsec" data-cat="headset">
+    <h2>ヘッドセット・イヤホン</h2>
+    <ul class="small">
+      <li>VALORANTは足音で位置を判断するゲームなので、左右と前後の聞き分けやすさが大事です</li>
+      <li>長時間のスクリムでは、軽さと耳の痛くなりにくさも重要です</li>
+    </ul>
+  </section>
+
+  <section class="card gsec" data-cat="monitor">
+    <h2>モニター</h2>
+    <ul class="small">
+      <li>リフレッシュレート(144Hz・240Hzなど)が高いほど、動きがなめらかに見えます</li>
+      <li>PCの性能で、そのフレームレートが出せるかも一緒に確認しましょう</li>
+    </ul>
+  </section>
+
+  <section class="card gsec" data-cat="net">
+    <h2>回線</h2>
+    <ul class="small">
+      <li>配信しながらプレイするなら、上り(アップロード)の速さと、Ping(遅延)の安定が大事です</li>
+      <li>無線より有線のほうが安定します</li>
+    </ul>
+  </section>
+</main>
+<footer id="footer"></footer>
+<script>
+TL.header([{href:"/pricing",label:"料金"}]);TL.footer();
+// put the products for each category under its explanation (only categories with links get cards)
+const MAP={pc:["pc"],capture:["capture","mic","camera"],mouse:["mouse","keyboard"],headset:["headset"],monitor:["monitor"],net:["net"]};
+document.querySelectorAll("[data-cat]").forEach(sec=>{
+  const cats=MAP[sec.dataset.cat]||[],list=TACLOG_ADS.ITEMS.filter(x=>/^https:\/\//.test(String(x.url||""))&&cats.includes(x.cat));
+  if(list.length)sec.append(TL.h("div",{class:"adgrid"},list.map(TLAds.card)));
+});
+</script>
+</body>
+</html>

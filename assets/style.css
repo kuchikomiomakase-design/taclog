@@ -106,3 +106,11 @@ footer.site a{color:var(--ink2)}
 .hand{font-family:var(--f-hand);font-weight:600}
 .tape{display:inline-block;font:700 12px var(--f-mono);letter-spacing:.14em;padding:4px 12px;background:var(--accent);color:var(--accent-ink);clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%)}
 .mark{color:var(--accent);text-shadow:0 0 24px rgba(255,194,61,.35)}
+/* affiliate ads (PR) */
+.adbox{display:grid;gap:10px;padding:14px 16px;border:1px dashed var(--line2);border-radius:10px;background:var(--bg2)}
+.adhead{display:flex;align-items:center;gap:8px}.adhead a{margin-left:auto}
+.adpr{font:700 11px var(--f-mono);letter-spacing:.08em;padding:2px 6px;border:1px solid var(--muted);border-radius:4px;color:var(--muted)}
+.adgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.adcard{position:relative;display:grid;gap:4px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);text-decoration:none}
+.adcard:hover{border-color:var(--accent)}
+.adcat{font:600 11px var(--f-mono);color:var(--data)}.adprice{font:600 13px var(--f-mono)}

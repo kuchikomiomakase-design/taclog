@@ -9,6 +9,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="/assets/config.js"></script>
 <script src="/assets/common.js"></script>
+<script src="/assets/ads.js"></script>
 <style>
 /* drawn screen mocks: OBS (dark), Windows Explorer (light), browser dialog */
 .part{display:grid;gap:6px;margin-top:8px}
@@ -151,6 +152,17 @@
   </section>
 
   <!-- ===== C ===== -->
+  <section class="card" id="heavy" style="display:grid;gap:10px">
+    <h3 style="margin:0">録画すると重い・カクつくとき</h3>
+    <ul class="small" style="margin:0;padding-left:1.2em;display:grid;gap:4px">
+      <li>OBSの「設定 → 出力 → 録画品質」を「配信と同じ」にする(録画用にもう一度エンコードしなくなるので軽くなります)</li>
+      <li>OBSの「設定 → 出力 → エンコーダ」で、NVIDIA NVENC / AMD / QuickSync などのハードウェアエンコーダを選ぶ</li>
+      <li>VALORANTの設定でフレームレートの上限をモニターに合わせる</li>
+      <li>それでも重いときは、PCの性能が足りていないか、配信用にキャプチャーボードや別のPCを使う方法があります</li>
+    </ul>
+    <div id="adGuide" hidden></div>
+  </section>
+
   <div class="part" id="c"><span class="tag">PART C</span><h2>TacLogと録画フォルダを連携する</h2>
     <p class="muted small">パソコン版のGoogle ChromeかMicrosoft Edgeで、TacLogを開いてください。</p></div>
 
@@ -187,6 +199,6 @@
   </section>
 </main>
 <footer id="footer"></footer>
-<script>TL.header([]);TL.footer();</script>
+<script>TL.header([]);TL.footer();TLAds.fill(document.getElementById("adGuide"),"guide",{title:"録画・配信を軽くする機材"});</script>
 </body>
 </html>
