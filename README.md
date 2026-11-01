@@ -27,8 +27,8 @@
 1. https://supabase.com で新しいプロジェクトを作る(地域は **Tokyo** がおすすめ)
 2. 左メニューの **SQL Editor** を開き、`supabase/schema.sql` の中身を全部貼り付けて **Run**
 3. **Authentication → URL Configuration** で
-   - Site URL:公開したサイトのURL(例:`https://taclog.vercel.app`)
-   - Redirect URLs:`https://taclog.vercel.app/**` を追加
+   - Site URL:公開したサイトのURL(例:`https://taclog.app`)
+   - Redirect URLs:`https://taclog.app/**` を追加
 4. **Project Settings → API** にある次の3つを控えておく
    - Project URL
    - anon public キー(公開してよい鍵)
@@ -106,7 +106,7 @@ Supabase の **Authentication → Providers → Google** をオンにします�
 
 すぐに試したいときは、次のように送ると、月末でなくても投稿されます(`CRON_SECRET` は自分で決めた値)。
 ```
-curl -H "Authorization: Bearer (CRON_SECRET)" "https://taclog-one.vercel.app/api/cron-monthly?force=1"
+curl -H "Authorization: Bearer (CRON_SECRET)" "https://taclog.app/api/cron-monthly?force=1"
 ```
 
 ### 9. ゲームタイトル
