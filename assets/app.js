@@ -37,6 +37,19 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
         return b; }),
       APP.team.role === "admin" ? h("a", { href: "#settings", class: "small", style: "margin-left:4px" }, "+ タイトルを追加") : null);
   }
+  // Teams you belong to (coaches / managers often look after several): switch with one click, "+" adds another team
+  function renderTeamBar() {
+    const bar = $("teamBar"); if (!bar) return;
+    const add = h("button", { type: "button", class: "gtab addteam", title: "チームを追加", "aria-label": "チームを追加" }, "＋");
+    add.onclick = () => {
+      const paid = APP.teams.some((t) => t.plan && t.plan !== "free");
+      const msg = "新しいチームを作ります。\n\n" + (paid ? "有料プランのチームをお持ちの場合、2チーム目からは1チームにつき月500円の予定です(今は準備中のため無料です)。" : "無料プランで作られます。") + "\n\n続けますか?";
+      if (confirm(msg)) location.href = "/onboarding?new=1";
+    };
+    bar.replaceChildren(h("span", { class: "eyebrow" }, "Team"),
+      ...APP.teams.map((t) => { const b = h("button", { type: "button", class: "gtab", "aria-pressed": t.id === APP.team.id ? "true" : "false" }, t.name);
+        b.onclick = () => { if (t.id === APP.team.id) return; TL.setTeam(t.id); location.reload(); }; return b; }), add);
+  }
   function renderAnalyzeGate() {
     const g = TL.GAMES.find((x) => x.id === APP.game), ready = !g || g.ready;
     $("gameSoon").hidden = ready; $("folderCard").hidden = !ready; $("manualBox").hidden = !ready;
@@ -46,11 +59,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   function renderHeader() {
     TL.header([{ href: "#dash", label: "ダッシュボード" }, { href: "#analyze", label: "録画を分析" }, { href: "#channel", label: "チャンネル" }, { href: "#ask", label: "AIに質問" }, { href: "#matches", label: "試合一覧" }, { href: "#contact", label: "お問い合わせ" }, { href: "#settings", label: "設定" }]);
     updateBadge();
-    if (APP.teams.length > 1) {
-      const sel = h("select", { class: "teamsel", "aria-label": "チームを切り替える" }, APP.teams.map((t) => h("option", { value: t.id }, t.name)));
-      sel.value = APP.team.id; sel.onchange = () => { TL.setTeam(sel.value); location.reload(); };
-      document.querySelector(".nav").prepend(sel);
-    }
+    renderTeamBar();
   }
 
   /* ---------- matches ---------- */

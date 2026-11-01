@@ -140,6 +140,7 @@ TL.$("linkFolder").onclick=async()=>{await TLFolder.setDeleteAfter(TL.$("delAfte
   const s=await TL.requireLogin();if(!s)return;
   const teams=await TL.myTeams();
   const qs=new URLSearchParams(location.search);
+  if(qs.get("new")){show(1);return}   // adding another team (from the team bar's "+")
   if(teams.length&&!qs.get("step")){location.href="/app";return}
   if(teams.length){const t=TL.currentTeam(teams);teamId=t.id;hasValo=(t.games||[]).includes("valorant");show(Number(qs.get("step"))||4)}else show(1);
 })();
