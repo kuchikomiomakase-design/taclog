@@ -130,10 +130,10 @@
     <h2>次のスクリムから、記録を残そう。</h2>
     <a class="btn primary" href="/signup">無料ではじめる</a>
   </section>
-  <div class="wrap" style="padding:0"><div id="adTop" hidden></div></div>
+  <div class="wrap" style="padding:0"><div id="adTop" hidden></div><div id="adWide" hidden></div></div>
 </main>
 <footer id="footer"></footer>
-<script>TLAds.rail();TLAds.fill(document.getElementById("adTop"),"top",{title:"ゲーマーにおすすめの機材"});
+<script>TLAds.rail();TLAds.wide(document.getElementById("adWide"));TLAds.fill(document.getElementById("adTop"),"top",{title:"ゲーマーにおすすめの機材"});
 TL.header([{href:"/pricing",label:"料金"},{href:"/login",label:"ログイン"},{href:"/signup",label:"無料ではじめる"}]);
 TL.footer();
 TL.session().then(s=>{if(s){const n=document.querySelector(".nav");n.replaceChildren(TL.h("a",{href:"/app"},"アプリを開く"))}});

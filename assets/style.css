@@ -119,3 +119,6 @@ footer.site a{color:var(--ink2)}
 .adrail .adcard{padding:10px}
 @media print{.adrail{display:none!important}}
 .adrail.r{left:calc(50% + 524px)}.adrail.l{right:calc(50% + 524px)}
+.adwidebox{display:grid;justify-items:center;gap:6px;padding:10px 0}.adwidebox .adpr{justify-self:center}
+.adwide{position:relative;display:block;max-width:100%}.adwide img{display:block;max-width:100%;height:auto}
+@media print{.adwidebox{display:none!important}}

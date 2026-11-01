@@ -137,6 +137,6 @@
         h("section", { class: "card dsec" }, h("h3", {}, "設置サイト別"), h("p", { class: "small muted" }, "アタックは設置してからの勝率、ディフェンスは相手に設置されてからの勝率(リテイク)です。"), siteTable(rs))));
   }
 
-  function renderWithAds() { render(); const ad = $("adDash"); if (!ad) return; if (APP.team && APP.team.plan === "free" && window.TLAds) TLAds.fill(ad, "dash", { title: "デバイスを見直すなら" }); else ad.hidden = true; }
+  function renderWithAds() { render(); const ad = $("adDash"); if (!ad) return; if (APP.team && APP.team.plan === "free" && window.TLAds) { TLAds.fill(ad, "dash", { title: "デバイスを見直すなら" }); TLAds.wide($("adWide")); } else { ad.hidden = true; if ($("adWide")) $("adWide").hidden = true; } }
   window.renderDash = renderWithAds;
 })();

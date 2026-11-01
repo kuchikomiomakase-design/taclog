@@ -5,6 +5,7 @@
 //   title: product name shown on the card            note: one short line on why it helps (written by you)
 //   url:   the affiliate link (https://...)          pixel: optional impression image URL that A8.net gives with the link
 //   img:   optional banner image URL (A8.net "バナー" ads); shown instead of the text card
+//   wide:  true for 728x90 banners: shown only in the horizontal slots (bottom of pages), not in cards or side columns
 //   price: optional, e.g. "¥12,800"(prices change, so leave it empty if unsure)
 window.TACLOG_ADS = {
   ITEMS: [
@@ -21,6 +22,10 @@ window.TACLOG_ADS = {
       url: "https://px.a8.net/svt/ejp?a8mat=4BGAV1+B0IPO2+1J3M+NV1XD",
       img: "https://www25.a8.net/svt/bgt?aid=261101053666&wid=001&eno=01&mid=s00000007141004008000&mc=1",
       pixel: "https://www18.a8.net/0.gif?a8mat=4BGAV1+B0IPO2+1J3M+NV1XD" },
+    { cat: "other", wide: true, title: "GEMY(オンラインゲームで景品ゲット)",
+      url: "https://px.a8.net/svt/ejp?a8mat=4BGAV1+B0IPO2+1J3M+NY1Y9",
+      img: "https://www25.a8.net/svt/bgt?aid=261101053666&wid=001&eno=01&mid=s00000007141004022000&mc=1",
+      pixel: "https://www14.a8.net/0.gif?a8mat=4BGAV1+B0IPO2+1J3M+NY1Y9" },
     { cat: "monitor", title: "Pixio ゲーミングモニター", note: "SNSで話題のカラフルなゲーミングモニター",
       url: "https://px.a8.net/svt/ejp?a8mat=4BGAV1+A4DB02+XTI+15RZIP",
       img: "https://www22.a8.net/svt/bgt?aid=261101053612&wid=001&eno=01&mid=s00000004383007017000&mc=1",
@@ -39,7 +44,7 @@ window.TLAds = (function () {
   const ok = (u) => /^https:\/\//.test(String(u || ""));
   function items(place, max) {
     const cats = (window.TACLOG_ADS.PLACES[place] || []);
-    return window.TACLOG_ADS.ITEMS.filter((x) => ok(x.url) && (!place || cats.includes(x.cat))).slice(0, max || 4);
+    return window.TACLOG_ADS.ITEMS.filter((x) => ok(x.url) && !x.wide && (!place || cats.includes(x.cat))).slice(0, max || 4);
   }
   function card(x) {
     const { h } = TL;
@@ -76,7 +81,7 @@ window.TLAds = (function () {
   }
   // Banner columns in the empty space left and right of the 1000px content on wide screens. Hidden on narrow screens and for paid teams.
   function rail() {
-    const all = window.TACLOG_ADS.ITEMS.filter((x) => ok(x.url));
+    const all = window.TACLOG_ADS.ITEMS.filter((x) => ok(x.url) && !x.wide);
     if (!all.length || document.getElementById("adRail")) return;
     isPaid().then((paid) => {
       if (paid) return;
@@ -93,5 +98,20 @@ window.TLAds = (function () {
       fit(); window.addEventListener("resize", fit);
     });
   }
-  return { fill, items, card, CAT, isPaid, rail };
+  // Horizontal 728x90 banner slot (e.g. at the bottom of a page). Picks one wide banner at random.
+  function wide(el) {
+    if (!el) return;
+    el.hidden = true;
+    const list = window.TACLOG_ADS.ITEMS.filter((x) => ok(x.url) && x.wide && ok(x.img));
+    if (!list.length) return;
+    isPaid().then((paid) => {
+      if (paid) return;
+      const { h } = TL, x = list[Math.floor(Math.random() * list.length)];
+      const a = h("a", { href: x.url, target: "_blank", rel: "sponsored noopener", class: "adwide" }, h("img", { src: x.img, alt: x.title, loading: "lazy" }));
+      if (ok(x.pixel)) a.append(h("img", { src: x.pixel, width: "1", height: "1", alt: "", style: "position:absolute;width:1px;height:1px;opacity:0" }));
+      el.className = "adwidebox"; el.hidden = false;
+      el.replaceChildren(h("span", { class: "adpr" }, "PR"), a);
+    });
+  }
+  return { fill, items, card, CAT, isPaid, rail, wide };
 })();
