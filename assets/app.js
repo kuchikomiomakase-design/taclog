@@ -37,17 +37,44 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
         return b; }),
       APP.team.role === "admin" ? h("a", { href: "#settings", class: "small", style: "margin-left:4px" }, "+ タイトルを追加") : null);
   }
+  // "+" on the team bar: add a team (organization plan) or your own personal space, right here (no first-time setup again)
+  function openAddTeam() {
+    const org = APP.teams.find((t) => t.plan === "org" && t.role === "admin" && t.kind !== "solo");
+    const hasSolo = APP.teams.some((t) => t.kind === "solo");
+    const me = (APP.team && APP.team.display_name) || "";
+    const dlg = h("dialog", { class: "card addteam-dlg", "aria-label": "チームを追加" });
+    const close = () => { dlg.close(); dlg.remove(); };
+    const msg = h("p", { class: "small", style: "margin:0" });
+    const nameIn = h("input", { maxlength: "40", placeholder: "例:IGZIST Academy" }), myIn = h("input", { maxlength: "30", value: me });
+    const gameSel = h("select", {}, TL.GAMES.map((g) => h("option", { value: g.id }, g.name))); gameSel.value = APP.game || "valorant";
+    const orgTeams = org ? APP.teams.filter((t) => t.plan === "org" && t.kind !== "solo").length : 0;
+    async function go(kind, confirmPay) {
+      msg.textContent = "作成しています…";
+      try {
+        const r = await TL.api("/api/addteam", { teamId: org ? org.id : APP.team.id, kind, name: nameIn.value, myName: myIn.value, game: gameSel.value, confirm: !!confirmPay });
+        if (r.needConfirm) { if (confirm("3チーム目からは、1チームにつき月" + r.yen.toLocaleString() + "円が組織プランに加わります(今月分は日割り)。追加しますか?")) return go(kind, true); msg.textContent = ""; return; }
+        TL.setTeam(r.teamId); location.href = "/app#settings";
+      } catch (e) { msg.textContent = TL.errText(e); }
+    }
+    const teamBox = org
+      ? h("div", { style: "display:grid;gap:10px" }, h("h3", {}, "チームを追加(組織プラン)"),
+          h("p", { class: "small muted", style: "margin:0" }, "録画の設定とRiot連携は済んでいるので、名前を決めるだけです。" + (orgTeams < 2 ? "組織プランは2チームまで込みです(追加料金なし)。" : "3チーム目からは1チームにつき月1,980円です(10チームまで)。")),
+          h("label", {}, "チーム名", nameIn), h("label", {}, "このチームでのあなたの表示名", myIn), h("label", {}, "ゲーム", gameSel),
+          h("div", { class: "row" }, h("button", { class: "btn primary", type: "button", onclick: () => go("team") }, "チームを追加")))
+      : h("div", { style: "display:grid;gap:8px" }, h("h3", {}, "チームを増やすには"),
+          h("p", { class: "small muted", style: "margin:0" }, "複数のチームを見るには、コーチ・組織プラン(月4,980円・2チーム込み)が必要です。追加したチームも組織プランになります。"),
+          h("div", { class: "row" }, h("a", { class: "btn", href: "/pricing" }, "料金プランを見る")));
+    const soloBox = hasSolo ? null : h("div", { style: "display:grid;gap:8px;border-top:1px solid var(--line);padding-top:12px" }, h("h3", {}, "個人用を作る"),
+      h("p", { class: "small muted", style: "margin:0" }, "自分の録画(ランク・スクリム)で、自分のプレーだけを振り返るスペースです。無料(月2本)から使えて、個人プランは月980円です。"),
+      h("div", { class: "row" }, h("button", { class: "btn", type: "button", onclick: () => { if (!myIn.value.trim()) myIn.value = me || "自分"; go("solo"); } }, "個人用を作る")));
+    dlg.append(h("div", { class: "spread" }, h("strong", {}, "チーム・個人用の追加"), h("button", { class: "btn small ghost", type: "button", onclick: close }, "閉じる")), teamBox, soloBox, msg);
+    document.body.append(dlg); dlg.showModal();
+  }
   // Teams you belong to (coaches / managers often look after several): switch with one click, "+" adds another team
   function renderTeamBar() {
     const bar = $("teamBar"); if (!bar) return;
     const add = h("button", { type: "button", class: "gtab addteam", title: "チームを追加", "aria-label": "チームを追加" }, "＋");
-    add.onclick = () => {
-      // several teams = coach / organization plan (the new team gets that plan too)
-      const org = APP.teams.some((t) => t.plan === "org" && t.role === "admin");
-      if (org) { location.href = "/onboarding?new=1"; return; }
-      if (!APP.teams.some((t) => t.kind === "solo") && confirm("個人用(自分の録画だけを分析するスペース)を作りますか?\n\n※ チームを増やすには、コーチ・組織プランが必要です。")) { location.href = "/onboarding?new=1&solo=1"; return; }
-      if (confirm("複数のチームを見るには、コーチ・組織プランが必要です。\n組織プランなら2チーム込みで、追加したチームも組織プランになります。\n\n料金プランを見ますか?")) location.href = "/pricing";
-    };
+    add.onclick = openAddTeam;
     bar.replaceChildren(h("span", { class: "eyebrow" }, "Team"),
       ...APP.teams.map((t) => { const b = h("button", { type: "button", class: "gtab", "aria-pressed": t.id === APP.team.id ? "true" : "false" }, t.kind === "solo" ? "👤 " + t.name : t.name);
         b.onclick = () => { if (t.id === APP.team.id) return; TL.setTeam(t.id); location.reload(); }; return b; }), add);

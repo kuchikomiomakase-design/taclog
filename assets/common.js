@@ -103,6 +103,7 @@
     if (m.includes("solo exists")) return "個人用はもう作ってあります。上のチームの欄から切り替えてください。";
     if (m.includes("view limit")) return "この試合にはもう5人分の視点が入っています。";
     if (m.includes("org plan required")) return "2つ目のチームを作るには、コーチ・組織プランが必要です。";
+    if (m.includes("team limit")) return "1つの組織で作れるチームは10チームまでです。";
     if (m.includes("team limit")) return "1人で作れるチームは10チームまでです。";
     if (m.includes("game limit")) return "使えるタイトルの数を超えています。タイトルを追加してください。";
     if (m.includes("Invalid login")) return "メールアドレスかパスワードが違います。";

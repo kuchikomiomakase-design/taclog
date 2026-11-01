@@ -11,8 +11,9 @@ import cronMonthly from "../../api/cron-monthly.js";
 import backup from "../../api/backup.js";
 import diag from "../../api/diag.js";
 import redeem from "../../api/redeem.js";
+import addteam from "../../api/addteam.js";
 
-const ROUTES = { ask, vision, checkout, portal, webhook, games, contact, "cron-monthly": cronMonthly, backup, diag, redeem };
+const ROUTES = { ask, vision, checkout, portal, webhook, games, contact, "cron-monthly": cronMonthly, backup, diag, redeem, addteam };
 
 export async function onRequest(context) {
   const { request, env, params } = context;

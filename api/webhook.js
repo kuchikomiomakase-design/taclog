@@ -39,6 +39,8 @@ async function applySub(sub) {
   const allowed = plan === "org" ? 99 : 1 + extra;
   games = games.slice(0, Math.max(1, allowed));
   await rest(q, { method: "PATCH", service: true, body: { plan, extra_games: extra, games, stripe_subscription_id: live ? sub.id : null } });
+  // teams added under an organization follow it (back to free when the organization stops)
+  try { const ids = await rest(q.replace("teams?", "teams?select=id&"), { service: true }) || []; for (const t of ids) await rest("teams?parent_team=eq." + t.id, { method: "PATCH", service: true, body: { plan: plan === "org" ? "org" : "free" } }); } catch (e) {}
   if (cur) await notify(cur, cur.plan, plan);
 }
 
