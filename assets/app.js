@@ -210,13 +210,13 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   async function renderHist() {
     const box = $("qHist"), btn = $("qHistBtn"); if (!box || !APP.team) return;
     const { data, error } = await sb.from("ask_threads").select("id,title,updated_at").eq("team_id", APP.team.id).order("updated_at", { ascending: false }).limit(50);
-    if (error) { histOK = false; btn.hidden = true; box.hidden = true; return; }   // before 008_ask_history.sql is run
-    histOK = true; btn.hidden = false;
-    btn.onclick = () => { box.hidden = !box.hidden; };
+    if (error) { histOK = false; box.replaceChildren(h("p", { class: "small muted", style: "margin:4px" }, "履歴を使うには、管理者が設定(008_ask_history.sql)を済ませる必要があります。")); return; }   // before 008_ask_history.sql is run
+    histOK = true;
+    btn.onclick = () => document.querySelector(".qside").classList.toggle("open");
     box.replaceChildren(...(data || []).map((t) => {
       const del = h("button", { type: "button", title: "この会話を削除", "aria-label": "削除" }, "×");
       del.onclick = async (e) => { e.stopPropagation(); await sb.from("ask_threads").delete().eq("id", t.id); if (curThread === t.id) newThread(); else renderHist(); };
-      const row = h("div", { class: "qh" + (t.id === curThread ? " on" : ""), role: "button", tabindex: "0" }, h("span", {}, t.title || "(無題)"), h("small", {}, fmtDate(String(t.updated_at).slice(0, 10))), del);
+      const row = h("div", { class: "qh" + (t.id === curThread ? " on" : ""), role: "button", tabindex: "0" }, h("span", { title: t.title || "" }, t.title || "(無題)"), h("small", {}, fmtDate(String(t.updated_at).slice(0, 10))), del);
       row.onclick = () => openThread(t.id); row.onkeydown = (e) => { if (e.key === "Enter") openThread(t.id); };
       return row;
     }));
@@ -228,7 +228,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     curThread = id; chat.length = 0; const thread = $("thread"); thread.replaceChildren();
     (data || []).forEach((m) => { thread.append(h("div", { class: "bubble" }, m.question)); const box = h("div", { class: "answer" }); renderAnswer(box, m.answer || {}); thread.append(box); chat.push({ q: m.question, a: String((m.answer && m.answer.answer) || "") }); });
     if (!(data || []).length) thread.replaceChildren(emptyThread());
-    $("qHist").hidden = window.innerWidth < 900; renderHist();
+    document.querySelector(".qside").classList.remove("open"); renderHist();
   }
   async function saveQA(q, ans) {
     if (!histOK || !APP.team) return;

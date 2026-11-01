@@ -151,10 +151,15 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
   </div>
 
   <!-- ASK -->
-  <div id="view-ask" style="display:grid;gap:16px" hidden>
+  <div id="view-ask" hidden>
+    <div class="askgrid">
+      <aside class="qside" aria-label="質問の履歴">
+        <button class="btn small primary" type="button" id="qNew" style="width:100%">＋ 新しい会話</button>
+        <div id="qHist" class="qhist"></div>
+      </aside>
+      <div class="askmain" style="display:grid;gap:16px;align-content:start">
     <section class="card">
-      <div class="spread"><h2>AIに質問</h2><span class="row" style="gap:8px;align-items:center"><span class="small muted" id="qScope"></span><button class="btn small" type="button" id="qHistBtn" hidden>履歴</button><button class="btn small" type="button" id="qNew">新しい会話</button></span></div>
-      <div id="qHist" class="qhist" hidden></div>
+      <div class="spread"><h2>AIに質問</h2><span class="row" style="gap:8px;align-items:center"><span class="small muted" id="qScope"></span><button class="btn small qhistbtn" type="button" id="qHistBtn">履歴</button></span></div>
       <span class="small muted">質問テンプレ(押すと入力欄に入ります。〈 〉を書きかえてください)</span>
       <div class="chips" id="tpls"></div>
     </section>
@@ -164,6 +169,8 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
       <input id="q" placeholder="例:アセントのアタックで、設置は残り何秒あたりが多い?" maxlength="300">
       <button type="submit" class="btn primary" id="askBtn">送信</button>
     </form>
+      </div>
+    </div>
   </div>
 
   <!-- CHANNEL -->

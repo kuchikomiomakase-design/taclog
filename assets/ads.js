@@ -81,7 +81,7 @@ window.TLAds = (function () {
       h("p", { class: "small muted", style: "margin:0" }, "広告(アフィリエイト)です。リンクから購入されると、TacLogの運営費になります。"));
     return true;
   }
-  // Banner columns in the empty space left and right of the 1000px content on wide screens. Hidden on narrow screens and for paid teams.
+  // Banner column in the empty space right of the content on wide screens. Hidden on narrow screens and for paid teams.
   function rail() {
     const all = live().filter((x) => ok(x.url) && !x.wide);
     if (!all.length || document.getElementById("adRail")) return;
@@ -89,19 +89,17 @@ window.TLAds = (function () {
       if (paid) return;
       const { h } = TL;
       const big = all.filter((x) => ok(x.img)), rest = all.filter((x) => !ok(x.img));
-      const ordered = big.concat(rest), right = [], left = [];
-      ordered.forEach((x, i) => (i % 2 === 0 ? right : left).push(x));   // alternate so both sides get banners
+      const right = big.concat(rest);   // all banners in one column on the right (the left side is kept free for the app, e.g. question history)
       const col = (id, side, list) => h("aside", { id, class: "adrail " + side, "aria-label": "広告" },
-        h("div", { class: "adhead" }, h("span", { class: "adpr" }, "PR"), h("a", { href: "/gear", class: "small" }, "おすすめ機材")), ...list.slice(0, 3).map(card));
+        h("div", { class: "adhead" }, h("span", { class: "adpr" }, "PR"), h("a", { href: "/gear", class: "small" }, "おすすめ機材")), ...list.slice(0, 4).map(card));
       const els = [col("adRail", "r", right)];
-      if (left.length) els.push(col("adRailL", "l", left));
       els.forEach((e) => document.body.append(e));
       // sit at the screen edges, and only where there is room next to the page content (never on top of it)
       const fit = () => {
         const m = document.querySelector("main"), r = m ? m.getBoundingClientRect() : { left: 0, right: window.innerWidth };
         const cs = m ? getComputedStyle(m) : null, padL = cs ? parseFloat(cs.paddingLeft) || 0 : 0, padR = cs ? parseFloat(cs.paddingRight) || 0 : 0;
         const left = r.left + padL, right = window.innerWidth - (r.right - padR);
-        els.forEach((e) => { e.hidden = (e.classList.contains("l") ? left : right) < 300 + 40; });
+        els.forEach((e) => { e.hidden = right < 300 + 40; });
       };
       fit(); window.addEventListener("resize", fit);
     });

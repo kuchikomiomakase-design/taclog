@@ -124,11 +124,24 @@ footer.site a{color:var(--ink2)}
 @media print{.adwidebox{display:none!important}}
 .nav a.lang{font:700 12px var(--f-mono);letter-spacing:.06em;border:1px solid var(--line2);border-radius:999px;padding:3px 10px}
 
-/* AI question history */
-.qhist{display:grid;gap:4px;max-height:320px;overflow:auto;padding:6px;border:1px solid var(--line2);border-radius:10px;background:var(--raise)}
-.qhist .qh{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:14px}
+/* AI question history: a column on the left (like a chat app); on phones it opens above the chat */
+.askgrid{display:grid;grid-template-columns:240px minmax(0,1fr);gap:16px;align-items:start}
+.qside{position:sticky;top:76px;display:grid;gap:8px;max-height:calc(100vh - 96px);grid-template-rows:auto minmax(0,1fr)}
+.qhist{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;align-content:start;overflow:auto;min-height:0;padding:4px}
+.qside{grid-template-columns:minmax(0,1fr);min-width:0}
+.qhist .qh{display:flex;gap:6px;align-items:center;justify-content:space-between;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13.5px}
 .qhist .qh:hover,.qhist .qh.on{background:var(--accent-soft)}
-.qhist .qh span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.qhist .qh small{color:var(--muted,#888);flex:none}
-.qhist .qh button{flex:none;background:none;border:0;color:inherit;opacity:.5;cursor:pointer;font-size:14px}
+.qhist .qh span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+#askBtn{white-space:nowrap;flex:none}
+.qhist .qh small{opacity:.6;flex:none;font-size:11px}
+.qhist .qh button{flex:none;background:none;border:0;color:inherit;opacity:0;cursor:pointer;font-size:14px}
+.qhist .qh:hover button,.qhist .qh.on button{opacity:.6}
 .qhist .qh button:hover{opacity:1}
+.qhistbtn{display:none}
+@media (max-width:899px){
+  .askgrid{grid-template-columns:1fr}
+  .qside{position:static;max-height:none;display:none}
+  .qside.open{display:grid}
+  .qhist{max-height:300px;border:1px solid var(--line2);border-radius:10px}
+  .qhistbtn{display:inline-flex}
+}
