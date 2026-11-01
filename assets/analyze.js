@@ -412,7 +412,7 @@ function snapAdd(sn,round,sec){
   }catch(e){}
 }
 async function snapEnd(sn){const out=[];for(const c of sn.cvs)out.push(await new Promise(r=>c.toBlob(r,"image/jpeg",0.72)));return out.filter(Boolean)}
-async function readKit(segs,me,maps,known){
+async function readKit(segs,me,maps,known,comps){
   const jobs=[];
   segs.forEach((rs,si)=>rs.forEach(r=>{
     if(r._st==null)return;
@@ -482,6 +482,8 @@ async function readKit(segs,me,maps,known){
     const sheet=fixed?await sheetOf(+si):null;
     const names=sheet?[...refBy[si].values()].map(x=>x.name):[];
     const dict=window.TLKit&&maps&&maps[si]&&TLKit.CALLOUTS[maps[si]]?TLKit.CALLOUTS[maps[si]]:"";
+    const L=(comps&&comps.left)||[],Rr=(comps&&comps.right)||[];
+    const who=L.length||Rr.length?" The kill feed may show PLAYER names instead of agents: always answer with the AGENT (from the portrait). Agents in this match: recording team = "+(L.join(", ")||"?")+"; enemy team = "+(Rr.join(", ")||"?")+(me[si]?"; the recording player plays "+me[si]+" (an entry named 'Me' or the player's own name is "+me[si]+")":"")+".":"";
     for(let i=0;i<evs.length;i+=36){
       const part=evs.slice(i,i+36),blobs=[];prog(0.996,"撃ち合いの場所と相手を読み取っています…("+Math.min(evs.length,i+36)+"/"+evs.length+")");
       const s=fixed?200:0,mh=fixed?Math.round(s*H*MM.h/(W*MM.w)):0;
@@ -500,14 +502,17 @@ async function readKit(segs,me,maps,known){
         blobs.push(await new Promise(r=>cv.toBlob(r,"image/jpeg",0.85)));
       }
       try{
-        const r=await SAMPLE.json(!fixed?"Each numbered cell is the kill feed (top-right of a VALORANT screen) right after someone died. For each cell give the newest death(s): killer agent > victim agent (identify AGENTS from the portraits; names may be player names or hidden; green/teal entry = killer on the recording team, red = enemy). Reply only JSON, one list per cell in order (usually 1 death, sometimes 2): {\"f\":[[{\"k\":\"Jett\",\"v\":\"Sova\",\"g\":true}],[]]} (g = true if the killer is on the recording team; use \"?\" for anything you cannot tell).":(sheet?"Image 1 is a reference sheet from the SAME match: each tile is the minimap with the recording player's own icon, labelled with the name of the place where that player stood at that moment. ":"")+
+        const r=await SAMPLE.json(!fixed?"Each numbered cell is the kill feed (top-right of a VALORANT screen) right after someone died. For each cell give the newest death(s): killer agent > victim agent (identify AGENTS from the portraits; names may be player names or hidden; green/teal entry = killer on the recording team, red = enemy). Reply only JSON, one list per cell in order (usually 1 death, sometimes 2): {\"f\":[[{\"k\":\"Jett\",\"v\":\"Sova\",\"g\":true}],[]]} (g = true if the killer is on the recording team; use \"?\" for anything you cannot tell)."+who:(sheet?"Image 1 is a reference sheet from the SAME match: each tile is the minimap with the recording player's own icon, labelled with the name of the place where that player stood at that moment. ":"")+
           "The other images have numbered cells. Each cell shows the minimap and the kill feed (top-right of the screen) right after someone died. Each death leaves an X marker on the minimap (blue/teal X = a player of the recording team, red X = an enemy); a magenta circle marks where a NEW X appeared in the last 2 seconds (found automatically, it can be missing or slightly off: then use the newest kill feed entry and the X closest to it). "+
           "For each cell give the newest death(s): killer agent > victim agent (identify AGENTS from the kill feed portraits; green/teal entry = killer on the recording team, red = enemy), and the place of the NEW X marker (the circled one)"+(sheet?", named by comparing its position with the reference tiles (use those names; for a spot between tiles pick the nearest)":"")+(dict?". Known place names on this map: "+dict:"")+
-          ". Reply only JSON, one list per cell in order (usually 1 death, sometimes 2): {\"f\":[[{\"k\":\"Jett\",\"v\":\"Sova\",\"g\":true,\"p\":\"A Main\"}],[]]} (g = true if the killer is on the recording team; use \"?\" for anything you cannot tell).",
+          ". Reply only JSON, one list per cell in order (usually 1 death, sometimes 2): {\"f\":[[{\"k\":\"Jett\",\"v\":\"Sova\",\"g\":true,\"p\":\"A Main\"}],[]]} (g = true if the killer is on the recording team; use \"?\" for anything you cannot tell)."+who,
           {images:(sheet?[sheet]:[]).concat(blobs),signal:ctl.signal,modelTier:"fast",task:"fights"});
         const arr=Array.isArray(r.f)?r.f:[];
         part.forEach((c,k)=>{const list=Array.isArray(arr[k])?arr[k]:[];list.slice(0,Math.max(1,c.n)+1).forEach(e=>{if(!e||typeof e!=="object")return;
-          const f={t:Math.round(c.t-c.j.r._st),k:String(e.k||"?").slice(0,20),v:String(e.v||"?").slice(0,20),g:e.g===true?true:e.g===false?false:null,p:String(e.p||"?").slice(0,40)};
+          const canon=(n)=>{n=String(n||"?").trim();if(/^(me|自分)$/i.test(n)&&me[si])return me[si];const k=agentKey(n);const hit=L.concat(Rr).find(a=>agentKey(a)===k);return hit||(L.length+Rr.length?"?":n.slice(0,20))};
+          const kk=canon(e.k),vv=canon(e.v);let g=e.g===true?true:e.g===false?false:null;
+          if(L.some(a=>a===kk))g=true;else if(Rr.some(a=>a===kk))g=false;else if(Rr.some(a=>a===vv))g=true;else if(L.some(a=>a===vv))g=false;
+          const f={t:Math.round(c.t-c.j.r._st),k:kk,v:vv,g,p:String(e.p||"?").slice(0,40)};
           if(!fixed)f.p="?";f._t=c.t;
           if(!c.j.r.fights.some(x=>agentKey(x.v)===agentKey(f.v)&&agentKey(f.v)))c.j.r.fights.push(f)})});
       }catch(e){if(e&&e.code==="cancelled")throw e}
@@ -682,7 +687,7 @@ async function runAnalysis(){
     const mm=await readMaps(segs),maps=mm.maps,me=mm.me;markMine(segs,me);
     await readMyDeaths(segs,me);
     let known=[];try{known=await knownMatches(segs,maps)}catch(e){known=[]}
-    await readKit(segs,me,maps,known);
+    await readKit(segs,me,maps,known,comps);
     segs.forEach(rs=>rs.forEach(r=>{delete r._st;delete r._next}));
     prog(1,"完了しました");
     lastResult={coach:COACH,snaps:SNAPS,segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};

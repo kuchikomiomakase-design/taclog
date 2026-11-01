@@ -37,6 +37,14 @@ function dataText(matches, povs) {
       " comp=" + ((m.comps && m.comps.left) || []).join("/") + (pv.length ? "" : " me=" + clean((m.comps && m.comps.me) || "?")) + "\nrounds: " + rs + (pvText ? "\n" + pvText : "");
   }).join("\n");
 }
+// When the AI reply is not valid JSON (e.g. cut off), still show only the answer text, never the raw JSON.
+function salvage(text) {
+  const t = String(text || "");
+  const m = t.match(/"answer"\s*:\s*"((?:[^"\\]|\\.)*)/);
+  if (!m) return { answer: t.replace(/^[\s\S]*?\{/, "").trim() ? t : t, chart: null, scenes: [] };
+  let a = m[1]; try { a = JSON.parse('"' + a.replace(/\\$/, "") + '"'); } catch (e) { a = a.replace(/\\n/g, "\n").replace(/\\"/g, '"'); }
+  return { answer: a, chart: null, scenes: [] };
+}
 // per-agent ability / ult totals (computed here so the AI does not have to add up hundreds of rounds)
 function kitText(matches, povs) {
   const rows = [];
@@ -64,9 +72,9 @@ async function look(req, res, body, m, auth, question) {
   if (!matches || !matches.length) return fail(res, 404, "試合が見つかりません。");
   const content = images.map((data) => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data } }));
   content.push({ type: "text", text: "あなたはVALORANTチームの分析コーチです。画像は、この試合のラウンド(" + looks.map((x) => x.round + "ラウンド目").join("・") + ")を、バリアが消えてから2秒ごとに並べたものです。各コマの左上の「R番号 分:秒」はラウンド番号とバリアが消えてからの時間、左が画面全体(縮小)、真ん中がミニマップ(青・緑の印=味方、赤=敵、×=倒れた場所)、右がキルログ(緑=味方が倒した、赤=倒された)です。録画した人の視点なので、その人が倒れたあとは味方を観戦している画面になります。\n下のデータ(このチームの記録)と画像だけを根拠に、質問に短く具体的に答えてください。画像からわかったこと(どこで誰が倒れたか、人数の流れ、スキルの使い方、立ち位置)を時間つきで示し、改善点があれば1〜3個。わからないことは推測と書いてください。答えは質問と同じ言語で。\n\nデータ:\n" + dataText(matches, {}) + "\n" + kitText(matches, {}) + "\n\n" + (body.draft ? "データだけで作った答え(参考): " + String(body.draft).slice(0, 1200) + "\n\n" : "") + "質問: " + question + "\n\n返答はJSONのみ: {\"answer\":\"答えの文章\",\"chart\":null,\"scenes\":[{\"match\":\"match=の値\",\"round\":ラウンド番号,\"note\":\"短い説明\"}]}" });
-  const text = await claude({ content, maxTokens: 2500, teamId: body.teamId, kind: "ask:look", model: process.env.LOOK_MODEL || "claude-haiku-5-5" });
+  const text = await claude({ content, maxTokens: 5000, teamId: body.teamId, kind: "ask:look", model: process.env.LOOK_MODEL || "claude-haiku-5-5" });
   let ans; try { ans = parseJSON(text); } catch (e) { ans = null; }
-  ans = ans || { answer: text, chart: null, scenes: [] };
+  if (!ans || typeof ans.answer !== "string") ans = salvage(text);
   await rest("usage?on_conflict=team_id,month", { method: "POST", service: true, prefer: "resolution=merge-duplicates", body: { team_id: body.teamId, month, questions: used + 1, analyses: u && u[0] ? u[0].analyses : 0 } });
   ans.looked = true;
   send(res, 200, ans);
@@ -108,11 +116,11 @@ module.exports = async (req, res) => {
       "【状況・場所】ラウンドの +S:4v5>4v4>2v3 は、バリアが消えてからの人数の流れ(自チームの生存人数v相手の生存人数)。+FT:12s_Jett>Sova(us)@A_Main は、そのラウンドの撃ち合い(バリアが消えてから何秒で、誰が誰を倒したか。(us)=自チームが倒した、(them)=自チームが倒された、@の後ろは倒れた場所)。ミニマップに出る死亡マークとキルログから、1人の録画でも両チーム全員の分を読んでいます。「team situations」の行はチーム全体の集計で、勝ったラウンド/ラウンド数: post_plant_attack=アタックで設置したラウンドの勝率(ポストプラント)、retake_defense=ディフェンスで相手に設置されたラウンドの勝率(リテイク)、attack_pace=アタックの攻めの速さ別(設置したときの残り時間で分類。fast=速攻、slow=ゆっくり、no_plant=設置なし)、first_fight=最初に誰かが倒れた時間別、small_fight=どこかで両チーム2人以下になったラウンド(少人数戦)の勝率、reached_state=その人数状況になったラウンドの勝率(例 1v2=自分たち1人対相手2人のクラッチ、5v4=人数有利)、at_plant=設置した瞬間の人数別の勝率。「fight_place」の行は場所ごとの撃ち合いで、kills=そこで倒した数、deaths=そこで倒された数。撃ち合いの勝率は kills/(kills+deaths)。place は「マップ:場所」。「callouts map=」の行はそのマップの場所の名前の一覧(英語/日本語、かっこ内は選手がよく使う呼び方)で、英語と日本語の同じ場所は同じ場所として合わせて数え、「Aサイト周り」「中央」のようにエリアでまとめて聞かれたら、この一覧を見て A・B・C・中央(Mid)・スポーンに分けて足してください。質問で通称(ヘブン、黒コン、噴水など)が使われたら、この一覧で場所を探してください。agent=TEAM はチーム合計。agent は自チームの選手のエージェント(相手チームの選手ごとの集計はしません)。「team_kd」の行は自チームのエージェント別のキル数とデス数(撃ち合いから数えたもの。録画していない選手の分も入っています)。場所の名前は英語のまま出ることがあるので、日本語の質問には「Aメイン(A Main)」のように両方書いてください。少人数戦・リテイク・攻めの速さ・場所ごとの撃ち合いを聞かれたら、まずこれらの集計を使ってください。+AL/+H/+S/+FT などラウンドごとの細かい印と動画の秒数は直近" + DETAIL + "試合にだけ付いています(それより前の試合も集計行には全部入っています)。\n" +
       (plan === "free" ? "(無料プランのため、直近" + lim.days + "日分のデータだけを渡しています)\n" : "") + "\n" +
       dataText(matches, povs) + "\n" + kitText(matches, povs) + "\n\n" + (history ? "これまでの会話:\n" + history + "\n\n" : "") + "質問: " + question + "\n\n" +
-      "返答はJSONのみ: {\"look\":null または [{\"match\":\"match=の値\",\"round\":ラウンド番号}](最大2件),\"missing\":null または \"答えられなかった理由(短く。例: 個人のアシスト数は記録していない、該当する試合がない、録画した人がいないエージェント)\",\"answer\":\"答えの文章\",\"chart\":null または {\"title\":\"グラフの題\",\"unit\":\"%\",\"bars\":[{\"label\":\"ラベル\",\"value\":数値}]},\"scenes\":[{\"match\":\"試合のmatch=の値\",\"round\":ラウンド番号,\"note\":\"短い説明\"}]}。グラフが役立つ質問ではchartを入れる。scenesは根拠になったラウンドを最大5件。質問に(一部でも)データ不足や対象外のせいで答えられなかったときは missing に理由を書き、答えられたときは null にする。特定のラウンドで実際に何が起きたか(なぜ負けたか、どこから攻めたか、スキルの使い方、立ち位置など)を聞かれて、データだけでは答えきれないときは look にそのラウンドを入れる(録画の画像を見てもう一度答えます)。そのときも answer にはデータからわかることを書く。";
+      "返答はJSONのみ: {\"look\":null または [{\"match\":\"match=の値\",\"round\":ラウンド番号}](最大2件),\"missing\":null または \"答えられなかった理由(短く。例: 個人のアシスト数は記録していない、該当する試合がない、録画した人がいないエージェント)\",\"answer\":\"答えの文章\",\"chart\":null または {\"title\":\"グラフの題\",\"unit\":\"%\",\"bars\":[{\"label\":\"ラベル\",\"value\":数値}]},\"scenes\":[{\"match\":\"試合のmatch=の値\",\"round\":ラウンド番号,\"note\":\"短い説明\"}]}。answer は長くても日本語で600字くらいまでにまとめる。グラフが役立つ質問ではchartを入れる。scenesは根拠になったラウンドを最大5件。質問に(一部でも)データ不足や対象外のせいで答えられなかったときは missing に理由を書き、答えられたときは null にする。特定のラウンドで実際に何が起きたか(なぜ負けたか、どこから攻めたか、スキルの使い方、立ち位置など)を聞かれて、データだけでは答えきれないときは look にそのラウンドを入れる(録画の画像を見てもう一度答えます)。そのときも answer にはデータからわかることを書く。";
 
-    const text = await claude({ content: [{ type: "text", text: prompt.slice(0, 240000) }], maxTokens: 3000, teamId: body.teamId, kind: "ask", model: process.env.ASK_MODEL || "claude-haiku-5-5" });
+    const text = await claude({ content: [{ type: "text", text: prompt.slice(0, 240000) }], maxTokens: 6000, teamId: body.teamId, kind: "ask", model: process.env.ASK_MODEL || "claude-haiku-5-5" });
     let ans; try { ans = parseJSON(text); } catch (e) { ans = null; }
-    ans = ans || { answer: text, chart: null, scenes: [] };
+    if (!ans || typeof ans.answer !== "string") { const sv = salvage(text); const mm = String(text).match(/"missing"\s*:\s*"((?:[^"\\]|\\.)*)"/); ans = { ...sv, missing: mm ? mm[1] : null }; }
     if (ans.missing && String(ans.missing).trim() && String(ans.missing).trim() !== "null") await reportUnanswered(m, question, String(ans.missing).slice(0, 300));
     else if (ans.answer === REFUSE) await reportUnanswered(m, question, "答えてはいけない話題と判断して断った");
     delete ans.missing;
