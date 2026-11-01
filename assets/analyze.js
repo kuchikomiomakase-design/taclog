@@ -183,14 +183,25 @@ function buildRounds(samples,start){
   });
   return Object.values(segs).map(rs=>{const m=new Map();rs.forEach(r=>{if(!m.has(r.n)||m.get(r.n).win==null)m.set(r.n,r)});return[...m.values()].sort((a,b)=>a.n-b.n)});
 }
-// Cheap check before the real analysis: 6 small frames in one image, asked once. Stops non-VALORANT videos before spending more.
+// Cheap check before the real analysis. Streams often start with ~10 minutes of lobby or switch to other screens (desktop, Discord, BRB),
+// so look at 16 frames spread over the whole video and call it VALORANT if ANY of them is VALORANT. Only when a second, different set of
+// 16 frames also has no VALORANT at all is the video skipped. Each check is one small image (well under 1 yen).
+async function sheetAt(ts){
+  const cv=document.createElement("canvas");cv.width=960;cv.height=540;const x=cv.getContext("2d");x.font="bold 16px monospace";x.textBaseline="top";
+  for(let i=0;i<ts.length;i++){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(duration*ts[i]);const ox=(i%4)*240,oy=Math.floor(i/4)*135;x.drawImage(video,ox,oy,240,135);x.fillStyle="#F2B33D";x.fillRect(ox,oy,24,20);x.fillStyle="#000";x.fillText(String(i+1),ox+3,oy+2)}
+  return await new Promise(r=>cv.toBlob(r,"image/jpeg",0.72));
+}
+async function askValorant(blob){
+  const r=await SAMPLE.json("These are 16 numbered frames taken at different times from ONE stream recording. Streamers often show the lobby for a long time, or switch to other screens (desktop, Discord, a 'be right back' screen, another app) for a while. Question: does ANY of the 16 frames show VALORANT (the Riot Games tactical shooter)? Count all of these as VALORANT: in-match gameplay (score and round timer at top center, minimap at top left), the VALORANT lobby/main menu, agent select, loading screen, the scoreboard or end-of-match screen. If even one frame is VALORANT, or you are not sure, answer true. Answer false only if you are confident that none of the frames is VALORANT. Reply only JSON: {\"valorant\":true,\"frames\":[numbers of VALORANT frames]} or {\"valorant\":false,\"what\":\"what the video shows, short, in Japanese\"}",{images:[blob],signal:ctl.signal,modelTier:"default"});
+  return r&&r.valorant===false?{ok:false,what:String(r.what||"").slice(0,40)}:{ok:true};
+}
 async function isValorant(){
-  const cv=document.createElement("canvas");cv.width=960;cv.height=360;const x=cv.getContext("2d");
-  const ts=[0.12,0.27,0.42,0.57,0.72,0.87];
-  for(let i=0;i<6;i++){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(duration*ts[i]);x.drawImage(video,(i%3)*320,Math.floor(i/3)*180,320,180)}
-  const blob=await new Promise(r=>cv.toBlob(r,"image/jpeg",0.7));
-  try{const r=await SAMPLE.json("These are 6 frames taken from one video. Is this video VALORANT gameplay (the Riot Games tactical shooter: HUD with team scores and round timer at the top center, minimap at top left)? Menus, agent select or the lobby of VALORANT also count as VALORANT. Reply only JSON: {\"valorant\":true} or {\"valorant\":false,\"what\":\"short description in Japanese\"}",{images:[blob],signal:ctl.signal,modelTier:"default"});
-    return r&&r.valorant===false?{ok:false,what:String(r.what||"").slice(0,40)}:{ok:true}}catch(e){if(e&&e.code==="cancelled")throw e;if(e&&["not_granted","sampling_disabled","rate_limited","images_unavailable"].includes(e.code))throw e;return{ok:true}}
+  try{
+    const A=[],B=[];for(let i=0;i<16;i++){A.push(0.03+i*0.06);B.push(0.06+i*0.06)}   // 3%..93% and 6%..96%
+    const first=await askValorant(await sheetAt(A));if(first.ok)return first;
+    prog(0,"念のため、ほかの場面ももう一度確認しています…");
+    const second=await askValorant(await sheetAt(B.map(t=>Math.min(t,0.98))));return second.ok?second:{ok:false,what:second.what||first.what};
+  }catch(e){if(e&&e.code==="cancelled")throw e;if(e&&["not_granted","sampling_disabled","rate_limited","images_unavailable"].includes(e.code))throw e;return{ok:true}}
 }
 let lastErr=null;
 async function firstError(list){for(const x of list){if(!x.fin)continue;try{await x.job}catch(e){return e}}return null}
