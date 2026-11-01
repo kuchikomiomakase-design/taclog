@@ -210,12 +210,43 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
       const thread = $("thread"); if (thread.querySelector(".empty")) thread.replaceChildren();
       thread.append(h("div", { class: "bubble" }, q)); const box = h("div", { class: "answer" }, h("span", { class: "muted small" }, "考えています…")); thread.append(box);
       $("q").value = ""; $("askBtn").disabled = true;
-      try { const ans = await TL.api("/api/ask", { teamId: APP.team.id, game: APP.game, question: q, history: chat.slice(-2) }); renderAnswer(box, ans || {}); chat.push({ q, a: String((ans && ans.answer) || "") }); }
+      try {
+        let ans = await TL.api("/api/ask", { teamId: APP.team.id, game: APP.game, question: q, history: chat.slice(-2) });
+        renderAnswer(box, ans || {});
+        // the AI wants to see a round: send the pictures saved on this PC (if this PC analysed that match)
+        const looks = Array.isArray(ans && ans.look) ? ans.look.slice(0, 2) : [];
+        if (looks.length && window.TLSnaps && TLSnaps.supported) {
+          const files = [];
+          for (const l of looks) files.push(...(await TLSnaps.load(l.match, l.round, looks.length > 1 ? 5 : 8)));
+          if (files.length) {
+            const note = h("p", { class: "small muted" }, "そのラウンドの画像を確認しています…"); box.append(note);
+            try {
+              const images = await Promise.all(files.map((f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(f); })));
+              const more = await TL.api("/api/ask", { mode: "look", teamId: APP.team.id, question: q, looks, images, draft: ans.answer || "" });
+              ans = more; renderAnswer(box, ans || {}); box.append(h("p", { class: "small muted" }, "録画の画像も見て答えました(質問2回分)。"));
+            } catch (e) { note.textContent = "画像の確認はできませんでした(" + TL.errText(e) + ")。上はデータからの答えです。"; }
+          } else box.append(h("p", { class: "small muted" }, "この試合の画像がこのパソコンにないため、データだけで答えています(画像は分析したパソコンに保存されます)。"));
+        }
+        chat.push({ q, a: String((ans && ans.answer) || "") });
+      }
       catch (err) { box.replaceChildren(h("p", {}, TL.errText(err))); }
       finally { $("askBtn").disabled = false; }
     });
   }
 
+
+  /* ---------- round pictures kept on this PC ---------- */
+  async function renderSnaps() {
+    const box = $("snapBox"); if (!box) return;
+    if (!window.TLSnaps || !TLSnaps.supported) { box.hidden = true; return; }
+    const sel = $("snapDays"); sel.value = String(TLSnaps.days());
+    sel.onchange = async () => { TLSnaps.setDays(+sel.value); await TLSnaps.cleanup(); show(); };
+    $("snapClear").onclick = async () => { await TLSnaps.clearAll(); show(); };
+    async function show() { const u = await TLSnaps.usage(); $("snapUse").textContent = u ? "今このブラウザでTacLogが使っている容量:約" + (u.used / 1e9 >= 1 ? (u.used / 1e9).toFixed(1) + "GB" : Math.round(u.used / 1e6) + "MB") + "(1マップ約20〜50MB)" : ""; }
+    show();
+  }
+  document.addEventListener("DOMContentLoaded", () => setTimeout(renderSnaps, 500));
+  if (document.readyState !== "loading") setTimeout(renderSnaps, 500);
 
   /* ---------- recording folder ---------- */
   let folderBusy = false;

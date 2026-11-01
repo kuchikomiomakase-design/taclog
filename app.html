@@ -222,6 +222,13 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
       <label class="check" for="autoAn"><input id="autoAn" type="checkbox"><span><strong>新しい録画を自動で分析する</strong><span class="small muted">TacLogを開いている間、1分ごとに録画フォルダを確認して、配信が終わった録画を自動で読み込みます。</span></span></label>
       <label class="check" for="delAfter"><input id="delAfter" type="checkbox"><span><strong>分析が終わった録画を、このパソコンから自動で削除する</strong><span class="small muted">最初からオンになっています。分析と保存がうまくいった録画だけを削除します。YouTubeのアーカイブは消えません。</span></span></label>
     </section>
+    <section class="card" id="snapBox" style="display:grid;gap:8px">
+      <h2>試合の画像(このパソコンに保存)</h2>
+      <p class="small muted" style="margin:0">分析のときに、各ラウンドの画面を2秒ごとに小さな画像で残しています(ミニマップ・キルログ・画面全体)。録画を消したあとでも、「12ラウンド目はなんで負けた?」のような質問のときに、AIがこの画像を見て答えます。画像はこのパソコンのブラウザの中だけにあり、どこにもアップロードしません。</p>
+      <label class="row" style="gap:8px;align-items:center">残す期間 <select id="snapDays" class="teamsel"><option value="14">2週間</option><option value="30">1か月</option><option value="60">2か月</option><option value="90">3か月</option><option value="180">6か月</option><option value="0">ずっと</option></select></label>
+      <p class="small muted" id="snapUse" style="margin:0"></p>
+      <div class="row"><button class="btn small" type="button" id="snapClear">画像をすべて削除</button></div>
+    </section>
     <section class="card">
       <h2>お知らせ</h2>
       <p class="small muted">いらないものはチェックを外してください。</p>
@@ -240,6 +247,7 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
 <footer id="footer"></footer>
 <script src="/assets/folder.js"></script>
 <script src="/assets/app.js"></script>
+<script src="/assets/snaps.js"></script>
 <script src="/assets/analyze.js"></script>
 <script src="/assets/ads.js"></script>
 <script src="/assets/kit.js"></script>

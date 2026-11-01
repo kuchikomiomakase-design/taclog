@@ -368,6 +368,24 @@ async function mmFixed(times){
   const iou=[];for(let k=1;k<masks.length;k++){let a=0,u=0;for(let i=0;i<masks[k].length;i++){const x=masks[k][i],y=masks[k-1][i];if(x&&y)a++;if(x||y)u++}iou.push(u?a/u:1)}
   iou.sort((a,b)=>a-b);return iou[Math.floor(iou.length/2)]>=0.55;
 }
+// Small pictures of every round kept on this PC (so the recording itself can be deleted): every 2 seconds from the barrier drop,
+// the whole screen (small) + minimap + kill feed, 8 moments per image. Used later when a question needs to look at a round.
+let SNAPS={};
+const SN={cw:860,ch:216,cols:2,rows:4};
+function snapStart(){return{cvs:[],n:0}}
+function snapAdd(sn,round,sec){
+  try{
+    const per=SN.cols*SN.rows,k=sn.n%per;
+    if(k===0){const c=document.createElement("canvas");c.width=SN.cols*SN.cw;c.height=SN.rows*SN.ch;const x=c.getContext("2d");x.fillStyle="#000";x.fillRect(0,0,c.width,c.height);sn.cvs.push(c)}
+    const c=sn.cvs[sn.cvs.length-1],x=c.getContext("2d"),ox=(k%SN.cols)*SN.cw,oy=Math.floor(k/SN.cols)*SN.ch,W=video.videoWidth,H=video.videoHeight;
+    x.drawImage(video,0,0,W,H,ox,oy,384,216);
+    const mw=Math.round(216*W*MM.w/(H*MM.h));x.drawImage(video,W*MM.x,H*MM.y,W*MM.w,H*MM.h,ox+384,oy,Math.min(mw,216),216);
+    x.drawImage(video,W*0.68,H*0.05,W*0.32,H*0.2,ox+600,oy,260,Math.round(260*H*0.2/(W*0.32)));
+    x.fillStyle="#F2B33D";x.fillRect(ox,oy,118,22);x.fillStyle="#000";x.font="bold 15px monospace";x.textBaseline="top";x.fillText("R"+round+" "+Math.floor(sec/60)+":"+String(Math.round(sec%60)).padStart(2,"0"),ox+4,oy+3);
+    sn.n++;
+  }catch(e){}
+}
+async function snapEnd(sn){const out=[];for(const c of sn.cvs)out.push(await new Promise(r=>c.toBlob(r,"image/jpeg",0.72)));return out.filter(Boolean)}
 async function readKit(segs,me,maps,known){
   const jobs=[];
   segs.forEach((rs,si)=>rs.forEach(r=>{
@@ -386,7 +404,9 @@ async function readKit(segs,me,maps,known){
   for(const j of jobs){
     prog(0.99,"ラウンドの流れとスキルを確認しています… ("+(++done)+"/"+jobs.length+"ラウンド)");
     const S=[];
-    for(let t=j.a;t<=j.end;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const al=aliveNow();S.push({t,us:al[0],en:al[1],...(hud&&j.b!=null&&t<=j.b?kitNow(KIT_KX):{ok:false,bars:[],held:null})})}
+    const snap=snapStart();
+    for(let t=j.a;t<=j.end;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const al=aliveNow();S.push({t,us:al[0],en:al[1],...(hud&&j.b!=null&&t<=j.b?kitNow(KIT_KX):{ok:false,bars:[],held:null})});snapAdd(snap,j.r.n,t-j.r._st)}
+    try{const blobs=await snapEnd(snap);if(blobs.length)((SNAPS[j.si]=SNAPS[j.si]||{})[j.r.n]=blobs)}catch(e){}
     j.S=S;
     // alive counts only go down in a round: accept a drop once it is seen twice in a row (or at the last look)
     const alv=[[0,5,5]];let cu=5,ce=5;
@@ -601,7 +621,7 @@ async function runAnalysis(){
   if(!duration)return false;
   ctl=new AbortController();$("go").disabled=true;$("stop").hidden=false;$("result").hidden=true;
   const p=plan(),times=[];for(let i=0;i<p.n;i++)times.push(3+i*p.iv);
-  const samples=[];lastErr=null;
+  const samples=[];lastErr=null;SNAPS={};
   try{
     prog(0,"VALORANTの動画か確認しています…");
     const g=await isValorant();
@@ -637,7 +657,7 @@ async function runAnalysis(){
     await readKit(segs,me,maps,known);
     segs.forEach(rs=>rs.forEach(r=>{delete r._st;delete r._next}));
     prog(1,"完了しました");
-    lastResult={segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
+    lastResult={snaps:SNAPS,segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
     showResult();
     return true;
   }catch(e){
@@ -700,16 +720,17 @@ async function savePov(matchId,si,R){
   const {error}=await TL.sb.from("match_povs").insert({match_id:matchId,team_id:APP.team.id,agent:(R.me&&R.me[si])||"",file:fileName,rounds:povRounds(R.segs[si])});
   if(error&&!/match_povs/.test(error.message||""))throw error;   // before 007_match_povs.sql is run, just skip the per-view data
 }
+async function keepSnaps(matchId,si,R){try{if(window.TLSnaps&&R.snaps&&R.snaps[si])await TLSnaps.save(matchId,R.snaps[si])}catch(e){}}
 async function saveLast(meta){
   const R=lastResult;if(!R||!R.segs.length||!R.segs[0].length)throw new Error("ラウンドを見つけられませんでした。");
   const out={created:0,merged:0};
   for(let si=0;si<R.segs.length;si++){
     const map=(si===0&&meta.map)?meta.map:((R.maps&&R.maps[si])||"");
     let same=null;try{same=await findSame(meta.date,map,R.segs[si],si+1)}catch(e){same=null}
-    if(same){await savePov(same.id,si,R);out.merged++;continue}
+    if(same){await savePov(same.id,si,R);await keepSnaps(same.id,si,R);out.merged++;continue}
     const{data,error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:meta.date||"",opp:meta.opp||"",map,start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:meta.yt||"",file:fileName,part:si+1,comps:{...R.comps,me:(R.me&&R.me[si])||null},rounds:R.segs[si]}});
     if(error)throw error;
-    if(data)await savePov(data,si,R);
+    if(data){await savePov(data,si,R);await keepSnaps(data,si,R)}
     out.created++;
   }
   return out;
