@@ -15,7 +15,7 @@ const SAMPLE={json:async(prompt,o)=>{if(o.signal&&o.signal.aborted)throw{code:"c
 const video=document.createElement("video");video.muted=true;video.playsInline=true;video.preload="auto";
 let duration=0,fileName="";
 function crop(){const W=video.videoWidth,H=video.videoHeight,w=W*$("cw").value/100,hgt=H*$("ch").value/100;return{sx:(W-w)/2,sy:H*$("ct").value/100,sw:w,sh:hgt}}
-function seek(t){return new Promise((res,rej)=>{const on=()=>{video.removeEventListener("seeked",on);video.removeEventListener("error",er);if(video.requestVideoFrameCallback){let ok=false;const fin=()=>{if(!ok){ok=true;res()}};video.requestVideoFrameCallback(fin);setTimeout(fin,400)}else res()};const er=()=>{video.removeEventListener("seeked",on);rej(new Error("seek"))};video.addEventListener("seeked",on);video.addEventListener("error",er);video.currentTime=Math.min(Math.max(0,t),Math.max(0,duration-0.1))})}
+function seek(t){return new Promise((res,rej)=>{const on=()=>{video.removeEventListener("seeked",on);video.removeEventListener("error",er);if(video.requestVideoFrameCallback){let ok=false;const fin=()=>{if(!ok){ok=true;res()}};video.requestVideoFrameCallback(fin);setTimeout(fin,40)}else res()};const er=()=>{video.removeEventListener("seeked",on);rej(new Error("seek"))};video.addEventListener("seeked",on);video.addEventListener("error",er);video.currentTime=Math.min(Math.max(0,t),Math.max(0,duration-0.1))})}
 async function drawPreview(){
   if(!duration)return;const t=duration*$("pv").value/100;await seek(t);
   const f=$("frameCv"),fx=f.getContext("2d");f.width=640;f.height=Math.round(640*video.videoHeight/video.videoWidth)||360;
@@ -114,15 +114,16 @@ async function readFirstKills(segs,samples){
   let done=0;
   for(const j of jobs){
     prog(0.95,"ファーストキルを読み取っています… ("+(++done)+"/"+jobs.length+"ラウンド)");
-    let prev=null,cand=null,fk=null,fkT=null;
-    for(let t=j.st+2;t<=j.end;t+=1){
-      if(ctl.signal.aborted)throw{code:"cancelled"};
-      await seek(t);const a=aliveNow();
-      if(!prev){if(a[0]===5&&a[1]===5)prev=a;continue}       // wait until both teams show 5 alive
-      const dl=a[0]<prev[0],dr=a[1]<prev[1];
-      if(!dl&&!dr){cand=null;continue}
-      if(!cand){cand={dl,dr,t};continue}                          // must still be lower one second later
-      fk=cand.dl&&cand.dr?"tie":cand.dr?"us":"them";fkT=cand.t;break;
+    // look every 3 seconds; when someone has died, check 1 second later (to ignore flicker), then step back second by second to find the exact moment
+    let ok=null,fk=null,fkT=null;const at=async(t)=>{if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);return aliveNow()};
+    for(let t=j.st+2;t<=j.end;t+=3){
+      const a=await at(t);
+      if(ok==null){if(a[0]===5&&a[1]===5)ok=t;continue}          // wait until both teams show 5 alive
+      if(a[0]===5&&a[1]===5){ok=t;continue}
+      const b=await at(t+1);if(b[0]===5&&b[1]===5){ok=t+1;continue} // flicker
+      let hit={t,a};
+      for(let u=ok+1;u<t;u++){const c=await at(u);if(c[0]<5||c[1]<5){hit={t:u,a:c};break}}
+      fk=hit.a[0]<5&&hit.a[1]<5?"tie":hit.a[1]<5?"us":"them";fkT=hit.t;break;
     }
     const r=segs[j.si][j.ri];r.fk=fk;r.fkT=fkT;
   }
@@ -177,6 +178,7 @@ function buildRounds(samples,start){
   });
   return Object.values(segs).map(rs=>{const m=new Map();rs.forEach(r=>{if(!m.has(r.n)||m.get(r.n).win==null)m.set(r.n,r)});return[...m.values()].sort((a,b)=>a.n-b.n)});
 }
+async function firstError(list){for(const x of list){if(!x.fin)continue;try{await x.job}catch(e){return e}}return null}
 async function runAnalysis(){
   if(!duration)return false;
   ctl=new AbortController();$("go").disabled=true;$("stop").hidden=false;$("result").hidden=true;
@@ -185,16 +187,20 @@ async function runAnalysis(){
   try{
     prog(0,"AIの利用を確認しています…");
     const chunks=[];for(let i=0;i<times.length;i+=PER_IMG)chunks.push(times.slice(i,i+PER_IMG));
-    let done=0;
+    let done=0;const pending=[];
     for(let c=0;c<chunks.length;c+=p.per){
       const group=chunks.slice(c,c+p.per),blobs=[];const from=c*PER_IMG+1;
       for(let gi=0;gi<group.length;gi++){prog((done)/times.length*0.9,"動画から画面を切り出しています… "+fmt(group[gi][0])+" / "+fmt(duration));blobs.push(await buildImage(group[gi],from+gi*PER_IMG));}
       const count=group.reduce((a,x)=>a+x.length,0),to=from+count-1;
-      prog(done/times.length*0.9,"AIが画面を読み取っています… ("+Math.ceil((c+1)/p.per)+"/"+p.calls+")");
-      let tiles=[];try{tiles=await readTiles(blobs,from,to)}catch(e){if(e&&e.code==="cancelled")throw e;if(e&&["not_granted","sampling_disabled","rate_limited","images_unavailable"].includes(e.code))throw e;tiles=[]}
-      for(let k=0;k<count;k++){const t=times[from-1+k];samples.push({t,...parseTile(tiles[k])})}
+      // send to AI in the background and keep cutting out the next frames (up to 3 requests at once)
+      const job=readTiles(blobs,from,to).catch(e=>{if(e&&e.code==="cancelled")throw e;if(e&&["not_granted","sampling_disabled","rate_limited","images_unavailable"].includes(e.code))throw e;return[]});
+      job.catch(()=>{});pending.push({job,from,count});
       done+=count;
+      while(pending.filter(x=>!x.fin).length>=3){await Promise.race(pending.filter(x=>!x.fin).map(x=>x.job.then(()=>{x.fin=true},()=>{x.fin=true})))}
+      if(pending.some(x=>x.fin)){const bad=await firstError(pending);if(bad)throw bad}
     }
+    prog(0.9,"AIが画面を読み取っています…");
+    for(const pj of pending){const tiles=await pj.job;for(let k=0;k<pj.count;k++){const t=times[pj.from-1+k];samples.push({t,...parseTile(tiles[k])})}}
     prog(0.93,"エージェント構成を読み取っています…");
     const comps=await readComps();
     let segs=buildRounds(samples,"attack");
@@ -236,7 +242,7 @@ function showResult(){
         h("td",{},(r.fk==="us"?"自チーム":r.fk==="them"?"相手":r.fk==="tie"?"同時":"—")+(r.fkBy?":"+r.fkBy:"")),h("td",{},r.planted?(r.side==="attack"?"自チームが設置":"相手が設置"):"—"),h("td",{},r.site||"—"),h("td",{class:"num"},r.plant!=null?mmss(r.plant):"—"),h("td",{class:"num"},fmt(r.plantAt??r.start))))))));
   });
   if(R.segs.length>1)box.append(h("p",{class:"small muted",style:"margin:0"},"途中でスコアが0-0に戻ったので、別のマップとして分けました。2つ目以降のマップ名は、保存後に試合一覧で設定してください。"));
-  box.append(h("p",{class:"small muted",style:"margin:0"},"設置時の残り時間は、読み取り間隔の半分くらいの誤差があります。ファーストキルは2秒ごとに生存人数を見て判定し、その瞬間のキルログから取った人を読んでいます。"+(R.starts&&R.starts.every(x=>x.auto)?" 攻守は画面の表示から自動で判定しました。":" 攻守を自動で判定できなかったマップは、手順2で選んだ「最初の攻守」を使っています。")));
+  box.append(h("p",{class:"small muted",style:"margin:0"},"設置時の残り時間は、読み取り間隔の半分くらいの誤差があります。ファーストキルは生存人数の変化から1秒単位で判定し、その瞬間のキルログから取った人を読んでいます。"+(R.starts&&R.starts.every(x=>x.auto)?" 攻守は画面の表示から自動で判定しました。":" 攻守を自動で判定できなかったマップは、手順2で選んだ「最初の攻守」を使っています。")));
   const save=h("button",{type:"button",class:"btn primary"},"この結果を保存する");
   save.onclick=async()=>{save.disabled=true;try{
     await saveLast({date:$("mDate").value,opp:$("mOpp").value.trim(),map:$("mMap").value,yt:$("mYt").value.trim()});

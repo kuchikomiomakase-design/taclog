@@ -267,7 +267,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     const go = h("button", { class: "btn primary", type: "button" }, fresh.length > 1 ? "新しい録画 " + Math.min(fresh.length, 10) + "本を分析する" : "この録画を分析する");
     const stop = h("button", { class: "btn", type: "button", hidden: true }, "止める");
     const delOn = await TLFolder.getDeleteAfter();
-    const note = h("p", { class: "small muted" }, "分析中はこのページを開いたままにしてください。3時間の録画で数分かかります。マップはあとで試合一覧から設定できます。" + (delOn ? "分析が終わった録画は、このパソコンから自動で削除します(YouTubeのアーカイブは残ります)。" : ""));
+    const note = h("p", { class: "small muted" }, "分析中はこのページを開いたままにしてください。1時間の録画でおよそ数分です。マップはあとで試合一覧から設定できます。" + (delOn ? "分析が終わった録画は、このパソコンから自動で削除します(YouTubeのアーカイブは残ります)。" : ""));
     body.append(h("p", {}, "新しい録画が " + fresh.length + " 本あります。"), list, h("div", { class: "row" }, recheck), h("div", { class: "row" }, go, stop), note);
     if (autoOn) body.append(h("p", { class: "small", style: "color:var(--accent-text);font-weight:700" }, "自動で分析を始めます…"));
     let stopped = false;
