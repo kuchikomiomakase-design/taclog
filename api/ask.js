@@ -57,13 +57,25 @@ function kitText(matches, povs) {
 }
 
 // Second step of a question: look at the saved pictures of 1-2 rounds (sent from the user's PC) and answer from what is on screen.
+// Organization plan: the monthly questions are shared by all the organization's teams (same owner).
+async function poolUsed(teamId, plan, month, used) {
+  if (plan !== "org") return used;
+  try {
+    const t = await rest("teams?select=created_by&id=eq." + teamId, { service: true });
+    const owner = t && t[0] && t[0].created_by; if (!owner) return used;
+    const ts = await rest("teams?select=id&plan=eq.org&created_by=eq." + owner, { service: true }) || [];
+    if (ts.length < 2) return used;
+    const us = await rest("usage?select=questions&month=eq." + month + "&team_id=in.(" + ts.map((x) => x.id).join(",") + ")", { service: true }) || [];
+    return us.reduce((a, x) => a + (x.questions || 0), 0);
+  } catch (e) { return used; }
+}
 async function look(req, res, body, m, auth, question) {
   if (!question) return fail(res, 400, "質問を入れてください。");
   const plan = (m.teams && m.teams.plan) || "free", lim = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
   const month = new Date().toISOString().slice(0, 7);
   const u = await rest("usage?select=questions,analyses&team_id=eq." + body.teamId + "&month=eq." + month, { service: true });
   const used = u && u[0] ? u[0].questions : 0;
-  if (used >= lim.questions) return fail(res, 429, "question limit", "question_limit");
+  if ((await poolUsed(body.teamId, plan, month, used)) >= lim.questions) return fail(res, 429, "question limit", "question_limit");
   const looks = (Array.isArray(body.looks) ? body.looks : []).slice(0, 2).filter((x) => /^[0-9a-f-]{36}$/i.test(String(x.match || "")) && Number.isInteger(+x.round));
   const images = (Array.isArray(body.images) ? body.images : []).slice(0, 10).filter((b) => typeof b === "string" && b.length < 3_500_000);
   if (!looks.length || !images.length) return fail(res, 400, "画像がありません。");
@@ -96,7 +108,7 @@ module.exports = async (req, res) => {
     const month = new Date().toISOString().slice(0, 7);
     const u = await rest("usage?select=questions,analyses&team_id=eq." + body.teamId + "&month=eq." + month, { service: true });
     const used = u && u[0] ? u[0].questions : 0;
-    if (used >= lim.questions) return fail(res, 429, "question limit", "question_limit");
+    if ((await poolUsed(body.teamId, plan, month, used)) >= lim.questions) return fail(res, 429, "question limit", "question_limit");
 
     const since = new Date(Date.now() - lim.days * 864e5).toISOString().slice(0, 10);
     const matches = await rest("matches?select=id,date,opp,map,comps,rounds&team_id=eq." + body.teamId + "&game=eq." + (["valorant","cs2","ow2","apex","fortnite"].includes(body.game) ? body.game : "valorant") + "&or=(date.gte." + since + ",date.is.null)&order=date.desc&limit=200", { token: auth.token });
