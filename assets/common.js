@@ -94,10 +94,11 @@
 
   const errText = (e) => {
     const m = String((e && e.message) || e || "");
-    if (m.includes("analysis limit")) return "今月の分析回数の上限に達しました。チームプランにすると無制限になります。";
+    if (m.includes("analysis limit")) return "今月の分析回数の上限に達しました。チームプランにすると、1日6マップ分まで分析できます。";
     if (m.includes("question limit")) return "今月の質問回数の上限に達しました。プランを変えると回数が増えます。";
     if (m.includes("member limit")) return "このチームはメンバーの上限に達しています。";
     if (m.includes("invalid invite")) return "この招待リンクは無効か、期限が切れています。チームの管理者に新しいリンクをもらってください。";
+    if (m.includes("daily map limit")) return "今日の分析は上限(1日6マップ分)に達しました。日本時間の0時を過ぎると、また分析できます。";
     if (m.includes("org plan required")) return "2つ目のチームを作るには、コーチ・組織プランが必要です。";
     if (m.includes("team limit")) return "1人で作れるチームは10チームまでです。";
     if (m.includes("game limit")) return "使えるタイトルの数を超えています。タイトルを追加してください。";

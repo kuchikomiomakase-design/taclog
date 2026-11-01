@@ -656,6 +656,9 @@ async function runAnalysis(){
   const p=plan(),times=[];for(let i=0;i<p.n;i++)times.push(3+i*p.iv);
   const samples=[];lastErr=null;SNAPS={};COACH={};
   try{
+    // team plan: up to 6 maps a day (Japan time). Check before spending anything.
+    try{const{data}=await TL.sb.rpc("maps_today",{t:APP.team.id});const d=Array.isArray(data)?data[0]:data;
+      if(d&&d.lim!=null&&d.used>=d.lim){lastErr={code:"daily_map_limit",message:"今日の分析は上限("+d.lim+"マップ分)に達しました。日本時間の0時を過ぎると、また分析できます。"};prog(0,lastErr.message);return false}}catch(e){}
     prog(0,"VALORANTの動画か確認しています…");
     const g=await isValorant();
     if(!g.ok){lastErr={code:"not_valorant",message:"VALORANTの動画ではないため、読み込みませんでした"+(g.what?"("+g.what+")":"")+"。"};prog(0,lastErr.message);return false}
