@@ -475,9 +475,14 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     box.hidden = APP.team.role !== "admin"; if (box.hidden) return;
     $("delTeamCur").textContent = APP.team.name; const inp = $("delTeamName"), btn = $("delTeamBtn"), msg = $("delTeamMsg");
     inp.value = ""; btn.disabled = true; msg.textContent = "";
+    // deleting never changes the plan: say so (people may only want to start over)
+    const t = APP.team, pay = $("delTeamPay"), kids = APP.teams.filter((x) => x.parent_team === t.id).length;
+    const warn = t.plan === "free" ? "" : t.parent_team ? "このチームは組織プランで追加したチームです。削除すると、組織の追加チームの料金(月1,980円)は1チーム分減ります。" :
+      "プランは変わりません。チームを削除しても、プランを変更(解約)しない限り、毎月の料金はそのまま続きます。解約したい場合は、先に上の「プランの管理」から解約してください。" + (t.plan === "org" ? "組織プランで追加したチームは、無料プランに戻ります。" : "");
+    pay.hidden = !warn; pay.textContent = warn;
     inp.oninput = () => { btn.disabled = inp.value.trim() !== APP.team.name.trim(); };
     btn.onclick = async () => {
-      if (!confirm("「" + APP.team.name + "」を完全に削除します。よろしいですか?")) return;
+      if (!confirm("「" + APP.team.name + "」を完全に削除します。よろしいですか?" + (APP.team.plan !== "free" && !APP.team.parent_team ? "\n\n※ プランを変更しない限り、料金は変わりません。" : ""))) return;
       btn.disabled = true; msg.textContent = "削除しています…";
       try {
         const r = await TL.api("/api/delteam", { teamId: APP.team.id, confirmName: inp.value });

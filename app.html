@@ -7,10 +7,10 @@
 <meta name="robots" content="noindex">
 <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
-<link rel="stylesheet" href="/assets/style.css?v=202611020143">
+<link rel="stylesheet" href="/assets/style.css?v=202611020144">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="/assets/config.js?v=202611020143"></script>
-<script src="/assets/common.js?v=202611020143"></script>
+<script src="/assets/config.js?v=202611020144"></script>
+<script src="/assets/common.js?v=202611020144"></script>
 <style>
 .stepno{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font:700 14px var(--f-mono);flex:none}
 .stephead{display:flex;align-items:center;gap:10px}
@@ -253,20 +253,21 @@ canvas.frame,canvas.tile{width:100%;height:auto;border-radius:8px;background:#00
     </section>
     <section class="card danger" id="delTeamBox" hidden style="display:grid;gap:10px">
       <h2>チームを削除</h2>
-      <p class="small muted" style="margin:0">このチームと、試合・分析データ・メンバー・質問の履歴がすべて消えます。<strong>元に戻せません。</strong>有料プランの支払いが続いているチームは、先にプランを解約してください。</p>
+      <p class="small muted" style="margin:0">このチームと、試合・分析データ・メンバー・質問の履歴がすべて消えます。<strong>元に戻せません。</strong></p>
+      <p class="notice small" id="delTeamPay" hidden style="margin:0"></p>
       <label for="delTeamName" class="small">確認のため、チーム名「<strong id="delTeamCur"></strong>」を入力してください<input id="delTeamName" autocomplete="off"></label>
       <div class="row"><button class="btn" type="button" id="delTeamBtn" disabled>このチームを削除する</button><span class="small" id="delTeamMsg"></span></div>
     </section>
   </div>
 </main>
 <footer id="footer"></footer>
-<script src="/assets/folder.js?v=202611020143"></script>
-<script src="/assets/app.js?v=202611020143"></script>
-<script src="/assets/snaps.js?v=202611020143"></script>
-<script src="/assets/analyze.js?v=202611020143"></script>
-<script src="/assets/ads.js?v=202611020143"></script>
-<script src="/assets/kit.js?v=202611020143"></script>
-<script src="/assets/dash.js?v=202611020143"></script>
+<script src="/assets/folder.js?v=202611020144"></script>
+<script src="/assets/app.js?v=202611020144"></script>
+<script src="/assets/snaps.js?v=202611020144"></script>
+<script src="/assets/analyze.js?v=202611020144"></script>
+<script src="/assets/ads.js?v=202611020144"></script>
+<script src="/assets/kit.js?v=202611020144"></script>
+<script src="/assets/dash.js?v=202611020144"></script>
 <script>TLAds.rail();</script>
 </body>
 </html>
