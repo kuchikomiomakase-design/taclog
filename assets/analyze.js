@@ -64,7 +64,7 @@ async function readTiles(blobs,from,to){
   const prompt="You are reading a VALORANT match video. The images contain tiles cut from the TOP-CENTER of the game screen (team scores and the round timer), sampled at regular intervals. Each tile has a yellow number label on its left. Go through tiles "+from+" to "+to+" in number order ("+(to-from+1)+" tiles total, left-to-right then top-to-bottom, across all images in order) and output one string per tile in this exact format:\n"
    +"'<left score>-<right score>|<state>'\n<state> = the remaining round time as m:ss if a timer is visible; S if the spike (bomb) icon is shown instead of the timer; E if the timer shows seconds with decimals such as 28.11 (the short phase right after a round ends); - if this is not the in-game HUD or it is unreadable. Use ? for a score you cannot read (e.g. '?-?|-').\n"
    +"Reply with only JSON: {\"tiles\":[\"3-2|1:24\",\"3-2|S\",\"?-?|-\"]} containing exactly "+(to-from+1)+" strings.";
-  const r=await SAMPLE.json(prompt,{images:blobs,signal:ctl.signal,modelTier:"default",task:"tiles"});
+  const r=await SAMPLE.json(prompt,{images:blobs,signal:ctl.signal,modelTier:"fast",task:"tiles"});
   const arr=r&&Array.isArray(r.tiles)?r.tiles:[];return arr;
 }
 async function readComps(){
@@ -82,7 +82,7 @@ async function gridOf(cells,cw,chh,cols,draw){const cv=document.createElement("c
 async function readSides(cands){
   if(!cands.length)return[];const W=video.videoWidth,H=video.videoHeight;
   const blob=await gridOf(cands,700,60,2,(x,ox,oy)=>x.drawImage(video,0,0,W*0.3,H*0.05,ox+36,oy,664,58));
-  try{const r=await SAMPLE.json("Each numbered strip is the top-left corner of a VALORANT screen, where the current location name is shown (e.g. 'Attacker Side Spawn', 'Defender Side Spawn', 'A Site', or Japanese equivalents like アタッカー側スポーン / ディフェンダー側スポーン). For strips 1 to "+cands.length+" in order, output 'attack' if it says attacker side spawn, 'defense' if defender side spawn, otherwise '-'. Reply only JSON: {\"sides\":[\"defense\",\"-\"]}",{images:[blob],signal:ctl.signal,modelTier:"default",task:"sides"});return Array.isArray(r.sides)?r.sides:[]}catch(e){if(e&&e.code==="cancelled")throw e;return[]}
+  try{const r=await SAMPLE.json("Each numbered strip is the top-left corner of a VALORANT screen, where the current location name is shown (e.g. 'Attacker Side Spawn', 'Defender Side Spawn', 'A Site', or Japanese equivalents like アタッカー側スポーン / ディフェンダー側スポーン). For strips 1 to "+cands.length+" in order, output 'attack' if it says attacker side spawn, 'defense' if defender side spawn, otherwise '-'. Reply only JSON: {\"sides\":[\"defense\",\"-\"]}",{images:[blob],signal:ctl.signal,modelTier:"fast",task:"sides"});return Array.isArray(r.sides)?r.sides:[]}catch(e){if(e&&e.code==="cancelled")throw e;return[]}
 }
 async function readSites(cells){
   const out=[];if(!cells.length)return out;const W=video.videoWidth,H=video.videoHeight;
@@ -287,7 +287,7 @@ async function readMyDeaths(segs,me){
     for(let i=0;i<list.length;i+=16){
       const part=list.slice(i,i+16);
       const blob=await gridOf(part,300,180,4,(x,ox,oy)=>x.drawImage(video,W*0.2,H*0.5,W*0.6,H*0.5,ox+34,oy,266,178));
-      try{const r=await SAMPLE.json("Each numbered cell is the lower half of a VALORANT screen. For each cell, is this the player's OWN first-person view while alive, or is the player DEAD (spectating a teammate: a 'Spectating'/観戦中 label or another player's name at the bottom, a different agent's abilities, a death recap or kill cam)? The player's own agent for each cell: "+part.map((c,k)=>(k+1)+":"+c.agent).join(", ")+". Reply only JSON with one letter per cell in order: {\"s\":[\"A\",\"D\",\"?\"]} (A = alive own view, D = dead/spectating, ? = cannot tell or not in a round).",{images:[blob],signal:ctl.signal,modelTier:"default",task:"deaths"});
+      try{const r=await SAMPLE.json("Each numbered cell is the lower half of a VALORANT screen. For each cell, is this the player's OWN first-person view while alive, or is the player DEAD (spectating a teammate: a 'Spectating'/観戦中 label or another player's name at the bottom, a different agent's abilities, a death recap or kill cam)? The player's own agent for each cell: "+part.map((c,k)=>(k+1)+":"+c.agent).join(", ")+". Reply only JSON with one letter per cell in order: {\"s\":[\"A\",\"D\",\"?\"]} (A = alive own view, D = dead/spectating, ? = cannot tell or not in a round).",{images:[blob],signal:ctl.signal,modelTier:"fast",task:"deaths"});
         const arr=Array.isArray(r.s)?r.s:[];part.forEach((_,k)=>{const v=String(arr[k]||"").toUpperCase();out.push(v==="A"||v==="D"?v:null)})}
       catch(e){if(e&&e.code==="cancelled")throw e;part.forEach(()=>out.push(null))}
     }
@@ -358,7 +358,7 @@ function newMarks(A,B,s,mh,C){   // A: 2 s before, B: now, C: 2 s later (a death
   for(const v of top){const c=[v.x/v.n,v.y/v.n];if(out.every(o=>Math.hypot(o[0]-c[0],o[1]-c[1])>18))out.push(c);if(out.length>=2)break}
   return out;
 }
-async function readKit(segs,me,maps){
+async function readKit(segs,me,maps,known){
   const jobs=[];
   segs.forEach((rs,si)=>rs.forEach(r=>{
     if(r._st==null)return;
@@ -384,8 +384,10 @@ async function readKit(segs,me,maps){
       const u=nx?Math.max(S[i].us,nx.us):S[i].us,e=nx?Math.max(S[i].en,nx.en):S[i].en;
       if(u<cu||e<ce){events.push({j,t:S[i].t,n:(cu-Math.min(cu,u))+(ce-Math.min(ce,e))});cu=Math.min(cu,u);ce=Math.min(ce,e);alv.push([Math.round(S[i].t-j.r._st),cu,ce])}}
     j.r.alv=alv;j.r.fights=[];
+    const kr=known&&known[j.si]?(known[j.si].rounds||[]).find(x=>x.n===j.r.n):null;
+    if(kr&&Array.isArray(kr.fights)){j.r.fights=kr.fights.map(f=>({...f}));events.splice(events.length-(alv.length-1),alv.length-1)}   // already read from a teammate's recording of the same match
     // a couple of moments per round where the player is alive in their own view: minimap + location name, for the reference sheet
-    if(j.b!=null)[8,24,40].forEach(d=>{if(j.a+d<=j.b)refs.push({si:j.si,t:j.a+d})});
+    if(j.b!=null&&!(known&&known[j.si]))[8,24,40].forEach(d=>{if(j.a+d<=j.b)refs.push({si:j.si,t:j.a+d})});
     if(j.b==null||!hud)continue;
     const A=S.filter(x=>x.t<=j.b);
     for(let i=1;i<A.length-1;i++)if(A[i].ok&&A[i].held==null&&A[i-1].held!=null&&A[i-1].held===A[i+1].held)A[i].held=A[i-1].held;   // one missed look in the middle of a hold
@@ -425,16 +427,16 @@ async function readKit(segs,me,maps){
     const dict=window.TLKit&&maps&&maps[si]&&TLKit.CALLOUTS[maps[si]]?TLKit.CALLOUTS[maps[si]]:"";
     for(let i=0;i<evs.length;i+=36){
       const part=evs.slice(i,i+36),blobs=[];prog(0.996,"撃ち合いの場所と相手を読み取っています…("+Math.min(evs.length,i+36)+"/"+evs.length+")");
-      const s=240,mh=Math.round(s*H*MM.h/(W*MM.w));
+      const s=200,mh=Math.round(s*H*MM.h/(W*MM.w));
       for(let g=0;g<part.length;g+=12){
-        const cells=part.slice(g,g+12),cw=34+s+300,chh=Math.max(mh,120),cols=2,cv=document.createElement("canvas");cv.width=cols*cw;cv.height=Math.ceil(cells.length/cols)*chh;
+        const cells=part.slice(g,g+12),cw=34+s+260,chh=Math.max(mh,120),cols=2,cv=document.createElement("canvas");cv.width=cols*cw;cv.height=Math.ceil(cells.length/cols)*chh;
         const x=cv.getContext("2d");x.fillStyle="#000";x.fillRect(0,0,cv.width,cv.height);x.font="bold 18px monospace";x.textBaseline="top";
         for(let k=0;k<cells.length;k++){const c=cells[k],ox=(k%cols)*cw,oy=Math.floor(k/cols)*chh;
           await seek(Math.max(c.j.a,c.t-KSTEP));const before=mmPixels(s,mh);
           await seek(Math.min(c.j.end,c.t+KSTEP));const later=mmPixels(s,mh);
           await seek(c.t);const after=mmPixels(s,mh);drawMM(x,ox+34,oy,s);
           newMarks(before,after,s,mh,later).forEach(([px,py])=>{x.strokeStyle="#FF00FF";x.lineWidth=3;x.beginPath();x.arc(ox+34+px,oy+py,13,0,Math.PI*2);x.stroke()});
-          x.drawImage(video,W*0.68,H*0.05,W*0.32,H*0.2,ox+34+s,oy,300,Math.round(300*H*0.2/(W*0.32)));
+          x.drawImage(video,W*0.68,H*0.05,W*0.32,H*0.2,ox+34+s,oy,260,Math.round(260*H*0.2/(W*0.32)));
           x.fillStyle="#F2B33D";x.fillRect(ox,oy,34,24);x.fillStyle="#000";x.fillText(String(i+g+k+1),ox+4,oy+3)}
         blobs.push(await new Promise(r=>cv.toBlob(r,"image/jpeg",0.85)));
       }
@@ -443,7 +445,7 @@ async function readKit(segs,me,maps){
           "The other images have numbered cells. Each cell shows the minimap and the kill feed (top-right of the screen) right after someone died. Each death leaves an X marker on the minimap (blue/teal X = a player of the recording team, red X = an enemy); a magenta circle marks where a NEW X appeared in the last 2 seconds (found automatically, it can be missing or slightly off: then use the newest kill feed entry and the X closest to it). "+
           "For each cell give the newest death(s): killer agent > victim agent (identify AGENTS from the kill feed portraits; green/teal entry = killer on the recording team, red = enemy), and the place of the NEW X marker (the circled one)"+(sheet?", named by comparing its position with the reference tiles (use those names; for a spot between tiles pick the nearest)":"")+(dict?". Known place names on this map: "+dict:"")+
           ". Reply only JSON, one list per cell in order (usually 1 death, sometimes 2): {\"f\":[[{\"k\":\"Jett\",\"v\":\"Sova\",\"g\":true,\"p\":\"A Main\"}],[]]} (g = true if the killer is on the recording team; use \"?\" for anything you cannot tell).",
-          {images:(sheet?[sheet]:[]).concat(blobs),signal:ctl.signal,modelTier:"default",task:"fights"});
+          {images:(sheet?[sheet]:[]).concat(blobs),signal:ctl.signal,modelTier:"fast",task:"fights"});
         const arr=Array.isArray(r.f)?r.f:[];
         part.forEach((c,k)=>{const list=Array.isArray(arr[k])?arr[k]:[];list.slice(0,Math.max(1,c.n)+1).forEach(e=>{if(!e||typeof e!=="object")return;
           const f={t:Math.round(c.t-c.j.r._st),k:String(e.k||"?").slice(0,20),v:String(e.v||"?").slice(0,20),g:e.g===true?true:e.g===false?false:null,p:String(e.p||"?").slice(0,40)};
@@ -604,7 +606,8 @@ async function runAnalysis(){
     prog(0.99,"マップと、配信者のエージェントを確認しています…");
     const mm=await readMaps(segs),maps=mm.maps,me=mm.me;markMine(segs,me);
     await readMyDeaths(segs,me);
-    await readKit(segs,me,maps);
+    let known=[];try{known=await knownMatches(segs,maps)}catch(e){known=[]}
+    await readKit(segs,me,maps,known);
     segs.forEach(rs=>rs.forEach(r=>{delete r._st;delete r._next}));
     prog(1,"完了しました");
     lastResult={segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
@@ -646,6 +649,13 @@ function showResult(){
 // Several players may record the same scrim from their own view. A recording whose rounds match a match already saved
 // (same day ±1, same map or unknown, same round results) is attached to it as another point of view instead of a new match,
 // so team numbers are counted once and each player's own numbers are kept per view (match_povs).
+// A teammate may have analysed the same match already (date of the recording ±1 day, same map, same round results): its fights can be reused.
+async function knownMatches(segs,maps){
+  if(!curFile||!curFile.lastModified)return[];
+  const d=new Date(curFile.lastModified),iso=x=>new Date(d.getTime()+x*864e5).toISOString().slice(0,10);
+  const {data}=await TL.sb.from("matches").select("id,map,rounds").eq("team_id",APP.team.id).eq("game",APP.game||"valorant").gte("date",iso(-1)).lte("date",iso(1));
+  return segs.map((rs,si)=>(data||[]).find(m=>(!maps[si]||!m.map||m.map===maps[si])&&sameMatch(m.rounds||[],rs)&&(m.rounds||[]).some(r=>Array.isArray(r.fights)&&r.fights.length))||null);
+}
 const resStr=rs=>rs.map(r=>r.win===true?"W":r.win===false?"L":"?").join("");
 function sameMatch(a,b){ // a, b: round lists
   const A=resStr(a),B=resStr(b);if(Math.min(A.length,B.length)<6||Math.abs(A.length-B.length)>2)return false;
