@@ -40,15 +40,26 @@
     })).sort((a, b) => b.rounds - a.rounds);
   }
 
-  // Fights by location (location name the game shows under the minimap): kills and deaths of each recorded player there.
-  // rows as in summarize. Returns [{agent, place, k, d}] plus team totals (agent "*").
-  function places(rows) {
+  // Fights from the minimap + kill feed of every death in a round (r.fights: {t, k: killer agent, v: victim agent, g: killer on our team, p: place}).
+  // One recording is enough: every death of both teams is read. matches: [{map, rounds}] (each match once).
+  // Returns per place: kills / deaths of each of OUR agents there, plus team totals (agent "*").
+  function places(matches) {
     const m = {};
-    const add = (agent, place, key) => { place = String(place || "").trim(); if (!place) return; for (const a of [agent || "不明", "*"]) { const id = a + "|" + place.toLowerCase(); (m[id] = m[id] || { agent: a, place, k: 0, d: 0 })[key]++; } };
-    rows.forEach((p) => (p.rounds || []).forEach((r) => { const kt = r.kit; if (!kt) return; const mp = (x) => (p.map ? p.map + ":" : "") + x; (kt.kp || []).forEach((x) => add(p.agent, mp(x), "k")); if (kt.dead && kt.dp) add(p.agent, mp(kt.dp), "d"); }));
+    const add = (agent, place, key) => { place = String(place || "").trim(); if (!place || place === "?") return; for (const a of [agent || "?", "*"]) { const id = a.toLowerCase() + "|" + place.toLowerCase().replace(/\s+/g, ""); (m[id] = m[id] || { agent: a, place, k: 0, d: 0 })[key]++; } };
+    matches.forEach((mt) => (mt.rounds || []).forEach((r) => (r.fights || []).forEach((f) => {
+      const pl = (mt.map ? mt.map + ":" : "") + f.p;
+      if (f.g === true) add(f.k, pl, "k"); else if (f.g === false) add(f.v, pl, "d");
+    })));
     return Object.values(m).sort((a, b) => (b.k + b.d) - (a.k + a.d));
   }
-
+  // kills / deaths of each of our agents over all rounds (from the fights)
+  function teamKD(matches) {
+    const m = {}; const g = (a) => (m[a] = m[a] || { agent: a, k: 0, d: 0, rounds: 0 });
+    matches.forEach((mt) => (mt.rounds || []).forEach((r) => { if (!Array.isArray(r.fights) || !r.fights.length) return; const seen = new Set();
+      r.fights.forEach((f) => { if (f.g === true && f.k && f.k !== "?") { g(f.k).k++; seen.add(f.k); } if (f.g === false && f.v && f.v !== "?") { g(f.v).d++; seen.add(f.v); } });
+      seen.forEach((a) => g(a).rounds++); }));
+    return Object.values(m).sort((a, b) => b.k - a.k);
+  }
   // Team situations from the round list of each match (counted once per match):
   // man-advantage states reached (alive counts us v them), post-plant / retake, attack pace (time left at plant), timing of the first fight.
   function situations(roundLists) {
@@ -81,8 +92,9 @@
       "\nreached_state(us v them, round win rate when this state happened)=" + (states || "-") +
       "\nat_plant=" + (Object.entries(o.plantState).map(([k, v]) => k.replace(" ", "_") + "=" + wr(v)).join(" ") || "-");
   }
-  function placeText(rows) {
-    return places(rows).slice(0, 80).map((x) => "fight_place agent=" + (x.agent === "*" ? "TEAM" : String(x.agent).replace(/[,\s]+/g, "_")) + " place=" + x.place.replace(/[,\s]+/g, "_") + " kills=" + x.k + " deaths=" + x.d).join("\n");
+  function placeText(matches) {
+    const kd = teamKD(matches).map((x) => "team_kd agent=" + String(x.agent).replace(/[,\s]+/g, "_") + " kills=" + x.k + " deaths=" + x.d).join("\n");
+    return (kd ? kd + "\n" : "") + places(matches).slice(0, 80).map((x) => "fight_place agent=" + (x.agent === "*" ? "TEAM" : String(x.agent).replace(/[,\s]+/g, "_")) + " place=" + x.place.replace(/[,\s]+/g, "_") + " kills=" + x.k + " deaths=" + x.d).join("\n");
   }
 
   // short per-round marks for the AI data text
@@ -91,7 +103,7 @@
     const h = (kt.h || []).map((v, i) => (v ? SLOT[i] + Math.round(v) : "")).filter(Boolean).join("/");
     const lf = (kt.lf || []).map((v, i) => (v ? SLOT[i] : "")).join("");
     const pl = (x) => String(x).replace(/[,\s]+/g, "_");
-    return "+AL" + Math.round(kt.al) + (h ? "+H:" + h : "") + (lf ? "+L:" + lf : "") + (kt.us ? (kt.uu ? "+UU" : "+UH") : "") + (kt.ud ? "+DU" : "") + (kt.k != null ? "+K" + kt.k + (kt.ku ? "+KU" + kt.ku : "") : "") + ((kt.kp || []).length ? "+KP:" + kt.kp.map(pl).join("/") : "") + (kt.dead && kt.dp ? "+DP:" + pl(kt.dp) : "");
+    return "+AL" + Math.round(kt.al) + (h ? "+H:" + h : "") + (lf ? "+L:" + lf : "") + (kt.us ? (kt.uu ? "+UU" : "+UH") : "") + (kt.ud ? "+DU" : "") + (kt.k != null ? "+K" + kt.k + (kt.ku ? "+KU" + kt.ku : "") : "");
   }
 
   function summaryText(rows) {
@@ -125,7 +137,8 @@
   }
 
   // alive-count flow of a round, e.g. "4v5>4v4>2v3" (us v them)
-  const flow = (r) => (Array.isArray(r.alv) && r.alv.length > 1 ? "+S:" + r.alv.slice(1).map((x) => x[1] + "v" + x[2]).join(">") : "");
-  const K = { CALLOUTS, calloutText, SLOT, summarize, marks, summaryText, places, placeText, situations, situationText, flow };
+  const flow = (r) => (Array.isArray(r.alv) && r.alv.length > 1 ? "+S:" + r.alv.slice(1).map((x) => x[1] + "v" + x[2]).join(">") : "") +
+    (Array.isArray(r.fights) && r.fights.length ? "+FT:" + r.fights.map((f) => f.t + "s_" + String(f.k).replace(/[,\s>]+/g, "") + ">" + String(f.v).replace(/[,\s>]+/g, "") + (f.g === true ? "(us)" : f.g === false ? "(them)" : "") + "@" + String(f.p).replace(/[,\s]+/g, "_")).join("/") : "");
+  const K = { teamKD, CALLOUTS, calloutText, SLOT, summarize, marks, summaryText, places, placeText, situations, situationText, flow };
   if (typeof module !== "undefined" && module.exports) module.exports = K; else root.TLKit = K;
 })(typeof window !== "undefined" ? window : this);
