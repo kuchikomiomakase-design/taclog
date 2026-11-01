@@ -3,7 +3,7 @@
 window.TLFolder = (function () {
   const supported = typeof window.showDirectoryPicker === "function";
   const DB = "taclog", STORE = "kv";
-  const VIDEO = /\.(mp4|mov|mkv|webm|m4v)$/i;
+  const VIDEO = /\.(mp4|mov|mkv|webm|m4v|ts|flv)$/i;
 
   function idb() {
     return new Promise((res, rej) => {
@@ -28,19 +28,24 @@ window.TLFolder = (function () {
   }
   // Video files in the folder, newest first. Files changed in the last 90 seconds are skipped (OBS may still be writing them).
   async function videos(h) {
-    const out = [];
-    for await (const [name, entry] of h.entries()) {
-      if (entry.kind !== "file" || !VIDEO.test(name)) continue;
-      const file = await entry.getFile();
-      out.push({ name, file, size: file.size, mtime: file.lastModified, recording: Date.now() - file.lastModified < 90000 });
+    const out = []; out.stats = { files: 0, others: [] };
+    async function scan(dir, prefix, depth) {
+      for await (const [name, entry] of dir.entries()) {
+        if (entry.kind === "directory") { if (depth < 1) await scan(entry, prefix + name + "/", depth + 1); continue; }
+        out.stats.files++;
+        if (!VIDEO.test(name)) { if (out.stats.others.length < 5) out.stats.others.push(prefix + name); continue; }
+        const file = await entry.getFile();
+        out.push({ name: prefix + name, entryName: name, dir, file, size: file.size, mtime: file.lastModified, recording: Date.now() - file.lastModified < 90000 });
+      }
     }
+    await scan(h, "", 0); // also looks one folder deeper
     return out.sort((a, b) => b.mtime - a.mtime);
   }
   const key = (teamId, v) => teamId + "|" + v.name + "|" + v.size;
   async function doneList() { return (await get("done")) || []; }
   async function isDone(teamId, v) { return (await doneList()).includes(key(teamId, v)); }
   async function markDone(teamId, v) { const d = await doneList(); d.push(key(teamId, v)); await set("done", d.slice(-1000)); }
-  async function remove(h, name) { await h.removeEntry(name); }
+  async function remove(h, name, v) { await ((v && v.dir) || h).removeEntry((v && v.entryName) || name); }
   async function getDeleteAfter() { const v = await get("deleteAfter"); return v === undefined ? true : !!v; } // on by default
   async function setDeleteAfter(v) { await set("deleteAfter", !!v); }
   async function getAuto() { const v = await get("autoAnalyze"); return v === undefined ? true : !!v; } // on by default

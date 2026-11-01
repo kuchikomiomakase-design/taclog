@@ -240,9 +240,16 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     try { vids = await TLFolder.videos(hd); } catch (e) { body.append(h("p", { class: "notice" }, "フォルダを読めませんでした。設定画面から連携し直してください。")); return; }
     const fresh = [];
     for (const v of vids) if (!v.recording && !(await TLFolder.isDone(APP.team.id, v))) fresh.push(v);
+    const recheck = h("button", { class: "btn small", type: "button", onclick: () => renderFolder() }, "フォルダをもう一度確認");
     const recNow = vids.filter((v) => v.recording);
     if (recNow.length) body.append(h("p", { class: "small muted" }, "録画中のファイルがあります(" + recNow[0].name + ")。配信が終わってから分析できます。"));
     const autoOn = await TLFolder.getAuto();
+    if (!fresh.length) {
+      const st = vids.stats || { files: 0, others: [] };
+      const why = !vids.length ? (st.files ? "このフォルダに動画ファイルが見つかりません(見つかったファイル:" + st.others.join("、") + (st.files > st.others.length ? " ほか" : "") + ")。MP4・MKVなどの動画を入れてください。" : "このフォルダ「" + hd.name + "」は空です。動画を入れたフォルダと、連携したフォルダが同じか確認してください。")
+        : "フォルダ内の動画 " + vids.length + "本は、すべて分析ずみです。";
+      body.append(h("p", { class: "small muted" }, why), h("div", { class: "row" }, recheck, h("a", { href: "#settings", class: "small" }, "連携するフォルダを変える")));
+    }
     if (!fresh.length) { body.append(h("div", { class: "empty" }, h("strong", {}, "新しい録画はありません"), h("span", {}, autoOn ? "このページを開いている間は、1分ごとにフォルダを確認して、新しい録画ができたら自動で分析します。" : "配信が終わったら、このページを開くと自動で見つかります。"))); return; }
     const list = h("div", { style: "display:grid;gap:8px" });
     fresh.slice(0, 10).forEach((v) => list.append(h("div", { class: "member" }, h("div", { style: "display:grid;gap:2px;min-width:0" }, h("strong", { style: "overflow-wrap:anywhere" }, v.name), h("span", { class: "small muted" }, new Date(v.mtime).toLocaleString("ja-JP") + " ・ " + Math.round(v.size / 1048576) + "MB")),
@@ -251,7 +258,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     const stop = h("button", { class: "btn", type: "button", hidden: true }, "止める");
     const delOn = await TLFolder.getDeleteAfter();
     const note = h("p", { class: "small muted" }, "分析中はこのページを開いたままにしてください。3時間の録画で数分かかります。マップはあとで試合一覧から設定できます。" + (delOn ? "分析が終わった録画は、このパソコンから自動で削除します(YouTubeのアーカイブは残ります)。" : ""));
-    body.append(h("p", {}, "新しい録画が " + fresh.length + " 本あります。"), list, h("div", { class: "row" }, go, stop), note);
+    body.append(h("p", {}, "新しい録画が " + fresh.length + " 本あります。"), list, h("div", { class: "row" }, recheck), h("div", { class: "row" }, go, stop), note);
     if (autoOn) body.append(h("p", { class: "small", style: "color:var(--accent-text);font-weight:700" }, "自動で分析を始めます…"));
     let stopped = false;
     stop.onclick = () => { stopped = true; autoPaused = true; window.ANALYZER && ANALYZER.stop(); };
@@ -273,7 +280,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
           set("保存しました", "win");
           if (delAfter) {
             if (!(await TLFolder.permission(hd, true, "readwrite"))) set("保存しました(削除は許可されませんでした)", "warn");
-            else { try { await TLFolder.remove(hd, v.name); set("保存して削除しました", "win"); } catch (e) { set("保存しました(削除できませんでした)", "warn"); } }
+            else { try { await TLFolder.remove(hd, v.name, v); set("保存して削除しました", "win"); } catch (e) { set("保存しました(削除できませんでした)", "warn"); } }
           }
         } catch (e) { set(TL.errText(e).slice(0, 40), "loss"); if (String(e.message || "").includes("analysis limit")) break; }
       }
