@@ -70,19 +70,22 @@ window.TLAds = (function () {
       h("p", { class: "small muted", style: "margin:0" }, "広告(アフィリエイト)です。リンクから購入されると、TacLogの運営費になります。"));
     return true;
   }
-  // Right-hand banner column on wide screens (the empty space beside the 1000px content). Hidden on narrow screens and for paid teams.
+  // Banner columns in the empty space left and right of the 1000px content on wide screens. Hidden on narrow screens and for paid teams.
   function rail() {
     const all = window.TACLOG_ADS.ITEMS.filter((x) => ok(x.url));
     if (!all.length || document.getElementById("adRail")) return;
     isPaid().then((paid) => {
       if (paid) return;
       const { h } = TL;
-      const pick = all.filter((x) => ok(x.img)).concat(all.filter((x) => !ok(x.img))).slice(0, 3);
-      const el = h("aside", { id: "adRail", class: "adrail", "aria-label": "広告" },
-        h("div", { class: "adhead" }, h("span", { class: "adpr" }, "PR"), h("a", { href: "/gear", class: "small" }, "おすすめ機材")),
-        ...pick.map(card));
-      document.body.append(el);
-      const fit = () => { el.hidden = window.innerWidth < 1660; };
+      const big = all.filter((x) => ok(x.img)), rest = all.filter((x) => !ok(x.img));
+      const ordered = big.concat(rest), right = [], left = [];
+      ordered.forEach((x, i) => (i % 2 === 0 ? right : left).push(x));   // alternate so both sides get banners
+      const col = (id, side, list) => h("aside", { id, class: "adrail " + side, "aria-label": "広告" },
+        h("div", { class: "adhead" }, h("span", { class: "adpr" }, "PR"), h("a", { href: "/gear", class: "small" }, "おすすめ機材")), ...list.slice(0, 3).map(card));
+      const els = [col("adRail", "r", right)];
+      if (left.length) els.push(col("adRailL", "l", left));
+      els.forEach((e) => document.body.append(e));
+      const fit = () => els.forEach((e) => { e.hidden = window.innerWidth < 1660; });
       fit(); window.addEventListener("resize", fit);
     });
   }
