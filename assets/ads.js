@@ -9,6 +9,14 @@
 window.TACLOG_ADS = {
   ITEMS: [
     // { cat: "pc", title: "ゲーミングPC ○○", note: "配信しながら録画してもカクつきにくい", url: "https://px.a8.net/...", pixel: "" },
+    { cat: "pc", title: "ゲーミングPC(MDL)", note: "配信・録画もするなら、性能に余裕のあるBTOパソコンを",
+      url: "https://px.a8.net/svt/ejp?a8mat=4BGAV1+AC3XV6+5HXK+5YZ75",
+      img: "https://www28.a8.net/svt/bgt?aid=261101053625&wid=001&eno=01&mid=s00000025652001003000&mc=1",
+      pixel: "https://www10.a8.net/0.gif?a8mat=4BGAV1+AC3XV6+5HXK+5YZ75" },
+    { cat: "pc", title: "ゲーミングPC(OZ)", note: "構成を選んで注文できるBTOゲーミングPC",
+      url: "https://px.a8.net/svt/ejp?a8mat=4BGAV1+AF33W2+5U1O+5YZ75",
+      img: "https://www20.a8.net/svt/bgt?aid=261101053630&wid=001&eno=01&mid=s00000027222001003000&mc=1",
+      pixel: "https://www10.a8.net/0.gif?a8mat=4BGAV1+AF33W2+5U1O+5YZ75" },
     { cat: "monitor", title: "Pixio ゲーミングモニター", note: "SNSで話題のカラフルなゲーミングモニター",
       url: "https://px.a8.net/svt/ejp?a8mat=4BGAV1+A4DB02+XTI+15RZIP",
       img: "https://www22.a8.net/svt/bgt?aid=261101053612&wid=001&eno=01&mid=s00000004383007017000&mc=1",
