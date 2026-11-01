@@ -31,9 +31,20 @@ window.TLAds = (function () {
     if (ok(x.pixel)) a.append(h("img", { src: x.pixel, width: "1", height: "1", alt: "", style: "position:absolute;width:1px;height:1px;opacity:0" }));
     return a;
   }
-  // Fill a container. Returns false (and leaves it hidden) when there is nothing to show.
+  // Logged-in members of a paid team never see ads (on any page).
+  let paidP = null;
+  function isPaid() {
+    if (!paidP) paidP = (async () => { try { if (!TL.sb || !(await TL.session())) return false; const ts = await TL.myTeams(); return (ts || []).some((t) => t.plan && t.plan !== "free"); } catch (e) { return false; } })();
+    return paidP;
+  }
+  // Fill a container. Leaves it hidden when there is nothing to show or the viewer is on a paid plan.
   function fill(el, place, opts) {
     if (!el) return false;
+    el.hidden = true;
+    isPaid().then((paid) => { if (!paid) show(el, place, opts); });
+    return true;
+  }
+  function show(el, place, opts) {
     const list = items(place, (opts && opts.max) || 4);
     if (!list.length) { el.hidden = true; return false; }
     const { h } = TL;
@@ -44,5 +55,5 @@ window.TLAds = (function () {
       h("p", { class: "small muted", style: "margin:0" }, "広告(アフィリエイト)です。リンクから購入されると、TacLogの運営費になります。"));
     return true;
   }
-  return { fill, items, card, CAT };
+  return { fill, items, card, CAT, isPaid };
 })();
