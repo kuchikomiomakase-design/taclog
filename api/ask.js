@@ -12,7 +12,7 @@ function dataText(matches) {
     const rs = (m.rounds || []).map((r) => [
       r.n, r.side === "attack" ? "A" : "D", r.win == null ? "?" : r.win ? "W" : "L",
       r.planted ? (r.plant != null ? r.plant : "P") : "-", r.site || "-",
-      (r.fk === "us" ? "F" : r.fk === "them" ? "f" : r.fk === "tie" ? "T" : "-") + (r.fkBy ? ":" + clean(r.fkBy) : ""),
+      (r.fk === "us" ? "F" : r.fk === "them" ? "f" : r.fk === "tie" ? "T" : "-") + (r.fkBy && !/^(unknown|不明|\?+)$/i.test(String(r.fkBy).trim()) ? ":" + clean(r.fkBy) : ""),
       r.plantAt != null ? r.plantAt : r.start
     ].join(",")).join(" ");
     return "match=" + m.id + " date=" + (m.date || "") + " opp=" + clean(m.opp || "?") + " map=" + (MAPS[m.map] || "未設定") +
