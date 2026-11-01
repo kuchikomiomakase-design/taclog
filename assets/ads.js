@@ -6,6 +6,7 @@
 //   url:   the affiliate link (https://...)          pixel: optional impression image URL that A8.net gives with the link
 //   img:   optional banner image URL (A8.net "バナー" ads); shown instead of the text card
 //   wide:  true for 728x90 banners: shown only in the horizontal slots (bottom of pages), not in cards or side columns
+//   hold:  true = not shown for now (kept for later, e.g. while Riot reviews the product)
 //   price: optional, e.g. "¥12,800"(prices change, so leave it empty if unsure)
 window.TACLOG_ADS = {
   ITEMS: [
@@ -18,11 +19,11 @@ window.TACLOG_ADS = {
       url: "https://px.a8.net/svt/ejp?a8mat=4BGAV1+AF33W2+5U1O+5YZ75",
       img: "https://www20.a8.net/svt/bgt?aid=261101053630&wid=001&eno=01&mid=s00000027222001003000&mc=1",
       pixel: "https://www10.a8.net/0.gif?a8mat=4BGAV1+AF33W2+5U1O+5YZ75" },
-    { cat: "other", title: "GEMY(オンラインゲームで景品ゲット)", note: "無料で始められるオンラインゲームサイト",
+    { cat: "other", hold: true, title: "GEMY(オンラインゲームで景品ゲット)", note: "無料で始められるオンラインゲームサイト",
       url: "https://px.a8.net/svt/ejp?a8mat=4BGAV1+B0IPO2+1J3M+NV1XD",
       img: "https://www25.a8.net/svt/bgt?aid=261101053666&wid=001&eno=01&mid=s00000007141004008000&mc=1",
       pixel: "https://www18.a8.net/0.gif?a8mat=4BGAV1+B0IPO2+1J3M+NV1XD" },
-    { cat: "other", wide: true, title: "GEMY(オンラインゲームで景品ゲット)",
+    { cat: "other", wide: true, hold: true, title: "GEMY(オンラインゲームで景品ゲット)",
       url: "https://px.a8.net/svt/ejp?a8mat=4BGAV1+B0IPO2+1J3M+NY1Y9",
       img: "https://www25.a8.net/svt/bgt?aid=261101053666&wid=001&eno=01&mid=s00000007141004022000&mc=1",
       pixel: "https://www14.a8.net/0.gif?a8mat=4BGAV1+B0IPO2+1J3M+NY1Y9" },
@@ -42,9 +43,10 @@ window.TACLOG_ADS = {
 window.TLAds = (function () {
   const CAT = { other: "ゲーム", pc: "ゲーミングPC", capture: "キャプチャーボード", mic: "マイク", camera: "Webカメラ", mouse: "マウス", keyboard: "キーボード", headset: "ヘッドセット", monitor: "モニター", net: "回線" };
   const ok = (u) => /^https:\/\//.test(String(u || ""));
+  const live = () => window.TACLOG_ADS.ITEMS.filter((x) => !x.hold);
   function items(place, max) {
     const cats = (window.TACLOG_ADS.PLACES[place] || []);
-    return window.TACLOG_ADS.ITEMS.filter((x) => ok(x.url) && !x.wide && (!place || cats.includes(x.cat))).slice(0, max || 4);
+    return live().filter((x) => ok(x.url) && !x.wide && (!place || cats.includes(x.cat))).slice(0, max || 4);
   }
   function card(x) {
     const { h } = TL;
@@ -81,7 +83,7 @@ window.TLAds = (function () {
   }
   // Banner columns in the empty space left and right of the 1000px content on wide screens. Hidden on narrow screens and for paid teams.
   function rail() {
-    const all = window.TACLOG_ADS.ITEMS.filter((x) => ok(x.url) && !x.wide);
+    const all = live().filter((x) => ok(x.url) && !x.wide);
     if (!all.length || document.getElementById("adRail")) return;
     isPaid().then((paid) => {
       if (paid) return;
@@ -108,7 +110,7 @@ window.TLAds = (function () {
   function wide(el) {
     if (!el) return;
     el.hidden = true;
-    const list = window.TACLOG_ADS.ITEMS.filter((x) => ok(x.url) && x.wide && ok(x.img));
+    const list = live().filter((x) => ok(x.url) && x.wide && ok(x.img));
     if (!list.length) return;
     isPaid().then((paid) => {
       if (paid) return;
@@ -119,5 +121,5 @@ window.TLAds = (function () {
       el.replaceChildren(h("span", { class: "adpr" }, "PR"), a);
     });
   }
-  return { fill, items, card, CAT, isPaid, rail, wide };
+  return { fill, items, card, CAT, isPaid, rail, wide, live };
 })();
