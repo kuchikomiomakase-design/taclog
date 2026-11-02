@@ -81,7 +81,8 @@ async function claude({ content, maxTokens = 4000, teamId = null, kind = "other"
   if (!r.ok) {
     const e = new Error((data.error && data.error.message) || "AI error"); e.status = r.status === 429 ? 429 : 502; e.code = r.status === 429 ? "rate_limited" : "upstream_error"; throw e;
   }
-  logUsage(teamId, kind, data.usage, useModel).catch(() => {});
+  // must be awaited: on Cloudflare, work still running after the response is sent is cut off (the record was silently lost)
+  try { await logUsage(teamId, kind, data.usage, useModel); } catch (e) {}
   return (data.content || []).filter((c) => c.type === "text").map((c) => c.text).join("");
 }
 // Records token usage so the monthly report can show AI costs. Never blocks the user's request on failure.
