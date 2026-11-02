@@ -169,6 +169,26 @@ function aliveNow(){
   sl.cols.forEach((c,i)=>{const v=slotVal(p,c,sl.hw),thr=sl.thr&&sl.thr[i]!=null?sl.thr[i]:null;if(thr==null?false:v>thr)r[i<5?0:1]++});
   return r;
 }
+// A flash over the top bar (abilities, explosions) can make a portrait look grey for a moment. Look 3 times over half a second
+// and take the middle value for each team, so a passing flash does not count as a death.
+async function aliveSteady(t){
+  const a=[];for(const d of [0,0.25,0.5]){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t+d);a.push(aliveNow())}
+  const mid=k=>a.map(x=>x[k]).sort((x,y)=>x-y)[1];return[mid(0),mid(1)];
+}
+// Rounds whose timer was not read in the first pass: read it again a few times where the round should be starting (cheap),
+// so every round gets its exact barrier drop.
+async function findStarts(segs,samples){
+  const cells=[];
+  segs.forEach(rs=>rs.forEach((r,ri)=>{const nx=rs[ri+1];if(r.start==null||r._restart!=null)return;
+    if(roundStartOf(r,samples,nx?nx.start:null)!=null)return;
+    const from=r.n===1||r.n===13?36:26,to=r.n===1||r.n===13?86:70;
+    for(let d=from;d<=to;d+=6){const t=r.start+d;if(nx&&t>=nx.start-2)break;if(t<duration-0.5)cells.push({r,t})}}));
+  if(!cells.length)return;
+  prog(0.95,"ラウンドの始まりを確認しています…");
+  const res=await readTimes(cells.map(c=>c.t));
+  const by=new Map();cells.forEach((c,k)=>{const x=parseTile(res[k]);if(typeof x.x==="number"&&x.x>30&&x.x<=100)(by.get(c.r)||by.set(c.r,[]).get(c.r)).push(c.t-(100-x.x))});
+  by.forEach((est,r)=>{est.sort((a,b)=>a-b);r._restart=est[Math.floor(est.length/2)]});
+}
 async function readFirstKills(segs,samples){
   const jobs=[];
   segs.forEach((rs,si)=>rs.forEach((r,ri)=>{const next=rs[ri+1]?rs[ri+1].start:null;let st=roundStartOf(r,samples,next);r._next=next;
@@ -188,7 +208,7 @@ async function readFirstKills(segs,samples){
     prog(0.95,"ファーストキルを読み取っています… ("+(++done)+"/"+jobs.length+"ラウンド)");
     // Only a few frames per round: confirm everyone is alive at the start, then jump (binary search) to the moment the first player dies, then skip to the next round.
     let ok=null,fk=null,fkT=null;const memo={};
-    const at=async(t)=>{if(memo[t])return memo[t];if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);return memo[t]=aliveNow()};
+    const at=async(t)=>{if(memo[t])return memo[t];if(ctl.signal.aborted)throw{code:"cancelled"};return memo[t]=await aliveSteady(t)};
     const dead=async(t)=>{const a=await at(t);return a[0]<5||a[1]<5};
     const tries=j.est?[2,8,14,-6,20,26,-12,32,38,44]:[2,5,0,8,11,14,17,20];   // an estimated start can be further off
     for(const d of tries){const t=Math.ceil(j.st+d);if(t>j.end||t<0)continue;const a=await at(t);if(a[0]===5&&a[1]===5){ok=t;break}} // round start can be a few seconds off
@@ -789,6 +809,7 @@ async function runAnalysis(){
     prog(0.955,"最後のラウンドの勝敗を確認しています…");
     await readFinals(segs);
     await findRestarts(segs);
+    await findStarts(segs,samples);
     prog(0.96,"ファーストキルを読み取っています…");
     await readFirstKills(segs,samples);
     prog(0.97,"設置したサイトを読み取っています…");
