@@ -60,7 +60,7 @@ Supabase の **Authentication → Providers → Google** をオンにします�
 
 ### 6. 決済(Riot の承認後)
 1. Stripe でアカウントを作り、本人確認と振込先を登録
-2. 商品を3つ作る:「チーム」月2,480円、「コーチ・組織」月4,980円、「タイトル追加」月500円(どれも毎月の定期支払い)
+2. 商品を3つ作る:「チーム」月2,980円、「コーチ・組織」月6,980円、「タイトル追加」月500円(どれも毎月の定期支払い)
 3. **Developers → Webhooks** で `https://(サイトのURL)/api/webhook` を登録し、次のイベントを選ぶ
    `checkout.session.completed` / `customer.subscription.created` / `customer.subscription.updated` / `customer.subscription.deleted`
 4. **Settings → Billing → Customer portal** を有効にする(解約・カード変更の画面)

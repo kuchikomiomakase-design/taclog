@@ -1,7 +1,7 @@
 // POST /api/addteam {teamId, name, myName, game, kind}
 // Adds a team without going through the first-time setup again (recording settings and Riot are already done).
 //  - kind "solo": the person's own space (one per person), free until they choose the personal plan.
-//  - kind "team": only for admins of a coach/organization team. 2 teams are included; from the 3rd, 1,980 yen a month each
+//  - kind "team": only for admins of a coach/organization team. 2 teams are included; from the 3rd, 2,480 yen a month each
 //    (added to the organization's Stripe subscription, STRIPE_PRICE_EXTRA_TEAM). Teams set up by hand (no subscription) are not charged.
 const { send, fail, readBody, getUser, membership, rest, stripe, env } = require("./_lib");
 const VALID = ["valorant", "cs2", "ow2", "apex", "fortnite"];
@@ -44,8 +44,8 @@ module.exports = async (req, res) => {
 
     // 3rd team and later: add 1 to the "extra team" item of the organization's subscription (prorated), then create the team
     const price = env("STRIPE_PRICE_EXTRA_TEAM");
-    if (!price || !env("STRIPE_SECRET_KEY")) return fail(res, 503, "3チーム目からの追加(月1,980円)は、お支払いの準備中です。");
-    if (!body.confirm) return send(res, 200, { needConfirm: true, extra: family.length + 1 - 2, yen: 1980 });
+    if (!price || !env("STRIPE_SECRET_KEY")) return fail(res, 503, "3チーム目からの追加(月2,480円)は、お支払いの準備中です。");
+    if (!body.confirm) return send(res, 200, { needConfirm: true, extra: family.length + 1 - 2, yen: 2480 });
     const sub = await stripe("subscriptions/" + root.stripe_subscription_id, null, "GET");
     const item = (sub.items.data || []).find((it) => it.price.id === price), qty = family.length + 1 - 2;
     if (item) await stripe("subscription_items/" + item.id, { quantity: qty, proration_behavior: "create_prorations" });

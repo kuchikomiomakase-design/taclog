@@ -74,14 +74,14 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     }
     const teamBox = org
       ? h("div", { style: "display:grid;gap:10px" }, h("h3", {}, "チームを追加(組織プラン)"),
-          h("p", { class: "small muted", style: "margin:0" }, "録画の設定とRiot連携は済んでいるので、名前を決めるだけです。" + (orgTeams < 2 ? "組織プランは2チームまで込みです(追加料金なし)。" : "3チーム目からは1チームにつき月1,980円です(10チームまで)。")),
+          h("p", { class: "small muted", style: "margin:0" }, "録画の設定とRiot連携は済んでいるので、名前を決めるだけです。" + (orgTeams < 2 ? "組織プランは2チームまで込みです(追加料金なし)。" : "3チーム目からは1チームにつき月2,480円です(10チームまで)。")),
           h("label", {}, "チーム名", nameIn), h("label", {}, "このチームでのあなたの表示名", myIn), h("label", {}, "ゲーム", gameSel),
           h("div", { class: "row" }, h("button", { class: "btn primary", type: "button", onclick: () => go("team") }, "チームを追加")))
       : h("div", { style: "display:grid;gap:8px" }, h("h3", {}, "チームを増やすには"),
-          h("p", { class: "small muted", style: "margin:0" }, "複数のチームを見るには、コーチ・組織プラン(月4,980円・2チーム込み)が必要です。追加したチームも組織プランになります。"),
+          h("p", { class: "small muted", style: "margin:0" }, "複数のチームを見るには、コーチ・組織プラン(月6,980円・2チーム込み)が必要です。追加したチームも組織プランになります。"),
           h("div", { class: "row" }, h("a", { class: "btn", href: "/pricing" }, "料金プランを見る")));
     const soloBox = hasSolo ? null : h("div", { style: "display:grid;gap:8px;border-top:1px solid var(--line);padding-top:12px" }, h("h3", {}, "個人用を作る"),
-      h("p", { class: "small muted", style: "margin:0" }, "自分の録画(ランク・スクリム)で、自分のプレーだけを振り返るスペースです。無料(月2本)から使えて、個人プランは月980円です。"),
+      h("p", { class: "small muted", style: "margin:0" }, "自分の録画(ランク・スクリム)で、自分のプレーだけを振り返るスペースです。無料(月2本)から使えて、個人プランは月1,280円です。"),
       h("div", { class: "row" }, h("button", { class: "btn", type: "button", onclick: () => { if (!myIn.value.trim()) myIn.value = me || "自分"; go("solo"); } }, "個人用を作る")));
     dlg.append(h("div", { class: "spread" }, h("strong", {}, "チーム・個人用の追加"), h("button", { class: "btn small ghost", type: "button", onclick: close }, "閉じる")), teamBox, soloBox, msg);
     document.body.append(dlg); dlg.showModal();
@@ -136,9 +136,57 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
           h("div", { class: "row" }, h("strong", {}, fmtDate(m.date) + (m.opp ? " vs " + m.opp : "")), h("span", { class: "pill " + (w > l ? "win" : w < l ? "loss" : "mute") }, w + "−" + l), sel,
             h("span", { class: "small muted" }, rs.length + "ラウンド ・ 最初は" + sideJa(m.start_side) + (fkAll ? " ・ FK取得 " + fkUs + "/" + fkAll : ""))),
           m.comps && m.comps.left && m.comps.left.length ? h("span", { class: "small muted" }, "構成:" + m.comps.left.join(" / ")) : null),
-        canDel ? del : h("span"));
+        h("div", { class: "row", style: "gap:6px" }, h("button", { class: "btn small", type: "button", onclick: () => openRoundEditor(m.id) }, "ラウンドを直す"), canDel ? del : null));
     }));
   }
+
+
+  /* ---------- fix rounds by hand (anything the analysis could not read, or read wrong) ---------- */
+  function openRoundEditor(matchId, focusRound, field) {
+    const m = APP.matches.find((x) => x.id === matchId); if (!m) { status("その試合が見つかりません(別のチームかタイトルの試合かもしれません)。"); return; }
+    const rs = JSON.parse(JSON.stringify(m.rounds || []));
+    const agents = [...new Set([...((m.comps && m.comps.left) || []), ...((m.comps && m.comps.right) || [])])];
+    const opt = (pairs, v) => { const s = h("select", {}, pairs.map(([val, label]) => h("option", { value: val }, label))); s.value = v == null ? "" : String(v); return s; };
+    const agentSel = (v) => { const list = agents.slice(); if (v && !list.includes(v)) list.unshift(v); return opt([["", "不明"]].concat(list.map((a) => [a, a])), v || ""); };
+    const rows = rs.map((r) => {
+      const win = opt([["", "不明"], ["true", "勝ち"], ["false", "負け"]], r.win == null ? "" : String(r.win));
+      const side = opt([["attack", "アタック"], ["defense", "ディフェンス"]], r.side || "attack");
+      const plant = opt([["", "設置なし"], ["A", "A"], ["B", "B"], ["C", "C"], ["?", "設置(サイト不明)"]], r.planted ? (r.site || "?") : "");
+      const fk = opt([["", "不明"], ["us", "自チーム"], ["them", "相手"], ["tie", "ほぼ同時"]], r.fk || "");
+      const by = agentSel(r.fkBy), vic = agentSel(r.fkVictim);
+      const vd = h("input", { type: "checkbox", title: "強制終了したラウンド(数字に入れない)" }); vd.checked = !!r.void;
+      const tr = h("tr", { class: r.n === focusRound ? "focus" : "" }, h("td", { class: "num" }, r.n), h("td", {}, win), h("td", {}, side), h("td", {}, plant), h("td", {}, fk), h("td", {}, by), h("td", {}, vic), h("td", { style: "text-align:center" }, vd));
+      tr._get = () => {
+        const o = { ...r, win: win.value === "" ? null : win.value === "true", side: side.value, fk: fk.value || null, fkBy: by.value || null, fkVictim: vic.value || null, void: vd.checked || undefined };
+        o.planted = plant.value !== ""; o.site = plant.value && plant.value !== "?" ? plant.value : null; if (!o.planted) { o.plant = null; o.plantAt = null; }
+        // the recording player's own first kill / first death follow the corrected names
+        const me = m.comps && m.comps.me; if (me) { const k = (x) => String(x || "").toLowerCase().replace(/[^a-z]/g, ""); o.myFk = o.fk === "us" ? (o.fkBy ? k(o.fkBy) === k(me) : null) : o.fk ? false : null; o.myFd = o.fk === "them" ? (o.fkVictim ? k(o.fkVictim) === k(me) : null) : o.fk ? false : null; }
+        if (JSON.stringify(o) !== JSON.stringify(r)) o.manual = true;
+        return o;
+      };
+      return tr;
+    });
+    const dlg = h("dialog", { class: "card fix-dlg", "aria-label": "ラウンドを直す" });
+    const msg = h("span", { class: "small" });
+    const save = h("button", { class: "btn primary", type: "button" }, "保存");
+    save.onclick = async () => {
+      save.disabled = true; msg.textContent = "保存しています…";
+      const out = rows.map((tr) => tr._get());
+      const { error } = await sb.rpc("update_rounds", { m: m.id, rs: out });
+      if (error) { msg.textContent = /update_rounds/.test(error.message || "") ? "手直しを使うには、管理者が設定(014)を済ませる必要があります。" : TL.errText(error); save.disabled = false; return; }
+      m.rounds = out; dlg.close(); dlg.remove(); status("直した内容を保存しました。ダッシュボードとAIの答えにも反映されます。"); renderMatches(); if (window.renderDash) window.renderDash();
+    };
+    const hint = { fk: "ファーストキル(最初に倒したのがどちらか、誰が誰を)", win: "勝敗", plant: "設置", side: "攻守" }[field] || "";
+    dlg.append(
+      h("div", { class: "spread" }, h("strong", {}, "ラウンドを直す:" + (m.date ? fmtDate(m.date) : "") + (m.opp ? " vs " + m.opp : "") + " " + (mapName(m.map) || "")), h("button", { class: "btn small ghost", type: "button", onclick: () => { dlg.close(); dlg.remove(); } }, "閉じる")),
+      h("p", { class: "small muted", style: "margin:0" }, (focusRound ? "第" + focusRound + "ラウンド" + (hint ? "の" + hint : "") + "を直してください(色が付いた行)。" : "") + "読み取れなかった・間違えたところを選び直して保存すると、ダッシュボードやAIの答えに反映されます。録画を見返して確かめるのがおすすめです。"),
+      h("div", { class: "tblbox", style: "max-height:60vh;overflow:auto" }, h("table", { class: "tbl dtbl fixtbl" },
+        h("thead", {}, h("tr", {}, ["R", "勝敗", "攻守", "設置", "ファーストキル", "倒した人", "倒された人", "無効"].map((t) => h("th", {}, t)))), h("tbody", {}, rows))),
+      h("div", { class: "row" }, save, msg));
+    document.body.append(dlg); dlg.showModal();
+    const f = dlg.querySelector("tr.focus"); if (f) f.scrollIntoView({ block: "center" });
+  }
+  window.openRoundEditor = openRoundEditor;
 
   /* ---------- channel ---------- */
   const seenKey = () => "taclog.seen." + APP.team.id;
@@ -245,6 +293,11 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   function ytLink(url, sec) { try { const u = new URL(url); u.searchParams.set("t", Math.max(0, Math.floor(sec)) + "s"); return u.toString(); } catch (e) { return null; } }
   function renderAnswer(box, ans) {
     box.replaceChildren(h("p", {}, String(ans.answer || "")));
+    // rounds the analysis could not read (or read wrong): one click opens them to fix by hand
+    const fx = Array.isArray(ans.fix) ? ans.fix.filter((f) => f && f.match && f.round).slice(0, 8) : [];
+    if (fx.length) box.append(h("div", { class: "fixbox" }, h("span", { class: "small" }, "読み取れなかったところは、手で直せます:"),
+      h("div", { class: "row", style: "gap:6px;flex-wrap:wrap" }, fx.map((f) => { const m = APP.matches.find((x) => x.id === f.match);
+        return h("button", { class: "btn small", type: "button", onclick: () => openRoundEditor(f.match, Number(f.round), f.field) }, (m && m.date ? fmtDate(m.date) + " " : "") + "第" + f.round + "R" + ({ fk: "のFK", win: "の勝敗", plant: "の設置", side: "の攻守" }[f.field] || "") + "を直す"); }))));
     const c = ans.chart;
     if (c && Array.isArray(c.bars) && c.bars.length) {
       const max = Math.max(1, ...c.bars.map((b) => Number(b.value) || 0));
@@ -491,7 +544,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     inp.value = ""; btn.disabled = true; msg.textContent = "";
     // deleting never changes the plan: say so (people may only want to start over)
     const t = APP.team, pay = $("delTeamPay"), kids = APP.teams.filter((x) => x.parent_team === t.id).length;
-    const warn = t.plan === "free" ? "" : t.parent_team ? "このチームは組織プランで追加したチームです。削除すると、組織の追加チームの料金(月1,980円)は1チーム分減ります。" :
+    const warn = t.plan === "free" ? "" : t.parent_team ? "このチームは組織プランで追加したチームです。削除すると、組織の追加チームの料金(月2,480円)は1チーム分減ります。" :
       "プランは変わりません。チームを削除しても、プランを変更(解約)しない限り、毎月の料金はそのまま続きます。解約は、削除の前でも後でも、アカウントの「お支払いの管理」からできます。" + (t.plan === "org" ? "組織プランで追加したチームは、無料プランに戻ります。" : "");
     pay.hidden = !warn; pay.textContent = warn;
     inp.oninput = () => { btn.disabled = inp.value.trim() !== APP.team.name.trim(); };
