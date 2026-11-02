@@ -1,7 +1,7 @@
 // POST /api/games {teamId, games:["valorant","cs2",...]} -> {ok} or {url} (Stripe Checkout when a new paid slot is needed)
 // The first title is free. Each extra title is a monthly add-on (STRIPE_PRICE_GAME). The coach/org plan includes all titles.
 const { send, fail, readBody, getUser, membership, rest, stripe, env } = require("./_lib");
-const VALID = ["valorant", "cs2", "ow2", "apex", "fortnite"];
+const VALID = ["valorant", "ow2"];
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") return fail(res, 405, "POST only");

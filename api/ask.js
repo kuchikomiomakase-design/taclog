@@ -111,7 +111,7 @@ module.exports = async (req, res) => {
     if ((await poolUsed(body.teamId, plan, month, used)) >= lim.questions) return fail(res, 429, "question limit", "question_limit");
 
     const since = new Date(Date.now() - lim.days * 864e5).toISOString().slice(0, 10);
-    const matches = await rest("matches?select=id,date,opp,map,comps,rounds&team_id=eq." + body.teamId + "&game=eq." + (["valorant","cs2","ow2","apex","fortnite"].includes(body.game) ? body.game : "valorant") + "&or=(date.gte." + since + ",date.is.null)&order=date.desc&limit=200", { token: auth.token });
+    const matches = await rest("matches?select=id,date,opp,map,comps,rounds&team_id=eq." + body.teamId + "&game=eq." + (["valorant","ow2"].includes(body.game) ? body.game : "valorant") + "&or=(date.gte." + since + ",date.is.null)&order=date.desc&limit=200", { token: auth.token });
     if (!matches || !matches.length) return fail(res, 400, "まだ分析した試合がありません。");
     let povs = {};
     try {

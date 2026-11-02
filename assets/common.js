@@ -21,10 +21,7 @@
   // Supported titles. "ready" = automatic recording analysis is available.
   const GAMES = [
     { id: "valorant", name: "VALORANT", maker: "Riot Games", color: "#FF4655", ready: true },
-    { id: "cs2", name: "Counter-Strike 2", short: "CS2", maker: "Valve", color: "#F2A93B", ready: false },
-    { id: "ow2", name: "Overwatch 2", short: "OW2", maker: "Blizzard", color: "#F99E1A", ready: false },
-    { id: "apex", name: "Apex Legends", maker: "EA / Respawn", color: "#DA292A", ready: false },
-    { id: "fortnite", name: "Fortnite", maker: "Epic Games", color: "#9D4DFF", ready: false }
+    { id: "ow2", name: "Overwatch 2", short: "OW2", maker: "Blizzard", color: "#F99E1A", ready: false }
   ];
   const gameName = (id) => { const g = GAMES.find((x) => x.id === id); return g ? (g.short || g.name) : id; };
   const ADDON_YEN = 500;
@@ -50,11 +47,11 @@
     el.className = "site";
     if (document.documentElement.lang === "en") {
       el.innerHTML = '<span><a href="/en/legal">Terms &amp; privacy</a> ・ <a href="/en/pricing">Pricing</a> ・ <a href="/en/guide">Setup guide</a> ・ <a href="mailto:support@taclog.app">Contact</a> ・ <a href="/">日本語</a></span>' +
-        "<span>TacLog isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc. Other game names are trademarks of their respective owners (Valve, Blizzard Entertainment, Electronic Arts, Epic Games).</span>";
+        "<span>TacLog isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc. Other game names are trademarks of their respective owners (Blizzard Entertainment).</span>";
       return;
     }
     el.innerHTML = '<span><a href="/legal/terms">利用規約</a> ・ <a href="/legal/privacy">プライバシーポリシー</a> ・ <a href="/legal/tokushoho">特定商取引法に基づく表記</a> ・ <a href="/pricing">料金</a> ・ <a href="/gear">おすすめ機材</a> ・ <a href="/app#contact">お問い合わせ</a></span>' +
-      "<span>TacLogは非公式のファンメイドツールで、各ゲームの開発・運営会社(Riot Games、Valve、Blizzard Entertainment、Electronic Arts、Epic Gamesなど)が承認・後援するものではありません。VALORANTはRiot Games, Inc.の、その他のゲーム名はそれぞれの権利者の商標または登録商標です。</span>";
+      "<span>TacLogは非公式のファンメイドツールで、各ゲームの開発・運営会社(Riot Games、Blizzard Entertainmentなど)が承認・後援するものではありません。VALORANTはRiot Games, Inc.の、その他のゲーム名はそれぞれの権利者の商標または登録商標です。</span>";
   }
 
   function notConfigured(target) {

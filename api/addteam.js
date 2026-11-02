@@ -4,7 +4,7 @@
 //  - kind "team": only for admins of a coach/organization team. 2 teams are included; from the 3rd, 2,480 yen a month each
 //    (added to the organization's Stripe subscription, STRIPE_PRICE_EXTRA_TEAM). Teams set up by hand (no subscription) are not charged.
 const { send, fail, readBody, getUser, membership, rest, stripe, env } = require("./_lib");
-const VALID = ["valorant", "cs2", "ow2", "apex", "fortnite"];
+const VALID = ["valorant", "ow2"];
 const clip = (s, n) => String(s || "").trim().slice(0, n);
 
 async function create(uid, row, myName) {
