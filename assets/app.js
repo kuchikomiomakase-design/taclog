@@ -341,7 +341,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     if (!histOK || !APP.team) return;
     try {
       if (!curThread) { const { data, error } = await sb.from("ask_threads").insert({ team_id: APP.team.id, title: q.slice(0, 60) }).select("id").single(); if (error) throw error; curThread = data.id; }
-      const a = { answer: ans.answer || "", chart: ans.chart || null, scenes: ans.scenes || [], looked: !!ans.looked };
+      const a = { answer: ans.answer || "", chart: ans.chart || null, scenes: ans.scenes || [], fix: ans.fix || null, looked: !!ans.looked };
       await sb.from("ask_messages").insert({ thread_id: curThread, question: q, answer: a });
       await sb.from("ask_threads").update({ updated_at: new Date().toISOString() }).eq("id", curThread);
       renderHist();
