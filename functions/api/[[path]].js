@@ -14,8 +14,9 @@ import redeem from "../../api/redeem.js";
 import addteam from "../../api/addteam.js";
 import delteam from "../../api/delteam.js";
 import billing from "../../api/billing.js";
+import fixlog from "../../api/fixlog.js";
 
-const ROUTES = { ask, vision, checkout, portal, webhook, games, contact, "cron-monthly": cronMonthly, backup, diag, redeem, addteam, delteam, billing };
+const ROUTES = { ask, vision, checkout, portal, webhook, games, contact, "cron-monthly": cronMonthly, backup, diag, redeem, addteam, delteam, billing, fixlog };
 
 export async function onRequest(context) {
   const { request, env, params } = context;

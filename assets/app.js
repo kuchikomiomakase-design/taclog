@@ -174,6 +174,10 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
       const out = rows.map((tr) => tr._get());
       const { error } = await sb.rpc("update_rounds", { m: m.id, rs: out });
       if (error) { msg.textContent = /update_rounds/.test(error.message || "") ? "手直しを使うには、管理者が設定(014)を済ませる必要があります。" : TL.errText(error); save.disabled = false; return; }
+      // tell the operator what was fixed (to improve the reading)
+      try { const F = ["win", "side", "planted", "site", "fk", "fkBy", "fkVictim", "void"], changes = [];
+        out.forEach((o, i) => { const r = rs[i] || {}; F.forEach((f) => { const a = r[f] ?? null, b = o[f] ?? null; if (JSON.stringify(a) !== JSON.stringify(b)) changes.push({ n: o.n, field: f, before: a, after: b }); }); });
+        if (changes.length) TL.api("/api/fixlog", { teamId: APP.team.id, matchId: m.id, changes }).catch(() => {}); } catch (e) {}
       m.rounds = out; dlg.close(); dlg.remove(); status("直した内容を保存しました。ダッシュボードとAIの答えにも反映されます。"); renderMatches(); if (window.renderDash) window.renderDash();
     };
     const hint = { fk: "ファーストキル(最初に倒したのがどちらか、誰が誰を)", win: "勝敗", plant: "設置", side: "攻守" }[field] || "";
