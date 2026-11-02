@@ -148,9 +148,9 @@ async function readFirstKills(segs,samples){
     if(st!=null)r._st=st;
     // no timer was read for this round: the first kill can still be found from an estimated start (score change + end of round + buy phase).
     // Only for the first kill; ability / ult numbers keep using the exact barrier time, so the buy phase is never counted there.
-    else if(r.n!==1&&r.n!==13&&r.start!=null)st=r.start+37;
+    else if(r.start!=null)st=r.start+(r.n===1||r.n===13?45:37);
     if(st==null)return;
-    jobs.push({si,ri,st,end:Math.min(st+75,r.plantAt!=null?r.plantAt+40:Infinity,next??Infinity,duration-0.3)})}));
+    jobs.push({si,ri,st,est:r._st==null,end:Math.min(st+75,r.plantAt!=null?r.plantAt+40:Infinity,next??Infinity,duration-0.3)})}));
   if(!jobs.length)return;
   prog(0.95,"ファーストキルの読み取りを準備しています…");
   const aliveT=jobs.slice(0,14).map(j=>j.st+3),endT=samples.filter(x=>x.x==="E").map(x=>x.t).slice(0,14);
@@ -163,14 +163,18 @@ async function readFirstKills(segs,samples){
     let ok=null,fk=null,fkT=null;const memo={};
     const at=async(t)=>{if(memo[t])return memo[t];if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);return memo[t]=aliveNow()};
     const dead=async(t)=>{const a=await at(t);return a[0]<5||a[1]<5};
-    for(const d of [2,5,0,8,11,14,17,20]){const t=Math.ceil(j.st+d);if(t>j.end||t<0)continue;const a=await at(t);if(a[0]===5&&a[1]===5){ok=t;break}} // round start can be a few seconds off
+    const tries=j.est?[2,8,14,-6,20,26,-12,32,38,44]:[2,5,0,8,11,14,17,20];   // an estimated start can be further off
+    for(const d of tries){const t=Math.ceil(j.st+d);if(t>j.end||t<0)continue;const a=await at(t);if(a[0]===5&&a[1]===5){ok=t;break}} // round start can be a few seconds off
+    // never saw 5v5 (portraits hard to read at that moment): nobody can die before the barrier drops, so start from there anyway,
+    // but only trust a death that is still there 1-2 seconds later
+    let strict=false;if(ok==null&&!j.est){ok=Math.ceil(j.st);strict=true}
     if(ok!=null){
       // find any moment with someone dead (near the end of the round first; step back in case the next round already started)
       let hi=null;
       for(let t=Math.floor(j.end);t>ok;t-=8){if(await dead(t)&&await dead(t-1>ok?t-1:t)){hi=t;break}}
       if(hi!=null){
         let lo=ok;                                   // lo: everyone alive, hi: someone dead
-        while(hi-lo>1){const mid=Math.floor((lo+hi)/2);if(await dead(mid))hi=mid;else lo=mid}
+        while(hi-lo>1){const mid=Math.floor((lo+hi)/2);if(await dead(mid)&&(!strict||await dead(mid+2)))hi=mid;else lo=mid}
         if(hi+1<=j.end&&!(await dead(hi+1))){/* flicker: keep the result anyway, it is the best guess */}
         const a=await at(hi);fk=a[0]<5&&a[1]<5?"tie":a[1]<5?"us":"them";fkT=hi;
       }
@@ -420,11 +424,13 @@ async function snapEnd(sn){const out=[];for(const c of sn.cvs)out.push(await new
 async function readKit(segs,me,maps,known,comps){
   const jobs=[];
   segs.forEach((rs,si)=>rs.forEach(r=>{
-    if(r._st==null)return;
-    const end=Math.min(r._next!=null?r._next-1:(r.plantAt!=null?r.plantAt+44:r._st+99),r._st+145,duration-0.3);
+    // no exact barrier time (timer not read): still follow the alive counts and the fights (for the first kill, man-advantage),
+    // from an estimated start, but never the player's own abilities (that would risk counting the buy phase)
+    const exact=r._st!=null,base=exact?r._st:(r.start!=null?r.start+(r.n===1||r.n===13?45:37):null);if(base==null)return;
+    const end=Math.min(r._next!=null?r._next-1:(r.plantAt!=null?r.plantAt+44:base+99),base+145,duration-0.3);
     // the player's own HUD only while we know they are alive (after death the HUD is a teammate's)
-    const stop=r.myDead==null?null:r.myDead?Math.min(end,r._st+(r.myDeathT||0)-1):end;
-    if(end>r._st+3)jobs.push({si,r,a:r._st+1,end,b:stop!=null&&stop>r._st+3?stop:null,died:!!r.myDead,me:me[si]});
+    const stop=!exact||r.myDead==null?null:r.myDead?Math.min(end,base+(r.myDeathT||0)-1):end;
+    if(end>base+3)jobs.push({si,r,base,a:exact?base+1:Math.max(0,base-8),end,b:stop!=null&&stop>base+3?stop:null,died:!!r.myDead,me:me[si]});
   }));
   if(!jobs.length)return;
   // which horizontal scale fits the HUD (normal 16:9 or stretched 4:3)
@@ -436,14 +442,14 @@ async function readKit(segs,me,maps,known,comps){
     prog(0.99,"ラウンドの流れとスキルを確認しています… ("+(++done)+"/"+jobs.length+"ラウンド)");
     const S=[];
     const snap=snapStart();
-    for(let t=j.a;t<=j.end;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const al=aliveNow();S.push({t,us:al[0],en:al[1],...(hud&&j.b!=null&&t<=j.b?kitNow(KIT_KX):{ok:false,bars:[],held:null})});snapAdd(snap,j.r.n,t-j.r._st)}
+    for(let t=j.a;t<=j.end;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const al=aliveNow();S.push({t,us:al[0],en:al[1],...(hud&&j.b!=null&&t<=j.b?kitNow(KIT_KX):{ok:false,bars:[],held:null})});snapAdd(snap,j.r.n,t-j.base)}
     try{const blobs=await snapEnd(snap);if(blobs.length)((SNAPS[j.si]=SNAPS[j.si]||{})[j.r.n]=blobs)}catch(e){}
     j.S=S;
     // alive counts only go down in a round: accept a drop once it is seen twice in a row (or at the last look)
     const alv=[[0,5,5]];let cu=5,ce=5;
     for(let i=0;i<S.length;i++){const nx=S[i+1];
       const u=nx?Math.max(S[i].us,nx.us):S[i].us,e=nx?Math.max(S[i].en,nx.en):S[i].en;
-      if(u<cu||e<ce){events.push({j,t:S[i].t,n:(cu-Math.min(cu,u))+(ce-Math.min(ce,e))});cu=Math.min(cu,u);ce=Math.min(ce,e);alv.push([Math.round(S[i].t-j.r._st),cu,ce])}}
+      if(u<cu||e<ce){events.push({j,t:S[i].t,n:(cu-Math.min(cu,u))+(ce-Math.min(ce,e))});cu=Math.min(cu,u);ce=Math.min(ce,e);alv.push([Math.max(0,Math.round(S[i].t-j.base)),cu,ce])}}
     j.r.alv=alv;j.r.fights=[];
     const kr=known&&known[j.si]?(known[j.si].rounds||[]).find(x=>x.n===j.r.n):null;
     if(kr&&Array.isArray(kr.fights)){j.r.fights=kr.fights.map(f=>({...f}));events.splice(events.length-(alv.length-1),alv.length-1)}   // already read from a teammate's recording of the same match
@@ -519,7 +525,7 @@ async function readKit(segs,me,maps,known,comps){
           const canon=(n)=>{n=String(n||"?").trim();if(/^(me|自分)$/i.test(n)&&me[si])return me[si];const k=agentKey(n);const hit=L.concat(Rr).find(a=>agentKey(a)===k);return hit||(L.length+Rr.length?"?":n.slice(0,20))};
           const kk=canon(e.k),vv=canon(e.v);let g=e.g===true?true:e.g===false?false:null;
           if(L.some(a=>a===kk))g=true;else if(Rr.some(a=>a===kk))g=false;else if(Rr.some(a=>a===vv))g=true;else if(L.some(a=>a===vv))g=false;
-          const f={t:Math.round(c.t-c.j.r._st),k:kk,v:vv,g,p:String(e.p||"?").slice(0,40)};
+          const f={t:Math.max(0,Math.round(c.t-c.j.base)),k:kk,v:vv,g,p:String(e.p||"?").slice(0,40)};
           if(!fixed)f.p="?";f._t=c.t;
           if(!c.j.r.fights.some(x=>agentKey(x.v)===agentKey(f.v)&&agentKey(f.v)))c.j.r.fights.push(f)})});
       }catch(e){if(e&&e.code==="cancelled")throw e}
@@ -540,11 +546,25 @@ async function readKit(segs,me,maps,known,comps){
   jobs.forEach(j=>(j.r.fights||[]).forEach(f=>{delete f._t}));
   // the recording player's kills (and kills while their ult was ready) from the fights
   for(const j of jobs){const kt=j.r.kit;if(!kt||!j.me)continue;const mine=agentKey(j.me);
-    const ultAt=t=>{let v=null;for(const x of j.S)if(x.ok&&x.t<=j.r._st+t)v=x.bars[3]===1;return v};
+    const ultAt=t=>{let v=null;for(const x of j.S)if(x.ok&&x.t<=j.base+t)v=x.bars[3]===1;return v};
     const ks=(j.r.fights||[]).filter(f=>f.g!==false&&agentKey(f.k)===mine);kt.k=ks.length;kt.ku=ks.filter(f=>ultAt(f.t)).length;
     const d=(j.r.fights||[]).find(f=>agentKey(f.v)===mine);if(d)kt.dp=d.p;kt.kp=ks.map(f=>f.p);
     delete j.S}
   jobs.forEach(j=>{delete j.S});
+}
+// Last chance for the first kill, after the whole-round pass: the first change of the alive counts (every 2 s) and the first fight
+// read from the kill feed. Used only for rounds the quick search could not settle.
+function fillFirstKills(segs){
+  segs.forEach(rs=>rs.forEach(r=>{
+    const f=(Array.isArray(r.fights)?r.fights:[]).slice().sort((a,b)=>a.t-b.t)[0];
+    if(r.fk==null){
+      const a=Array.isArray(r.alv)?r.alv.find(x=>x[1]<5||x[2]<5):null;
+      if(a)r.fk=a[1]<5&&a[2]<5?(f&&f.g!=null?(f.g?"us":"them"):"tie"):a[2]<5?"us":"them";
+      else if(f&&f.g!=null)r.fk=f.g?"us":"them";
+      if(r.fk!=null)r.fkFrom="timeline";
+    }
+    if(r.fk&&r.fk!=="tie"&&f&&(f.g===(r.fk==="us"))){if(!r.fkBy&&f.k&&f.k!=="?")r.fkBy=f.k;if(!r.fkVictim&&f.v&&f.v!=="?")r.fkVictim=f.v}
+  }));
 }
 function markMine(segs,me){
   segs.forEach((rs,si)=>{const mine=agentKey(me[si]);rs.forEach(r=>{
@@ -751,6 +771,7 @@ async function runAnalysis(){
     await readMyDeaths(segs,me);
     let known=[];try{known=await knownMatches(segs,maps)}catch(e){known=[]}
     await readKit(segs,me,maps,known,comps);
+    fillFirstKills(segs);markMine(segs,me);
     segs.forEach(rs=>rs.forEach(r=>{if(r._st!=null)r.st=Math.round(r._st);delete r._st;delete r._next}));
     prog(1,"完了しました");
     lastResult={coach:COACH,snaps:SNAPS,segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
@@ -771,6 +792,7 @@ function showResult(){
   if(!R.segs.length||!R.segs[0].length){box.append(h("div",{class:"status"},"ラウンドを見つけられませんでした(読み取れた画面 "+rate+"%)。試合の画面(上のスコアと残り時間)が映っている録画か確認してください。"));return}
   box.append(h("div",{class:"row"},h("span",{class:"pill win"},"読み取れた画面 "+rate+"%"),h("span",{class:"pill"},R.segs.length>1?R.segs.length+"マップ分":"1マップ"),
     R.comps.left.length?h("span",{class:"pill mute"},"自チーム:"+R.comps.left.join(" / ")):null,R.comps.right.length?h("span",{class:"pill mute"},"相手:"+R.comps.right.join(" / ")):null,
+    (()=>{const all=R.segs.flat(),n=all.filter(r=>r.fk!=null).length;return h("span",{class:"pill "+(n>=all.length*0.9?"win":"warn"),title:"ファーストキルがどちらのチームに入ったか判定できたラウンド"},"ファーストキル判定 "+n+"/"+all.length)})(),
     R.coach&&Object.keys(R.coach).length?h("span",{class:"pill warn",title:"観戦している画面なので、チームの数字と撃ち合いだけを記録しました(個人のスキルや生存は、選手本人の録画から取ります)"},"コーチ・観戦視点"):null));
   R.segs.forEach((rs,si)=>{
     const w=rs.filter(r=>r.win===true).length,l=rs.filter(r=>r.win===false).length;
