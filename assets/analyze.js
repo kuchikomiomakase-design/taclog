@@ -93,7 +93,34 @@ async function readSites(cells){
   return out;
 }
 
-function roundStartOf(r,samples,next){const it=samples.filter(x=>x.t>=r.start&&(next==null||x.t<next)&&typeof x.x==="number"&&x.x>30&&x.x<=100);return it.length?it[0].t-(100-it[0].x):null}
+function roundStartOf(r,samples,next){
+  if(r._restart!=null)return r._restart;
+  const it=samples.filter(x=>x.t>=r.start&&(next==null||x.t<next)&&typeof x.x==="number"&&x.x>30&&x.x<=100);
+  if(!it.length)return null;
+  // several readings: if a later one points to a barrier much later than the first (the round was restarted), take the last start
+  const est=it.map(x=>x.t-(100-x.x));let st=est[0];for(const e of est)if(e>st+20)st=e;return st;
+}
+// Custom games: a round can be restarted (someone died by mistake before it started) or ended by force. A restarted round stays under
+// the same score but runs longer: read the timer more often in long rounds and keep the LAST barrier drop as its start.
+// A round that ended within ~20 s after the barrier with nobody dead and no plant was ended by force: marked void (left out of the numbers).
+async function findRestarts(segs){
+  const cells=[];
+  segs.forEach(rs=>rs.forEach((r,ri)=>{const nx=rs[ri+1];if(!nx||r.start==null||nx.start==null)return;const len=nx.start-r.start;
+    if(len<150)return;for(let t=r.start+10;t<nx.start-4;t+=12)cells.push({r,t})}));
+  if(!cells.length)return;
+  prog(0.95,"やり直したラウンドがないか確認しています…");
+  const res=await readTimes(cells.map(c=>Math.min(duration-0.5,c.t)));
+  const by=new Map();cells.forEach((c,k)=>{const x=parseTile(res[k]);if(typeof x.x==="number"&&x.x>30&&x.x<=100){(by.get(c.r)||by.set(c.r,[]).get(c.r)).push(c.t-(100-x.x))}});
+  by.forEach((est,r)=>{est.sort((a,b)=>a-b);const cl=[];est.forEach(e=>{const c=cl.find(c=>Math.abs(c.v-e)<=5);if(c){c.n++;c.v=(c.v+e)/2}else cl.push({v:e,n:1})});
+    const good=cl.filter(c=>c.n>=2);if(good.length>=2){r._restart=good[good.length-1].v;r.restarted=true}});
+}
+function markVoid(segs){
+  segs.forEach(rs=>rs.forEach((r,ri)=>{const nx=rs[ri+1];if(!nx)return;
+    if(r._st==null&&r.st==null){if(r.start!=null&&nx.start-r.start<40&&!r.planted)r.void=true;return}   // ended during the buy phase
+    const st=r._st??r.st;
+    const alv=Array.isArray(r.alv)?r.alv:[];const deaths=alv.length>1;
+    if(nx.start-st<20&&!deaths&&!r.planted){r.void=true}}));
+}
 // First kill without AI: each agent portrait in the top bar loses its detail when that player dies.
 // Measure the texture of the 10 portrait boxes and find the first moment either side drops below 5 alive.
 // The top bar (agent portraits) is read as one strip; each column gets a "detail" score. A dead player's portrait turns grey and flat.
@@ -761,6 +788,7 @@ async function runAnalysis(){
     segs=buildRounds(samples,"attack").map((rs,si)=>rs.map(r=>({...r,side:sideOf(r.n,starts[si].side)})));
     prog(0.955,"最後のラウンドの勝敗を確認しています…");
     await readFinals(segs);
+    await findRestarts(segs);
     prog(0.96,"ファーストキルを読み取っています…");
     await readFirstKills(segs,samples);
     prog(0.97,"設置したサイトを読み取っています…");
@@ -771,7 +799,7 @@ async function runAnalysis(){
     await readMyDeaths(segs,me);
     let known=[];try{known=await knownMatches(segs,maps)}catch(e){known=[]}
     await readKit(segs,me,maps,known,comps);
-    fillFirstKills(segs);markMine(segs,me);
+    fillFirstKills(segs);markMine(segs,me);markVoid(segs);
     segs.forEach(rs=>rs.forEach(r=>{if(r._st!=null)r.st=Math.round(r._st);delete r._st;delete r._next}));
     prog(1,"完了しました");
     lastResult={coach:COACH,snaps:SNAPS,segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};

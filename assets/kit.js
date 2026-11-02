@@ -64,10 +64,11 @@
   // man-advantage states reached (alive counts us v them), post-plant / retake, attack pace (time left at plant), timing of the first fight.
   function situations(roundLists) {
     const st = {}, out = { states: st, postPlant: [0, 0], retake: [0, 0], pace: { fast: [0, 0], mid: [0, 0], slow: [0, 0], none: [0, 0] }, firstFight: { early: [0, 0], mid: [0, 0], late: [0, 0] }, smallFight: [0, 0], plantState: {},
-      defNone: [0, 0], noPlantRem: { atkWin: [], atkLoss: [], defWin: [], defLoss: [] }, site: {} };
+      pistol: [0, 0], pistolAtk: [0, 0], pistolDef: [0, 0], defNone: [0, 0], noPlantRem: { atkWin: [], atkLoss: [], defWin: [], defLoss: [] }, site: {} };
     const inc = (a, win) => { a[1]++; if (win) a[0]++; };
     roundLists.forEach((rs) => (rs || []).forEach((r, ri) => {
-      if (r.win == null) return;
+      if (r.win == null || r.void) return;   // void = ended by force in a custom game
+      if (r.n === 1 || r.n === 13) { inc(out.pistol, r.win); inc(r.side === "attack" ? out.pistolAtk : out.pistolDef, r.win); }
       const atk = r.side === "attack", planted = !!r.planted || r.plantAt != null;
       // rounds without a plant: how much time was left when the round ended (barrier drop -> next score change)
       if (!planted) {
@@ -96,7 +97,7 @@
   function situationText(roundLists) {
     const o = situations(roundLists);
     const states = Object.entries(o.states).sort((a, b) => b[1][1] - a[1][1]).map(([k, v]) => k + "=" + wr(v)).join(" ");
-    return "team situations (wins/rounds): post_plant_attack=" + wr(o.postPlant) + " retake_defense=" + wr(o.retake) +
+    return "team situations (wins/rounds): pistol_rounds(1st and 13th round)=" + wr(o.pistol) + " (attack " + wr(o.pistolAtk) + ", defense " + wr(o.pistolDef) + ") post_plant_attack=" + wr(o.postPlant) + " retake_defense=" + wr(o.retake) +
       " attack_pace: fast(planted with 60s+ left)=" + wr(o.pace.fast) + " mid(30-59s left)=" + wr(o.pace.mid) + " slow(<30s left)=" + wr(o.pace.slow) + " no_plant=" + wr(o.pace.none) +
       " first_fight: within20s=" + wr(o.firstFight.early) + " 20-45s=" + wr(o.firstFight.mid) + " after45s=" + wr(o.firstFight.late) +
       " small_fight(both sides 2 or fewer at some point)=" + wr(o.smallFight) +

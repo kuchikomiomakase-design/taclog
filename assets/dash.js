@@ -7,7 +7,7 @@
 
   const rate = (a, b) => (b ? Math.round((a / b) * 100) : null);
   const pctText = (a, b) => (b ? rate(a, b) + "%" : "—");
-  const known = (rs) => rs.filter((r) => r.win === true || r.win === false);
+  const known = (rs) => rs.filter((r) => !r.void && (r.win === true || r.win === false));
   const wins = (rs) => rs.filter((r) => r.win === true).length;
   function result(m) { const rs = m.rounds || [], w = wins(rs), l = rs.filter((r) => r.win === false).length; return w > l ? "W" : l > w ? "L" : null; }
   const dateKey = (m) => (m.date || String(m.created_at || "").slice(0, 10)) + "|" + (m.created_at || "");
