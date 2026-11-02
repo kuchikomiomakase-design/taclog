@@ -82,16 +82,20 @@
       h("tbody", {}, rows)));
   }
 
-  function siteTable(rs) {
-    const row = (label, list) => {
+  function siteTable(rs, ms) {
+    const sit = window.TLKit ? TLKit.situations((ms || []).map((m) => m.rounds)).site : {};
+    const pr = (a) => a[1] ? a[0] + "/" + a[1] : "—";
+    const row = (label, list, side) => {
       const sites = ["A", "B", "C"].map((s) => { const x = known(list.filter((r) => r.site === s)); return { s, n: list.filter((r) => r.site === s).length, w: wins(x), k: x.length }; }).filter((x) => x.n);
-      if (!sites.length) return [h("tr", {}, h("td", {}, label), h("td", { colspan: "3", class: "muted" }, "データなし"))];
-      return sites.map((x, i) => h("tr", {}, h("td", {}, i ? "" : label), h("td", {}, x.s + "サイト"), h("td", { class: "num" }, x.n + "回"), h("td", {}, bar(rate(x.w, x.k)))));
+      if (!sites.length) return [h("tr", {}, h("td", {}, label), h("td", { colspan: "4", class: "muted" }, "データなし"))];
+      return sites.map((x, i) => { const st = sit[side + ":" + x.s];
+        return h("tr", {}, h("td", {}, i ? "" : label), h("td", {}, x.s + "サイト"), h("td", { class: "num" }, x.n + "回"), h("td", {}, bar(rate(x.w, x.k))),
+          h("td", { class: "small" }, st && st.n ? h("span", {}, "平均 " + (st.us / st.n).toFixed(1) + " 対 " + (st.them / st.n).toFixed(1), h("br"), h("span", { class: "muted" }, "有利 " + pr(st.adv) + " ・ 同数 " + pr(st.even) + " ・ 不利 " + pr(st.dis))) : h("span", { class: "muted" }, "—"))); });
     };
     const att = rs.filter((r) => r.side === "attack" && r.planted), def = rs.filter((r) => r.side === "defense" && r.planted);
     return h("div", { class: "tblbox" }, h("table", { class: "tbl dtbl" },
-      h("thead", {}, h("tr", {}, ["", "サイト", "設置", "そのラウンドの勝率"].map((t) => h("th", {}, t)))),
-      h("tbody", {}, ...row("アタック(自チームが設置)", att), ...row("ディフェンス(相手が設置=リテイク)", def))));
+      h("thead", {}, h("tr", {}, ["", "サイト", "設置", "そのラウンドの勝率", "設置した瞬間の人数(自分たち対相手)と勝ち数"].map((t) => h("th", {}, t)))),
+      h("tbody", {}, ...row("アタック(自チームが設置)", att, "attack"), ...row("ディフェンス(相手が設置=リテイク)", def, "defense"))));
   }
 
   // ---- players (each recorded point of view = one teammate, by agent) ----
@@ -159,6 +163,9 @@
       h("p", { class: "small muted" }, "人数はバリアが消えてからの生存人数(自分たちv相手)。攻めの速さは、アタックで設置したときの残り時間で分けています。"),
       h("div", { class: "dgrid" }, t("ポストプラント(アタック設置後)", o.postPlant), t("リテイク(ディフェンス)", o.retake), t("少人数戦(両方2人以下)", o.smallFight), t("クラッチ(1人残り)", clutch)),
       h("div", { class: "dgrid" }, t("速攻(残り60秒以上で設置)", o.pace.fast), t("ふつう(残り30〜59秒)", o.pace.mid), t("ゆっくり(残り30秒未満)", o.pace.slow), t("設置なし(アタック)", o.pace.none)),
+      (() => { const nr = o.noPlantRem, av = (a) => a.length ? "終了時の残り 平均" + Math.round(a.reduce((x, y) => x + y, 0) / a.length) + "秒" : "";
+        return h("div", { class: "dgrid" }, t("設置なし・アタック(勝ち)", [o.pace.none[0], o.pace.none[1]], av(nr.atkWin)), tile("設置なし・アタック(負け)", o.pace.none[1] - o.pace.none[0], o.pace.none[1], av(nr.atkLoss)),
+          t("相手が設置しなかった(ディフェンス)", o.defNone, av(nr.defWin.concat(nr.defLoss))), tile("設置させずに勝った割合", o.defNone[0], o.defNone[1], "ディフェンスで設置なしのラウンド")); })(),
       h("div", { class: "dgrid" }, t("人数有利 5v4", pick("5v4")), t("人数不利 4v5", pick("4v5")), t("2v2", pick("2v2")), t("1v1", pick("1v1"))));
   }
   function placeTable(ms) {
@@ -206,7 +213,7 @@
 
     box.append(
       h("div", { class: "dgrid" }, tile("試合勝率", W, W + Lo, "ラウンド勝率 " + pctText(wins(all), all.length)), tile("アタック取得率", wins(att), att.length), tile("ディフェンス取得率", wins(def), def.length), recent),
-      h("div", { class: "dgrid" }, tile("ファーストキル取得率", fkUs.length, fk.length), tile("FKを取ったラウンドの勝率", wins(known(fkUs)), known(fkUs).length), tile("FKを取られたラウンドの勝率", wins(known(fkThem)), known(fkThem).length), tile("ピストル(1・13R)取得率", wins(pistol), pistol.length)),
+      h("div", { class: "dgrid" }, tile("ファーストキル取得率", fkUs.length, fk.length, "判定できた" + fk.length + "/" + rs.filter((r) => r.win != null).length + "ラウンド"), tile("FKを取ったラウンドの勝率", wins(known(fkUs)), known(fkUs).length), tile("FKを取られたラウンドの勝率", wins(known(fkThem)), known(fkThem).length), tile("ピストル(1・13R)取得率", wins(pistol), pistol.length)),
       playerTable(ms) || (myK.length || myD.length || sv.length ? h("div", { class: "dgrid" }, tile("配信者のファーストキル率", myK.filter((r) => r.myFk).length, myK.length, "録画した人"), tile("配信者のファーストデス率", myD.filter((r) => r.myFd).length, myD.length, "録画した人"), tile("配信者の生存率", sv.filter((r) => r.myDead === false).length, sv.length, "最後まで生き残ったラウンド"), lifeTile) : null),
       situationSection(ms),
       kitTable(ms),
@@ -214,7 +221,7 @@
       h("section", { class: "card dsec" }, h("h3", {}, "ラウンド勝率の推移(直近20試合)"), h("p", { class: "small muted" }, "点にマウスを乗せると、その試合の内容が出ます。点線は50%。緑の点は勝った試合、赤は負けた試合です。"), trendChart(ms)),
       h("div", { class: "dcols" },
         h("section", { class: "card dsec" }, h("h3", {}, "マップ別"), mapTable(ms)),
-        h("section", { class: "card dsec" }, h("h3", {}, "設置サイト別"), h("p", { class: "small muted" }, "アタックは設置してからの勝率、ディフェンスは相手に設置されてからの勝率(リテイク)です。"), siteTable(rs))));
+        h("section", { class: "card dsec" }, h("h3", {}, "設置サイト別"), h("p", { class: "small muted" }, "アタックは設置してからの勝率、ディフェンスは相手に設置されてからの勝率(リテイク)です。"), siteTable(rs, ms))));
   }
 
   function renderWithAds() { render(); loadPovs().then((changed) => { if (changed && !$("view-dash").hidden) render(); }); const ad = $("adDash"); if (!ad) return; if (APP.team && APP.team.plan === "free" && window.TLAds) { TLAds.fill(ad, "dash", { title: "デバイスを見直すなら" }); TLAds.wide($("adWide")); } else { ad.hidden = true; if ($("adWide")) $("adWide").hidden = true; } }

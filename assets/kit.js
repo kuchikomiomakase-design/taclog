@@ -63,11 +63,18 @@
   // Team situations from the round list of each match (counted once per match):
   // man-advantage states reached (alive counts us v them), post-plant / retake, attack pace (time left at plant), timing of the first fight.
   function situations(roundLists) {
-    const st = {}, out = { states: st, postPlant: [0, 0], retake: [0, 0], pace: { fast: [0, 0], mid: [0, 0], slow: [0, 0], none: [0, 0] }, firstFight: { early: [0, 0], mid: [0, 0], late: [0, 0] }, smallFight: [0, 0], plantState: {} };
+    const st = {}, out = { states: st, postPlant: [0, 0], retake: [0, 0], pace: { fast: [0, 0], mid: [0, 0], slow: [0, 0], none: [0, 0] }, firstFight: { early: [0, 0], mid: [0, 0], late: [0, 0] }, smallFight: [0, 0], plantState: {},
+      defNone: [0, 0], noPlantRem: { atkWin: [], atkLoss: [], defWin: [], defLoss: [] }, site: {} };
     const inc = (a, win) => { a[1]++; if (win) a[0]++; };
-    roundLists.forEach((rs) => (rs || []).forEach((r) => {
+    roundLists.forEach((rs) => (rs || []).forEach((r, ri) => {
       if (r.win == null) return;
       const atk = r.side === "attack", planted = !!r.planted || r.plantAt != null;
+      // rounds without a plant: how much time was left when the round ended (barrier drop -> next score change)
+      if (!planted) {
+        if (!atk) inc(out.defNone, r.win);
+        const nx = rs[ri + 1];
+        if (r.st != null && nx && nx.start != null) { const rem = Math.max(0, Math.min(100, Math.round(100 - (nx.start - r.st)))); out.noPlantRem[(atk ? "atk" : "def") + (r.win ? "Win" : "Loss")].push(rem); }
+      }
       if (planted && atk) inc(out.postPlant, r.win);
       if (planted && !atk) inc(out.retake, r.win);
       if (atk) { const x = typeof r.plant === "number" ? r.plant : null; inc(out.pace[!planted ? "none" : x == null ? "mid" : x >= 60 ? "fast" : x >= 30 ? "mid" : "slow"], r.win); }
@@ -77,10 +84,14 @@
       if (small) inc(out.smallFight, r.win);
       const first = alv.find((x) => x[1] < 5 || x[2] < 5);
       if (first) inc(out.firstFight[first[0] < 20 ? "early" : first[0] < 45 ? "mid" : "late"], r.win);
-      if (planted && typeof r.plant === "number") { const tp = 100 - r.plant; let s = [5, 5]; alv.forEach(([t, u, e]) => { if (t <= tp) s = [u, e]; }); const k = (atk ? "post-plant " : "retake ") + s[0] + "v" + s[1]; inc(out.plantState[k] = out.plantState[k] || [0, 0], r.win); }
+      if (planted && typeof r.plant === "number") { const tp = 100 - r.plant; let s = [5, 5]; alv.forEach(([t, u, e]) => { if (t <= tp) s = [u, e]; }); const k = (atk ? "post-plant " : "retake ") + s[0] + "v" + s[1]; inc(out.plantState[k] = out.plantState[k] || [0, 0], r.win);
+        // per site and side: numbers at the moment of the plant (advantage / even / disadvantage for our team)
+        if (r.site) { const key = (atk ? "attack" : "defense") + ":" + r.site, x = (out.site[key] = out.site[key] || { adv: [0, 0], even: [0, 0], dis: [0, 0], us: 0, them: 0, n: 0 });
+          inc(x[s[0] > s[1] ? "adv" : s[0] === s[1] ? "even" : "dis"], r.win); x.us += s[0]; x.them += s[1]; x.n++; } }
     }));
     return out;
   }
+  const avg = (a) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) + "(" + a.length + "R)" : "-");
   const wr = (a) => a[0] + "/" + a[1] + (a[1] ? "(" + Math.round((a[0] / a[1]) * 100) + "%)" : "");
   function situationText(roundLists) {
     const o = situations(roundLists);
@@ -90,7 +101,9 @@
       " first_fight: within20s=" + wr(o.firstFight.early) + " 20-45s=" + wr(o.firstFight.mid) + " after45s=" + wr(o.firstFight.late) +
       " small_fight(both sides 2 or fewer at some point)=" + wr(o.smallFight) +
       "\nreached_state(us v them, round win rate when this state happened)=" + (states || "-") +
-      "\nat_plant=" + (Object.entries(o.plantState).map(([k, v]) => k.replace(" ", "_") + "=" + wr(v)).join(" ") || "-");
+      "\nat_plant=" + (Object.entries(o.plantState).map(([k, v]) => k.replace(" ", "_") + "=" + wr(v)).join(" ") || "-") +
+      "\nat_plant_by_site=" + (Object.entries(o.site).map(([k, v]) => k + "(avg " + (v.us / v.n).toFixed(1) + "v" + (v.them / v.n).toFixed(1) + " advantage=" + wr(v.adv) + " even=" + wr(v.even) + " disadvantage=" + wr(v.dis) + ")").join(" ") || "-") +
+      "\nno_plant: defense_enemy_did_not_plant=" + wr(o.defNone) + " avg_time_left_when_round_ended(sec): attack_won=" + avg(o.noPlantRem.atkWin) + " attack_lost=" + avg(o.noPlantRem.atkLoss) + " defense_won=" + avg(o.noPlantRem.defWin) + " defense_lost=" + avg(o.noPlantRem.defLoss);
   }
   function placeText(matches) {
     const kd = teamKD(matches).map((x) => "team_kd agent=" + String(x.agent).replace(/[,\s]+/g, "_") + " kills=" + x.k + " deaths=" + x.d).join("\n");

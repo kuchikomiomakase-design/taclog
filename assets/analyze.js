@@ -144,7 +144,12 @@ function aliveNow(){
 }
 async function readFirstKills(segs,samples){
   const jobs=[];
-  segs.forEach((rs,si)=>rs.forEach((r,ri)=>{const next=rs[ri+1]?rs[ri+1].start:null;const st=roundStartOf(r,samples,next);r._next=next;if(st==null)return;r._st=st;
+  segs.forEach((rs,si)=>rs.forEach((r,ri)=>{const next=rs[ri+1]?rs[ri+1].start:null;let st=roundStartOf(r,samples,next);r._next=next;
+    if(st!=null)r._st=st;
+    // no timer was read for this round: the first kill can still be found from an estimated start (score change + end of round + buy phase).
+    // Only for the first kill; ability / ult numbers keep using the exact barrier time, so the buy phase is never counted there.
+    else if(r.n!==1&&r.n!==13&&r.start!=null)st=r.start+37;
+    if(st==null)return;
     jobs.push({si,ri,st,end:Math.min(st+75,r.plantAt!=null?r.plantAt+40:Infinity,next??Infinity,duration-0.3)})}));
   if(!jobs.length)return;
   prog(0.95,"ファーストキルの読み取りを準備しています…");
