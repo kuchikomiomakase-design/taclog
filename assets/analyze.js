@@ -103,7 +103,7 @@ async function readComps(){
 
 function firstBuy(r,samples){const it=samples.filter(x=>x.t>=r.start&&typeof x.x==="number");return it.length?it[0].t:r.start+2}
 async function gridOf(cells,cw,chh,cols,draw){const cv=document.createElement("canvas");const rows=Math.ceil(cells.length/cols);cv.width=cols*cw;cv.height=rows*chh;const x=cv.getContext("2d");x.fillStyle="#000";x.fillRect(0,0,cv.width,cv.height);x.font="bold 18px monospace";x.textBaseline="top";
-  for(let i=0;i<cells.length;i++){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(cells[i].t);const ox=(i%cols)*cw,oy=Math.floor(i/cols)*chh;draw(x,ox,oy);x.fillStyle="#F2B33D";x.fillRect(ox,oy,34,24);x.fillStyle="#000";x.fillText(String(i+1),ox+4,oy+3)}
+  for(let i=0;i<cells.length;i++){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(cells[i].t);const ox=(i%cols)*cw,oy=Math.floor(i/cols)*chh;draw(x,ox,oy,cells[i]);x.fillStyle="#F2B33D";x.fillRect(ox,oy,34,24);x.fillStyle="#000";x.fillText(String(i+1),ox+4,oy+3)}
   return await new Promise(r=>cv.toBlob(r,"image/jpeg",0.88))}
 async function readSides(cands){
   if(!cands.length)return[];const W=video.videoWidth,H=video.videoHeight;
@@ -225,6 +225,55 @@ async function findStarts(segs,samples){
   segs.forEach(rs=>{const st=rs.map((r,ri)=>({r,v:r._restart!=null?r._restart:roundStartOf(r,samples,rs[ri+1]?rs[ri+1].start:null,rs[ri-1]?rs[ri-1].start:null)}));
     for(let i=1;i<st.length;i++){const a=st[i-1],b=st[i];if(a.v!=null&&b.v!=null&&b.v-a.v<25){a.r._noStart=true;b.r._noStart=true}}});
 }
+// ---------- kill feed (top right), read from the pixels ----------
+// Each kill is one line: the killer part is teal (recording team) or red (enemy), the victim part the other colour.
+// Lines stack downwards (newest at the bottom) and disappear from the top after a few seconds.
+const FD={x:0.68,y:0.035,w:0.32,h:0.22},FW=614,FH=238;
+const feedCv=document.createElement("canvas");feedCv.width=FW;feedCv.height=FH;const feedX=feedCv.getContext("2d",{willReadFrequently:true});
+function feedNow(){
+  const W=video.videoWidth,H=video.videoHeight;feedX.drawImage(video,W*FD.x,H*FD.y,W*FD.w,H*FD.h,0,0,FW,FH);
+  const d=feedX.getImageData(0,0,FW,FH).data,T=new Uint8Array(FW*FH),Rd=new Uint8Array(FW*FH),tc=new Uint16Array(FH),rc=new Uint16Array(FH);
+  for(let y=0;y<FH;y++)for(let x=0;x<FW;x++){const i=y*FW+x,r=d[i*4],g=d[i*4+1],b=d[i*4+2];
+    if(g>r+35&&b>r+15&&g>110){T[i]=1;tc[y]++}else if(r>165&&r>g+70&&r>b+55){Rd[i]=1;rc[y]++}}
+  const rows=[];let y=0;
+  while(y<FH){
+    if(tc[y]>=FW*0.08&&rc[y]>=FW*0.08){const y0=y;while(y<FH&&tc[y]>=FW*0.05&&rc[y]>=FW*0.05)y++;const n=y-y0;
+      if(n>=26){   // a whole line (a line sliding in or out is thinner: seen at the next look)
+        let st=0,sr=0,ct=0,cr=0,mxT=-1,mxR=-1;
+        for(let x=0;x<FW;x++){let a=0,b=0;for(let yy=y0;yy<y;yy++){a+=T[yy*FW+x];b+=Rd[yy*FW+x]}
+          if(a>=n*0.5){st+=x;ct++;mxT=x}if(b>=n*0.5){sr+=x;cr++;mxR=x}}
+        if(ct>=20&&cr>=20){const us=st/ct<sr/cr;rows.push({y0,y1:y,team:us?"us":"them",split:us?mxT:mxR})}
+      }
+    }else y++;
+  }
+  return rows;
+}
+// new lines = what is left after the old ones that are still there (the oldest may have gone from the top)
+function feedNew(P,C){const same=(a,b)=>a.team===b.team&&Math.abs(a.split-b.split)<=6;
+  for(let d=0;d<=P.length;d++){const k=Math.min(P.length-d,C.length);let ok=true;for(let i=0;i<k;i++)if(!same(P[d+i],C[i])){ok=false;break}if(ok)return C.slice(Math.min(C.length,P.length-d))}
+  return C}
+async function readFeed(segs,jobs){
+  let done=0;
+  for(const j of jobs){
+    prog(0.95,"キルログを読み取っています… ("+(++done)+"/"+jobs.length+"ラウンド)");
+    const r=segs[j.si][j.ri],base=r._st!=null?r._st:j.st,from=j.est?Math.max(0,base-10):base+0.5;
+    const end=Math.min(r._next!=null?r._next-1:base+145,base+145,duration-0.3);
+    let P=null;const kills=[];
+    for(let t=from;t<=end;t+=1.5){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const C=feedNow();
+      if(P===null){P=C;continue}   // lines already there at the first look belong to the previous round
+      const nw=feedNew(P,C);
+      // the line appeared since the last look: find the moment (0.25 s steps back)
+      if(nw.length){let at=t;for(let b=t-0.25;b>t-1.5;b-=0.25){await seek(b);if(feedNew(P,feedNow()).length>=nw.length)at=b;else break}
+        nw.forEach((x,k)=>kills.push({t:Math.round((at-base)*4)/4,team:x.team,at,y0:x.y0,y1:x.y1,frame:t,row:C.indexOf(x)}));await seek(t)}
+      P=C;
+    }
+    // deaths per team from the kill feed (killer teal = an enemy died)
+    const alv=[[0,5,5]];let u=5,e=5;
+    kills.forEach(k=>{if(k.team==="us")e=Math.max(0,e-1);else u=Math.max(0,u-1);alv.push([Math.max(0,Math.round(k.t)),u,e])});
+    r._feed={kills,alv,base,est:j.est};
+    const f=kills[0];r.fk=f?f.team:null;r.fkT=f?f.frame:null;r._fkRow=f?{y0:f.y0,y1:f.y1}:null;r.fkFrom="feed";
+  }
+}
 async function readFirstKills(segs,samples){
   const jobs=[];
   segs.forEach((rs,si)=>rs.forEach((r,ri)=>{const next=rs[ri+1]?rs[ri+1].start:null;if(r._noStart){r._next=next;return}let st=roundStartOf(r,samples,next,rs[ri-1]?rs[ri-1].start:null);r._next=next;
@@ -239,8 +288,14 @@ async function readFirstKills(segs,samples){
   const aliveT=jobs.slice(0,14).map(j=>j.st+3),endT=samples.filter(x=>x.x==="E").map(x=>x.t).slice(0,14);
   if(endT.length<3)jobs.slice(0,14).forEach(j=>endT.push(Math.max(j.st+3,j.end-2)));
   await calibrate(aliveT,endT);
+  // 1) the kill feed: every kill is a coloured line (green = killer on the recording team, red = enemy), newest at the bottom.
+  //    Read on this PC from the pixels (no AI): the first line of the round is the first kill, in the right order even for trades.
+  await readFeed(segs,jobs);
+  // 2) a map where the kill feed showed nothing at all (e.g. colour-blind mode changes the colours): fall back to the portraits
+  const feedMaps=new Set(jobs.filter(j=>segs[j.si][j.ri]._feed&&segs[j.si][j.ri]._feed.kills.length).map(j=>j.si));
+  const portraitJobs=jobs.filter(j=>!feedMaps.has(j.si));
   let done=0;
-  for(const j of jobs){
+  for(const j of portraitJobs){
     prog(0.95,"ファーストキルを読み取っています… ("+(++done)+"/"+jobs.length+"ラウンド)");
     // Only a few frames per round: confirm everyone is alive at the start, then jump (binary search) to the moment the first player dies, then skip to the next round.
     let ok=null,fk=null,fkT=null;const memo={};
@@ -280,17 +335,20 @@ async function readFirstKillers(segs){
   const BAD=/^(unknown|unk|\?+|-+|不明|none|n\/a)$/i;
   for(let i=0;i<cells.length;i+=16){
     const part=cells.slice(i,i+16);
-    const blob=await gridOf(part,440,176,2,(x,ox,oy)=>x.drawImage(video,W*0.66,H*0.035,W*0.34,H*0.17,ox+36,oy,404,174));
+    const blob=await gridOf(part,440,176,2,(x,ox,oy,c)=>{const r0=segs[c.si][c.ri],rw=r0._fkRow;
+      if(rw){const y0=H*(FD.y+Math.max(0,rw.y0-3)/FH*FD.h),hh=H*((rw.y1-rw.y0+6)/FH*FD.h);x.drawImage(video,W*FD.x,y0,W*FD.w,hh,ox+36,oy+50,404,Math.round(404*hh/(W*FD.w)))}
+      else x.drawImage(video,W*0.66,H*0.035,W*0.34,H*0.17,ox+36,oy,404,174)});
     const want=part.map((c,k)=>{const f=segs[c.si][c.ri].fk;return (k+1)+":"+(f==="us"?"green":f==="them"?"red":"any")}).join(", ");
-    try{const r=await SAMPLE.json("Each numbered cell is the kill feed (top-right of a VALORANT screen) at the moment of the first kill of a round. An entry is: killer agent portrait (and name), weapon, victim agent portrait (and name). Green/teal entries = killer on the player's team, red = enemy team. For each cell take the entry of the given colour (if several, the oldest one; 'any' = whichever entry is there): "+want+". Identify both AGENTS from the portraits (names may be hidden or blurred). Use only these agent names: "+AGENTS.join(", ")+". "+LOOK+" Reply only JSON with one string per cell in order: {\"k\":[\"Jett>Sova|g\",\"-\"]} = killer agent > victim agent, then |g for green or |r for red. Use \"-\" if unreadable, and ? for one unreadable side.",{images:[blob],signal:ctl.signal,modelTier:"default",task:"killers"});
+    try{const r=await SAMPLE.json("Each numbered cell shows the kill feed line of the first kill of a round (top-right of a VALORANT screen): killer agent portrait and name on the LEFT, weapon, victim name and agent portrait on the RIGHT. Green/teal killer part = killer on the player's team, red = enemy team. Colour of each cell's killer: "+want+". Identify both AGENTS from the portraits. "+(()=>{const cs=(lastCompsBy&&lastCompsBy[0])||{left:[],right:[]};return cs.left.length&&cs.right.length?"Only these agents are in the match: player's team (green) = "+cs.left.join(", ")+"; enemy team (red) = "+cs.right.join(", ")+". The killer is from the team of its colour, the victim from the other team. ":"Use only these agent names: "+AGENTS.join(", ")+". "})()+LOOK+" Reply only JSON with one string per cell in order: {\"k\":[\"Jett>Sova|g\",\"-\"]} = killer agent > victim agent, then |g for green or |r for red. Use \"-\" if unreadable, and ? for one unreadable side.",{images:[blob],signal:ctl.signal,modelTier:"default",task:"killers"});
       const arr=Array.isArray(r.k)?r.k:[];
       part.forEach((c,k)=>{const r0=segs[c.si][c.ri],raw=String(arr[k]||"").trim(),m=raw.match(/^(.*?)\|\s*([gr])\s*$/i),body=(m?m[1]:raw).trim();
         const [kn0,vn0]=body.split(">").map(x=>String(x||"").trim().slice(0,30));
         // only agents of this match (both teams); anything else is a misread and stays unknown
         const cs=(lastCompsBy&&lastCompsBy[c.si])||{left:[],right:[]},inMatch=cs.left.concat(cs.right);
-        const fix=n=>{const a=agentOf(n);if(!a)return null;return !inMatch.length||inMatch.includes(a)?a:null};
+        const own=r0.fk==="us"?cs.left:r0.fk==="them"?cs.right:inMatch,opp=r0.fk==="us"?cs.right:r0.fk==="them"?cs.left:inMatch;
+        const fixIn=(n,list)=>{const a=agentOf(n);if(!a)return null;return !list.length||list.includes(a)?a:null},fix=n=>fixIn(n,inMatch);
         r0._fkByRaw=agentOf(kn0);r0._fkVicRaw=agentOf(vn0);
-        const kn=fix(kn0),vn=fix(vn0);
+        const kn=fixIn(kn0,own),vn=fixIn(vn0,opp);
         if(kn)r0.fkBy=kn;
         if(vn)r0.fkVictim=vn;
         if(r0.fk==="tie"&&m)r0.fk=m[2].toLowerCase()==="g"?"us":"them"});
@@ -539,7 +597,7 @@ async function readKit(segs,me,maps,known,comps){
     try{const blobs=await snapEnd(snap);if(blobs.length)((SNAPS[j.si]=SNAPS[j.si]||{})[j.r.n]=blobs)}catch(e){}
     // An attack win without a plant needs kills: if nobody died in the window, the start was probably wrong - look wider (earlier)
     {const atkWin=(j.r.side==="attack")===(j.r.win===true);
-      if(j.r.win!=null&&atkWin&&!j.r.planted&&!S.some(x=>x.us<5||x.en<5)){
+      if(!j.r._feed&&j.r.win!=null&&atkWin&&!j.r.planted&&!S.some(x=>x.us<5||x.en<5)){
         const rs=segs[j.si],ri=rs.indexOf(j.r),pv=rs[ri-1],from=Math.max(pv&&pv.start!=null?pv.start+15:0,j.base-70);
         const extra=[];for(let t=from;t<j.a;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const al=aliveNow();extra.push({t,us:al[0],en:al[1],ok:false,bars:[],held:null})}
         if(extra.some(x=>x.us<5||x.en<5)){S.unshift(...extra);j.a=from}
@@ -550,9 +608,14 @@ async function readKit(segs,me,maps,known,comps){
     for(let i=0;i<S.length;i++){const nx=S[i+1];
       const u=nx?Math.max(S[i].us,nx.us):S[i].us,e=nx?Math.max(S[i].en,nx.en):S[i].en;
       if(u<cu||e<ce){events.push({j,t:S[i].t,n:(cu-Math.min(cu,u))+(ce-Math.min(ce,e))});cu=Math.min(cu,u);ce=Math.min(ce,e);alv.push([Math.max(0,Math.round(S[i].t-j.base)),cu,ce])}}
+    // the kill feed is exact (each kill once, with its team): use it instead of the portraits when it was read
+    const dropMine=()=>{for(let q=events.length-1;q>=0;q--)if(events[q].j===j)events.splice(q,1)};
+    if(j.r._feed){const F=j.r._feed;dropMine();alv.length=0;F.alv.forEach(x=>alv.push(x));
+      const shift=F.base-j.base;if(shift)alv.forEach(x=>{if(x[0]>0)x[0]=Math.max(0,Math.round(x[0]+shift))});
+      const g={};F.kills.forEach(k=>{(g[k.at]=g[k.at]||[]).push(k)});Object.keys(g).map(Number).sort((a,b)=>a-b).forEach(t=>events.push({j,t:Math.min(j.end,t+0.5),n:g[t].length}))}
     j.r.alv=alv;j.r.fights=[];
     const kr=known&&known[j.si]?(known[j.si].rounds||[]).find(x=>x.n===j.r.n):null;
-    if(kr&&Array.isArray(kr.fights)){j.r.fights=kr.fights.map(f=>({...f}));events.splice(events.length-(alv.length-1),alv.length-1)}   // already read from a teammate's recording of the same match
+    if(kr&&Array.isArray(kr.fights)){j.r.fights=kr.fights.map(f=>({...f}));dropMine()}   // already read from a teammate's recording of the same match
     // a couple of moments per round where the player is alive in their own view: minimap + location name, for the reference sheet
     if(j.b!=null&&!(known&&known[j.si]))[8,24,40].forEach(d=>{if(j.a+d<=j.b)refs.push({si:j.si,t:j.a+d})});
     if(j.b==null||!hud)continue;
@@ -682,7 +745,7 @@ function reconcileComps(segs,compsBy){
 function fillFirstKills(segs){
   segs.forEach(rs=>rs.forEach(r=>{
     const f=(Array.isArray(r.fights)?r.fights:[]).slice().sort((a,b)=>a.t-b.t)[0];
-    if(r.fk==null){
+    if(r.fk==null&&!r._feed){
       const a=Array.isArray(r.alv)?r.alv.find(x=>x[1]<5||x[2]<5):null;
       if(a)r.fk=a[1]<5&&a[2]<5?(f&&f.g!=null?(f.g?"us":"them"):null):a[2]<5?"us":"them";
       else if(f&&f.g!=null)r.fk=f.g?"us":"them";
@@ -956,7 +1019,7 @@ async function runAnalysis(){
     await readKit(segs,me,maps,known,comps);
     reconcileComps(segs,compsBy);fillFirstKills(segs);markMine(segs,me);markVoid(segs);
     TRAIN=null;try{await collectTraining(segs,maps,comps,me)}catch(e){if(e&&e.code==="cancelled")throw e}
-    segs.forEach(rs=>rs.forEach(r=>{if(r._st!=null)r.st=Math.round(r._st);delete r._st;delete r._next}));
+    segs.forEach(rs=>rs.forEach(r=>{if(r._st!=null)r.st=Math.round(r._st);delete r._st;delete r._next;delete r._feed;delete r._fkRow;delete r._noStart}));
     prog(1,"完了しました");
     lastResult={compsBy,coach:COACH,snaps:SNAPS,segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
     showResult();
@@ -989,37 +1052,46 @@ function showResult(){
   if(R.segs.every(rs=>rs.every(r=>!r.fk)))box.append(h("div",{class:"notice"},"この録画ではファーストキルを読み取れませんでした。画面上の顔アイコン(生存状況)の位置がいつもと違う可能性があります。試合中の画面のスクリーンショットを1枚お問い合わせから送ってください。"));
   if(R.segs.length>1)box.append(h("p",{class:"small muted",style:"margin:0"},"途中でスコアが0-0に戻ったので、別のマップとして分けました。"));
   box.append(h("p",{class:"small muted",style:"margin:0"},"マップは録画のミニマップから自動で判定しました。違っていたら、保存後に試合チャンネルで直せます。設置時の残り時間は、読み取り間隔の半分くらいの誤差があります。ファーストキルは生存人数の変化から1秒単位で判定し、その瞬間のキルログから取った人を読んでいます。"+(R.starts&&R.starts.every(x=>x.auto)?" 攻守は画面の表示から自動で判定しました。":" 攻守を自動で判定できなかったマップは、手順2で選んだ「最初の攻守」を使っています。")));
-  compsCheck(R,box);
+  const cc=compsCheck(R,box);
   const save=h("button",{type:"button",class:"btn primary"},"この結果を保存する");
   save.onclick=async()=>{save.disabled=true;try{
     const sv=await saveLast({date:$("mDate").value,opp:$("mOpp").value.trim(),map:$("mMap").value,yt:$("mYt").value.trim()});
     save.textContent=sv&&sv.merged&&!sv.created?"同じ試合にまとめました(別の視点)":"保存しました";APP.reloadMatches();box.append(h("div",{class:"row"},h("a",{class:"btn",href:"#ask"},"AIに質問する →")))}catch(e){box.append(h("div",{class:"notice"},TL.errText(e)));save.disabled=false}};
-  box.append(h("div",{class:"row"},save));
+  box.append(h("div",{class:"row"},save));cc.bind(save);
 }
 
 // Agents are the one thing a picture reader can mix up (Viper/Vyse, Fade/Killjoy...). Show the real portraits from the recording
 // next to what was read, so the person confirms or fixes the 10 agents before saving. Names already used in the rounds follow the fix.
 function compsCheck(R,box){
+  const checks=[];
   R.segs.forEach((rs,si)=>{
     const c=(R.compsBy&&R.compsBy[si])||R.comps;if(!c)return;
     c.left=(c.left||[]).slice(0,5);c.right=(c.right||[]).slice(0,5);while(c.left.length<5)c.left.push("");while(c.right.length<5)c.right.push("");
     if(R.compsBy)R.compsBy[si]=c;
-    const r0=rs.find(r=>r.st!=null&&Array.isArray(r.alv)&&r.alv.length)||rs.find(r=>r.st!=null);
-    const cv=document.createElement("canvas");cv.width=860;cv.height=Math.round(860*(SY1-SY0)/(SX1-SX0)*video.videoHeight/video.videoWidth);cv.style.cssText="width:100%;max-width:860px;border-radius:6px;display:block";
-    if(r0)(async()=>{try{await seek(Math.min(duration-0.3,r0.st+3));const W=video.videoWidth,H=video.videoHeight;cv.getContext("2d").drawImage(video,W*SX0,H*SY0,W*(SX1-SX0),H*(SY1-SY0),0,0,cv.width,cv.height)}catch(e){}})();
+    const r0=rs.find(r=>r.st!=null);
+    // one enlarged portrait above each choice, cut from the top bar right after the barrier drop (everyone alive, so every slot is filled)
+    const sl=SLOTS||defaultSlots(),pics=[];
+    const pic=()=>{const cv=document.createElement("canvas");cv.width=72;cv.height=72;cv.style.cssText="width:100%;max-width:72px;aspect-ratio:1;border-radius:6px;background:#111;display:block;margin:0 auto 4px";pics.push(cv);return cv};
+    if(r0)(async()=>{try{await seek(Math.min(duration-0.3,r0.st+3));const W=video.videoWidth,H=video.videoHeight,half=0.0165*W*(sl.k||1);
+      pics.forEach((cv,i)=>{const cx=W*(SX0+sl.cols[i]/SW*(SX1-SX0));cv.getContext("2d").drawImage(video,cx-half,H*SY0,half*2,H*(SY1-SY0),0,0,72,72)})}catch(e){}})();
     const other=side=>side==="left"?"right":"left";
-    const sel=(side,i)=>{const s=h("select",{class:"input",style:"min-width:0;padding:4px 6px;font-size:13px"},h("option",{value:""},"—"),AGENTS.map(a=>h("option",{value:a},a)));s.value=c[side][i]||"";
+    const ok=h("span",{class:"pill warn"},"未確認");const st={done:false};checks.push(st);
+    const confirm=()=>{st.done=true;ok.textContent="確認済み";ok.className="pill win";gate()};
+    const sel=(side,i)=>{const s=h("select",{class:"input",style:"min-width:0;width:100%;padding:4px 6px;font-size:13px"},h("option",{value:""},"—"),AGENTS.map(a=>h("option",{value:a},a)));s.value=c[side][i]||"";
       s.onchange=()=>{const was=c[side][i],now=s.value;c[side][i]=now;
         // rename in this map's rounds, only where the old name cannot belong to the other team
         if(was&&now&&!c[other(side)].includes(was))rs.forEach(r=>{["fkBy","fkVictim"].forEach(k=>{if(r[k]===was)r[k]=now});(r.fights||[]).forEach(f=>{if(f.k===was)f.k=now;if(f.v===was)f.v=now})});
-        if(R.me&&R.me[si]===was&&side==="left")R.me[si]=now;ok.textContent="確認済み";ok.className="pill win"};return s};
-    const grid=side=>h("div",{style:"display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px"},[0,1,2,3,4].map(i=>sel(side,i)));
-    const ok=h("span",{class:"pill warn"},"要確認");
-    box.append(h("div",{class:"card",style:"padding:10px;display:grid;gap:6px"},
-      h("div",{class:"row"},h("b",{},(R.segs.length>1?"マップ"+(si+1)+"の":"")+"エージェント構成"),ok,h("span",{class:"small muted"},"録画の画面と見比べて、違っていたら直してください(左が自チーム、どちらも画面の左から順)。")),
-      cv,h("div",{style:"display:grid;grid-template-columns:1fr 1fr;gap:10px"},h("div",{},h("div",{class:"small muted"},"自チーム"),grid("left")),h("div",{},h("div",{class:"small muted"},"相手"),grid("right"))),
-      h("div",{class:"row"},(()=>{const b=h("button",{class:"btn small",type:"button"},"この構成で合っている");b.onclick=()=>{ok.textContent="確認済み";ok.className="pill win"};return b})())));
+        if(R.me&&R.me[si]===was&&side==="left")R.me[si]=now;confirm()};return s};
+    const grid=(side,off)=>h("div",{style:"display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px"},[0,1,2,3,4].map(i=>h("div",{},pic(),sel(side,i))));
+    const lg=grid("left"),rg=grid("right");
+    const b=h("button",{class:"btn small",type:"button"},"見比べて、合っている");b.onclick=confirm;
+    box.append(h("div",{class:"card",style:"padding:10px;display:grid;gap:8px"},
+      h("div",{class:"row"},h("b",{},(R.segs.length>1?"マップ"+(si+1)+"の":"")+"エージェント構成"),ok),
+      h("div",{class:"small muted"},"顔の画像は録画から切り出したものです。下の名前と見比べて、違うところだけ直してください。似ているエージェント(ヴァイパーとヴァイス、レイズとウェイレイなど)はAIが間違えやすいので、ここで必ず確かめてから保存します。"),
+      h("div",{class:"small muted"},"自チーム(画面の左側)"),lg,h("div",{class:"small muted"},"相手(画面の右側)"),rg,h("div",{class:"row"},b)));
   });
+  let saveBtn=null;const gate=()=>{if(saveBtn){const all=checks.every(x=>x.done);saveBtn.disabled=!all;saveBtn.title=all?"":"エージェント構成を確認すると保存できます"}};
+  return{bind:btn=>{saveBtn=btn;gate()}};
 }
 
 // Several players may record the same scrim from their own view. A recording whose rounds match a match already saved
