@@ -664,7 +664,8 @@ function reconcileComps(segs,compsBy){
     for(const side of ["left","right"]){
       const other=side==="left"?"right":"left";let list=(cs[side]||[]).slice();
       const seen=Object.entries(cnt[side]).filter(([a,n])=>n>=2&&!list.includes(a)&&!(cs[other]||[]).includes(a)).sort((a,b)=>b[1]-a[1]).map(([a])=>a);
-      for(const a of seen){const drop=list.find(x=>!cnt[side][x]);if(drop)list[list.indexOf(drop)]=a;else if(list.length<5)list.push(a)}
+      // (replacing portrait-read agents with kill feed names made things worse: the kill feed reads are not reliable enough either)
+      if(list.length<5)for(const a of seen){if(list.length<5)list.push(a)}
       cs[side]=list.slice(0,5);
     }
     // names are now limited to the corrected composition
