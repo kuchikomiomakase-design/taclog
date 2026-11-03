@@ -152,4 +152,6 @@ const PLAN_LIMITS = TRIAL_UNLIMITED
 
 function serviceHeaders() { const k = SERVICE(); const h = { apikey: k }; if (String(k || "").startsWith("eyJ")) h.authorization = "Bearer " + k; return h; }
 
-module.exports = { serviceHeaders, env, send, fail, readBody, readRaw, getUser, rest, membership, claude, parseJSON, stripe, verifyStripe, discord, noPing, PLAN_LIMITS };
+// operator's own teams: no daily / monthly limits (teams.no_limit, set by hand in SQL)
+async function noLimit(teamId) { try { const t = await rest("teams?select=no_limit&id=eq." + teamId, { service: true }); return !!(t && t[0] && t[0].no_limit); } catch (e) { return false; } }
+module.exports = { noLimit, serviceHeaders, env, send, fail, readBody, readRaw, getUser, rest, membership, claude, parseJSON, stripe, verifyStripe, discord, noPing, PLAN_LIMITS };

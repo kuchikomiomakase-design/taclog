@@ -1,5 +1,5 @@
 // POST /api/ask  {teamId, question, history:[{q,a}]}  ->  {answer, chart, scenes}
-const { send, fail, readBody, getUser, membership, rest, claude, parseJSON, PLAN_LIMITS, discord, noPing, env } = require("./_lib");
+const { send, fail, readBody, getUser, membership, rest, claude, parseJSON, PLAN_LIMITS, discord, noPing, env, noLimit } = require("./_lib");
 // Questions TacLog could not answer go to the operator's Discord contact channel (question + why), to find what to build next.
 async function reportUnanswered(m, question, why) {
   try {
@@ -75,7 +75,7 @@ async function look(req, res, body, m, auth, question) {
   const month = new Date().toISOString().slice(0, 7);
   const u = await rest("usage?select=questions,analyses&team_id=eq." + body.teamId + "&month=eq." + month, { service: true });
   const used = u && u[0] ? u[0].questions : 0;
-  if ((await poolUsed(body.teamId, plan, month, used)) >= lim.questions) return fail(res, 429, "question limit", "question_limit");
+  if ((await poolUsed(body.teamId, plan, month, used)) >= lim.questions && !(await noLimit(body.teamId))) return fail(res, 429, "question limit", "question_limit");
   const looks = (Array.isArray(body.looks) ? body.looks : []).slice(0, 2).filter((x) => /^[0-9a-f-]{36}$/i.test(String(x.match || "")) && Number.isInteger(+x.round));
   const images = (Array.isArray(body.images) ? body.images : []).slice(0, 10).filter((b) => typeof b === "string" && b.length < 3_500_000);
   if (!looks.length || !images.length) return fail(res, 400, "画像がありません。");
@@ -108,7 +108,7 @@ module.exports = async (req, res) => {
     const month = new Date().toISOString().slice(0, 7);
     const u = await rest("usage?select=questions,analyses&team_id=eq." + body.teamId + "&month=eq." + month, { service: true });
     const used = u && u[0] ? u[0].questions : 0;
-    if ((await poolUsed(body.teamId, plan, month, used)) >= lim.questions) return fail(res, 429, "question limit", "question_limit");
+    if ((await poolUsed(body.teamId, plan, month, used)) >= lim.questions && !(await noLimit(body.teamId))) return fail(res, 429, "question limit", "question_limit");
 
     const since = new Date(Date.now() - lim.days * 864e5).toISOString().slice(0, 10);
     const matches = await rest("matches?select=id,date,opp,map,comps,rounds&team_id=eq." + body.teamId + "&game=eq." + (["valorant","ow2"].includes(body.game) ? body.game : "valorant") + "&or=(date.gte." + since + ",date.is.null)&order=date.desc&limit=200", { token: auth.token });

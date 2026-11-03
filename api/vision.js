@@ -1,6 +1,6 @@
 // POST /api/vision  {teamId, prompt, images:[base64 jpeg]}  ->  {text}
 // Reads small cropped screenshots of a recording with Claude. The recording itself never leaves the user's PC.
-const { send, fail, readBody, getUser, membership, claude, rest } = require("./_lib");
+const { send, fail, readBody, getUser, membership, claude, rest , noLimit } = require("./_lib");
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") return fail(res, 405, "POST only");
@@ -14,7 +14,7 @@ module.exports = async (req, res) => {
       try {
         const day = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
         const u = await rest("usage_daily?select=maps&team_id=eq." + body.teamId + "&day=eq." + day, { service: true });
-        if (u && u[0] && u[0].maps >= DAILY[plan]) {
+        if (u && u[0] && u[0].maps >= DAILY[plan] && !(await noLimit(body.teamId))) {
           // another player's view of an already analysed match (cheap reads, tasks "pov...") is still fine with the all-views option
           let views = plan === "org";
           if (!views && /^pov/.test(String(body.task || ""))) { const t = await rest("teams?select=pov_option&id=eq." + body.teamId, { service: true }); views = !!(t && t[0] && t[0].pov_option); }
