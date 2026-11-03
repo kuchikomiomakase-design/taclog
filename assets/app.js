@@ -152,7 +152,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
       const win = opt([["", "不明"], ["true", "勝ち"], ["false", "負け"]], r.win == null ? "" : String(r.win));
       const side = opt([["attack", "アタック"], ["defense", "ディフェンス"]], r.side || "attack");
       const plant = opt([["", "設置なし"], ["A", "A"], ["B", "B"], ["C", "C"], ["?", "設置(サイト不明)"]], r.planted ? (r.site || "?") : "");
-      const fk = opt([["", "不明"], ["us", "自チーム"], ["them", "相手"], ["tie", "ほぼ同時"]], r.fk || "");
+      const fk = opt([["", "不明"], ["us", "自チーム"], ["them", "相手"]], r.fk === "tie" ? "" : (r.fk || ""));
       const by = agentSel(r.fkBy), vic = agentSel(r.fkVictim);
       const vd = h("input", { type: "checkbox", title: "強制終了したラウンド(数字に入れない)" }); vd.checked = !!r.void;
       const tr = h("tr", { class: r.n === focusRound ? "focus" : "" }, h("td", { class: "num" }, r.n), h("td", {}, win), h("td", {}, side), h("td", {}, plant), h("td", {}, fk), h("td", {}, by), h("td", {}, vic), h("td", { style: "text-align:center" }, vd));

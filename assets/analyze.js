@@ -239,6 +239,7 @@ async function readFirstKills(segs,samples){
     }
     const r=segs[j.si][j.ri];r.fk=fk;r.fkT=fkT;
   }
+  await settleTies(segs);
   await readFirstKillers(segs);
 }
 
@@ -624,11 +625,11 @@ function fillFirstKills(segs){
     const f=(Array.isArray(r.fights)?r.fights:[]).slice().sort((a,b)=>a.t-b.t)[0];
     if(r.fk==null){
       const a=Array.isArray(r.alv)?r.alv.find(x=>x[1]<5||x[2]<5):null;
-      if(a)r.fk=a[1]<5&&a[2]<5?(f&&f.g!=null?(f.g?"us":"them"):"tie"):a[2]<5?"us":"them";
+      if(a)r.fk=a[1]<5&&a[2]<5?(f&&f.g!=null?(f.g?"us":"them"):null):a[2]<5?"us":"them";
       else if(f&&f.g!=null)r.fk=f.g?"us":"them";
       if(r.fk!=null)r.fkFrom="timeline";
     }
-    if(r.fk&&r.fk!=="tie"&&f&&(f.g===(r.fk==="us"))){if(!r.fkBy&&f.k&&f.k!=="?")r.fkBy=f.k;if(!r.fkVictim&&f.v&&f.v!=="?")r.fkVictim=f.v}
+    if(r.fk&&f&&(f.g===(r.fk==="us"))){if(!r.fkBy&&f.k&&f.k!=="?")r.fkBy=f.k;if(!r.fkVictim&&f.v&&f.v!=="?")r.fkVictim=f.v}
   }));
 }
 
@@ -672,6 +673,19 @@ async function exportTraining(btn){
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="taclog-kyozai-"+String(fileName||"rec").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_")+".zip";document.body.append(a);a.click();a.remove();
     btn.textContent="書き出しました";
   }catch(e){btn.textContent=old;btn.disabled=false;alert("書き出せませんでした:"+(e&&e.message||e))}
+}
+// First kill must be one of the two teams. For rounds still undecided (a trade within the same instant), read the kill feed right
+// after it with the better model: the TOP (oldest) entry is the first kill; its colour says which team got it.
+async function settleTies(segs){
+  const W=video.videoWidth,H=video.videoHeight,cells=[];
+  segs.forEach(rs=>rs.forEach(r=>{if(r.fk!=="tie")return;const t=r.fkT!=null?r.fkT:(r._st!=null&&Array.isArray(r.alv)&&r.alv[1]?r._st+r.alv[1][0]:null);if(t==null){r.fk=null;return}cells.push({r,t:Math.min(duration-0.3,t+0.6)})}));
+  for(let i=0;i<cells.length;i+=12){
+    const part=cells.slice(i,i+12);
+    const blob=await gridOf(part,560,200,2,(x,ox,oy)=>x.drawImage(video,W*0.6,H*0.035,W*0.4,H*0.17,ox+36,oy,520,196));
+    try{const r=await SAMPLE.json("Each numbered cell is the kill feed (top-right of a VALORANT screen) just after the first two kills of a round happened almost at the same time. The TOP line is the OLDEST kill = the first kill of the round. For each cell, is the top line green/teal (killer on the recording team) or red (killer on the enemy team)? Reply only JSON: {\"c\":[\"g\",\"r\",\"-\"]} (- = cannot see).",{images:[blob],signal:ctl.signal,modelTier:"default",task:"ties"});
+      const arr=Array.isArray(r.c)?r.c:[];part.forEach((c,k)=>{const v=String(arr[k]||"").toLowerCase();c.r.fk=v==="g"?"us":v==="r"?"them":null});
+    }catch(e){if(e&&e.code==="cancelled")throw e;part.forEach(c=>{c.r.fk=null})}
+  }
 }
 function markMine(segs,me){
   segs.forEach((rs,si)=>{const mine=agentKey(me[si]);rs.forEach(r=>{
@@ -910,7 +924,7 @@ function showResult(){
     box.append(h("h3",{style:"margin:6px 0 0;font:700 16px var(--f-display)"},(R.segs.length>1?"マップ"+(si+1)+" ・ ":"")+(R.maps&&R.maps[si]?(((window.TACLOG_MAPS||[]).find(m=>m[0]===R.maps[si])||[0,R.maps[si]])[1])+" ・ ":"")+rs.length+"ラウンド ・ "+w+"勝 "+l+"敗"+(rs.some(r=>r.win==null)?"(最後のラウンドは判定なし)":"")));
     box.append(h("div",{class:"tblbox"},h("table",{class:"tbl"},h("thead",{},h("tr",{},["R","攻守","結果","ファーストキル","設置","サイト","設置時の残り","動画の位置"].map(x=>h("th",{},x)))),
       h("tbody",{},rs.map(r=>h("tr",{},h("td",{class:"num"},r.n),h("td",{},sideJa(r.side)),h("td",{},r.win==null?h("span",{class:"pill mute"},"?"):r.win?h("span",{class:"pill win"},"勝ち"):h("span",{class:"pill loss"},"負け")),
-        h("td",{},(r.fk==="us"?"自チーム":r.fk==="them"?"相手":r.fk==="tie"?"同時":"—")+(r.fkBy?":"+r.fkBy+(r.fkVictim?"→"+r.fkVictim:""):"")+(r.myFk?" ★配信者":"")+(r.myFd?" ✕配信者":"")+(r.myDead===false?" ・配信者生存":r.myDead===true?" ・配信者"+r.myDeathT+"秒で死亡":"")),h("td",{},r.planted?(r.side==="attack"?"自チームが設置":"相手が設置"):"—"),h("td",{},r.site||"—"),h("td",{class:"num"},r.plant!=null?mmss(r.plant):"—"),h("td",{class:"num"},fmt(r.plantAt??r.start))))))));
+        h("td",{},(r.fk==="us"?"自チーム":r.fk==="them"?"相手":"—")+(r.fkBy?":"+r.fkBy+(r.fkVictim?"→"+r.fkVictim:""):"")+(r.myFk?" ★配信者":"")+(r.myFd?" ✕配信者":"")+(r.myDead===false?" ・配信者生存":r.myDead===true?" ・配信者"+r.myDeathT+"秒で死亡":"")),h("td",{},r.planted?(r.side==="attack"?"自チームが設置":"相手が設置"):"—"),h("td",{},r.site||"—"),h("td",{class:"num"},r.plant!=null?mmss(r.plant):"—"),h("td",{class:"num"},fmt(r.plantAt??r.start))))))));
   });
   if(R.segs.every(rs=>rs.every(r=>!r.fk)))box.append(h("div",{class:"notice"},"この録画ではファーストキルを読み取れませんでした。画面上の顔アイコン(生存状況)の位置がいつもと違う可能性があります。試合中の画面のスクリーンショットを1枚お問い合わせから送ってください。"));
   if(R.segs.length>1)box.append(h("p",{class:"small muted",style:"margin:0"},"途中でスコアが0-0に戻ったので、別のマップとして分けました。"));
