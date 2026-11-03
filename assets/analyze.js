@@ -71,17 +71,22 @@ const AGENTS=["Astra","Breach","Brimstone","Chamber","Clove","Cypher","Deadlock"
 const agentOf=n=>{const k=String(n||"").toLowerCase().replace(/[^a-z]/g,"");return AGENTS.find(a=>a.toLowerCase().replace(/[^a-z]/g,"")===k)||null};
 // Team compositions per map: the portrait bar from 3 moments inside rounds (everyone alive), enlarged, each read separately, then a vote.
 // Names must be real agents; a name seen only once out of three is dropped.
+// Look-alike portraits at small size (Viper/Vyse, Killjoy/Fade, ...): each portrait is cut out on its own and enlarged,
+// the AI gets short descriptions of the look-alikes, 3 moments are voted.
+const LOOK="Look-alikes, check carefully: Viper = black hair in a bun, GREEN toxic mask/visor, green-black suit; Vyse = WHITE/silver hair, pale skin, PURPLE-violet tones, metallic. Killjoy = YELLOW jacket, beanie, round glasses, headphones; Fade = WHITE-grey hair in a bun, dark blue/black clothes, tattoos. Sage = black hair with blue streak, white-teal outfit; Clove = pink/purple hair, butterfly motif. Omen = hooded, faceless, glowing eyes; Harbor = beard, turquoise water bracer. Reyna = purple glowing eyes; Neon = blue hair in two pigtails. Brimstone = grey beard, bald, beret; Deadlock = blonde short hair, white-grey armor.";
 async function readCompsFor(segs){
-  const W=video.videoWidth,H=video.videoHeight,out=[];
+  const W=video.videoWidth,H=video.videoHeight,out=[],sl=SLOTS||defaultSlots();
+  const colsX=sl.cols.map(c=>SX0+c/SW*(SX1-SX0)),half=0.0165*(sl.k||1);
   for(const rs of segs){
-    const pick=[0.2,0.5,0.8].map(f=>rs[Math.min(rs.length-1,Math.floor(rs.length*f))]).filter(Boolean),cw=1800,ch=Math.round(cw*(H*(SY1-SY0+0.01))/(W*(SX1-SX0)));
+    const pick=[0.2,0.5,0.8].map(f=>rs[Math.min(rs.length-1,Math.floor(rs.length*f))]).filter(Boolean);
     if(!pick.length){out.push({left:[],right:[]});continue}
-    const cv=document.createElement("canvas");cv.width=cw;cv.height=ch*pick.length+20*pick.length;const x=cv.getContext("2d");x.fillStyle="#000";x.fillRect(0,0,cv.width,cv.height);x.font="bold 16px monospace";
+    const P=110,gap=8,cv=document.createElement("canvas");cv.width=10*(P+gap)+60;cv.height=pick.length*(P+24);const x=cv.getContext("2d");x.fillStyle="#000";x.fillRect(0,0,cv.width,cv.height);x.font="bold 14px monospace";x.fillStyle="#F2B33D";
     for(let i=0;i<pick.length;i++){if(ctl.signal.aborted)throw{code:"cancelled"};const r=pick[i];await seek(Math.min(duration-0.5,(r.st??r.start+45)+4));
-      x.fillStyle="#F2B33D";x.fillText("Strip "+(i+1),6,i*(ch+20)+15);x.drawImage(video,W*SX0,0,W*(SX1-SX0),H*(SY1+0.01),0,i*(ch+20)+20,cw,ch)}
+      const oy=i*(P+24);x.fillStyle="#F2B33D";x.fillText("S"+(i+1),4,oy+P/2);
+      colsX.forEach((cx,k)=>{const ox=50+k*(P+gap)+(k>=5?20:0);x.drawImage(video,W*(cx-half),H*SY0,W*half*2,H*(SY1-SY0),ox,oy,P,P);x.fillStyle=k<5?"#3ED8C3":"#FF4655";x.fillText((k<5?"L":"R")+(k%5+1),ox+2,oy+P+14)})}
     const blob=await new Promise(r=>cv.toBlob(r,"image/jpeg",0.92));
-    try{const r=await SAMPLE.json("Each numbered strip is the top bar of a VALORANT screen from the SAME match: 5 agent portraits of the recording team LEFT of the score, 5 of the enemy team RIGHT of it. For EACH strip list the agents left to right. Use only these names: "+AGENTS.join(", ")+". Use \"?\" for a portrait you cannot identify. Reply only JSON: {\"strips\":[{\"left\":[\"Jett\",\"?\"],\"right\":[\"Sova\"]}]}",{images:[blob],signal:ctl.signal,modelTier:"default",task:"comps"});
-      const st=Array.isArray(r.strips)?r.strips:[];const vote=side=>{const c={};st.forEach(x=>[...new Set((x[side]||[]).map(agentOf).filter(Boolean))].forEach(a=>c[a]=(c[a]||0)+1));
+    try{const r=await SAMPLE.json("The image shows enlarged agent portraits from the top bar of a VALORANT match, from 3 moments (rows S1..S3) of the SAME match. L1..L5 = the recording team, R1..R5 = the enemy team (the order can differ between rows). Identify every portrait. Use only these names: "+AGENTS.join(", ")+". "+LOOK+" Use \"?\" if unsure. Reply only JSON: {\"rows\":[{\"left\":[\"Jett\",\"?\",\"Sova\",\"Omen\",\"Killjoy\"],\"right\":[...]}]}",{images:[blob],signal:ctl.signal,modelTier:"default",task:"comps"});
+      const st=Array.isArray(r.rows)?r.rows:[];const vote=side=>{const c={};st.forEach(x=>[...new Set((x[side]||[]).map(agentOf).filter(Boolean))].forEach(a=>c[a]=(c[a]||0)+1));
         const need=st.length>=2?2:1;return Object.entries(c).filter(([,n])=>n>=need).sort((a,b)=>b[1]-a[1]).map(([a])=>a).slice(0,5)};
       out.push({left:vote("left"),right:vote("right")});
     }catch(e){if(e&&e.code==="cancelled")throw e;out.push({left:[],right:[]})}
@@ -274,7 +279,7 @@ async function readFirstKillers(segs){
     const part=cells.slice(i,i+16);
     const blob=await gridOf(part,440,176,2,(x,ox,oy)=>x.drawImage(video,W*0.66,H*0.035,W*0.34,H*0.17,ox+36,oy,404,174));
     const want=part.map((c,k)=>{const f=segs[c.si][c.ri].fk;return (k+1)+":"+(f==="us"?"green":f==="them"?"red":"any")}).join(", ");
-    try{const r=await SAMPLE.json("Each numbered cell is the kill feed (top-right of a VALORANT screen) at the moment of the first kill of a round. An entry is: killer agent portrait (and name), weapon, victim agent portrait (and name). Green/teal entries = killer on the player's team, red = enemy team. For each cell take the entry of the given colour (if several, the oldest one; 'any' = whichever entry is there): "+want+". Identify both AGENTS from the portraits (names may be hidden or blurred). Use only these agent names: "+AGENTS.join(", ")+". Reply only JSON with one string per cell in order: {\"k\":[\"Jett>Sova|g\",\"-\"]} = killer agent > victim agent, then |g for green or |r for red. Use \"-\" if unreadable, and ? for one unreadable side.",{images:[blob],signal:ctl.signal,modelTier:"default",task:"killers"});
+    try{const r=await SAMPLE.json("Each numbered cell is the kill feed (top-right of a VALORANT screen) at the moment of the first kill of a round. An entry is: killer agent portrait (and name), weapon, victim agent portrait (and name). Green/teal entries = killer on the player's team, red = enemy team. For each cell take the entry of the given colour (if several, the oldest one; 'any' = whichever entry is there): "+want+". Identify both AGENTS from the portraits (names may be hidden or blurred). Use only these agent names: "+AGENTS.join(", ")+". "+LOOK+" Reply only JSON with one string per cell in order: {\"k\":[\"Jett>Sova|g\",\"-\"]} = killer agent > victim agent, then |g for green or |r for red. Use \"-\" if unreadable, and ? for one unreadable side.",{images:[blob],signal:ctl.signal,modelTier:"default",task:"killers"});
       const arr=Array.isArray(r.k)?r.k:[];
       part.forEach((c,k)=>{const r0=segs[c.si][c.ri],raw=String(arr[k]||"").trim(),m=raw.match(/^(.*?)\|\s*([gr])\s*$/i),body=(m?m[1]:raw).trim();
         const [kn0,vn0]=body.split(">").map(x=>String(x||"").trim().slice(0,30));
@@ -587,7 +592,7 @@ async function readKit(segs,me,maps,known,comps){
     const names=sheet?[...refBy[si].values()].map(x=>x.name):[];
     const dict=window.TLKit&&maps&&maps[si]&&TLKit.CALLOUTS[maps[si]]?TLKit.CALLOUTS[maps[si]]:"";
     const cs=(lastCompsBy&&lastCompsBy[si])||comps,L=(cs&&cs.left)||[],Rr=(cs&&cs.right)||[];
-    const who=L.length||Rr.length?" The kill feed may show PLAYER names instead of agents: always answer with the AGENT (from the portrait). Agents in this match: recording team = "+(L.join(", ")||"?")+"; enemy team = "+(Rr.join(", ")||"?")+(me[si]?"; the recording player plays "+me[si]+" (an entry named 'Me' or the player's own name is "+me[si]+")":"")+".":"";
+    const who=L.length||Rr.length?" The kill feed may show PLAYER names instead of agents: always answer with the AGENT (from the portrait). Agents in this match: recording team = "+(L.join(", ")||"?")+"; enemy team = "+(Rr.join(", ")||"?")+(me[si]?"; the recording player plays "+me[si]+" (an entry named 'Me' or the player's own name is "+me[si]+")":"")+". "+LOOK:"";
     for(let i=0;i<evs.length;i+=36){
       const part=evs.slice(i,i+36),blobs=[];prog(0.996,"撃ち合いの場所と相手を読み取っています…("+Math.min(evs.length,i+36)+"/"+evs.length+")");
       const s=fixed?200:0,mh=fixed?Math.round(s*H*MM.h/(W*MM.w)):0;
