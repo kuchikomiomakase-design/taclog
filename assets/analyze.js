@@ -231,6 +231,10 @@ async function readFirstKills(segs,samples){
         while(hi-lo>1){const mid=Math.floor((lo+hi)/2);if(await dead(mid)&&(!strict||await dead(mid+2)))hi=mid;else lo=mid}
         if(hi+1<=j.end&&!(await dead(hi+1))){/* flicker: keep the result anyway, it is the best guess */}
         const a=await at(hi);fk=a[0]<5&&a[1]<5?"tie":a[1]<5?"us":"them";fkT=hi;
+        // both teams lost someone within the same second (a trade): look every 0.1 s to see whose portrait went grey first
+        if(fk==="tie"){let first=null;for(let k=1;k<=10&&!first;k++){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(hi-1+k*0.1);const b=aliveNow();
+          if(b[1]<5&&b[0]===5)first="us";else if(b[0]<5&&b[1]===5)first="them"}
+          if(first){fk=first;fkT=hi}}
       }
     }
     const r=segs[j.si][j.ri];r.fk=fk;r.fkT=fkT;
