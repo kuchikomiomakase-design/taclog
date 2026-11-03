@@ -265,7 +265,7 @@ async function readFeed(segs,jobs){
   let done=0;
   for(const j of jobs){
     prog(0.95,"キルログを読み取っています… ("+(++done)+"/"+jobs.length+"ラウンド)");
-    const r=segs[j.si][j.ri],base=r._st!=null?r._st:j.st,from=j.est?Math.max(0,base-10):base+0.5;
+    const r=segs[j.si][j.ri],base=r._st!=null?r._st:j.st,from=Math.max(0,base-12);   // first look in the buy phase (nobody can die yet), so even a kill right at the barrier counts
     const end=Math.min(r._next!=null?r._next-1:base+145,base+145,duration-0.3);
     let P=null;const kills=[];
     for(let t=from;t<=end;t+=1.5){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const C=feedNow();
@@ -1093,10 +1093,13 @@ async function libComps(segs,compsBy){
     const cs=compsBy[si]||(compsBy[si]={left:[],right:[]});
     for(const side of ["left","right"]){
       const cand=[];
-      for(let k=0;k<5;k++){const i=side==="left"?k:k+5,best={};
-        for(const L of lib){if(L.side!==side)continue;let s=0;for(const v of vs)s+=dotv(v[i],L.v);s/=vs.length;if(!(L.agent in best)||s>best[L.agent])best[L.agent]=s}
-        const o=Object.entries(best).sort((a,b)=>b[1]-a[1]);if(!o.length)continue;
-        const [a1,s1]=o[0],s2=o[1]?o[1][1]:-1;if(s1>=0.8&&s1-s2>=0.08)cand.push({k,agent:a1,s:s1})}
+      // each round's face votes for its closest checked sample (only when clearly closer than any other agent); the majority wins
+      for(let k=0;k<5;k++){const i=side==="left"?k:k+5,votes={},top={};let n=0;
+        for(const v of vs){const best={};for(const L of lib){if(L.side!==side)continue;const sc=dotv(v[i],L.v);if(!(L.agent in best)||sc>best[L.agent])best[L.agent]=sc}
+          const o=Object.entries(best).sort((a,b)=>b[1]-a[1]);if(!o.length)continue;
+          if(!o[1]||o[0][1]-o[1][1]>=0.05){votes[o[0][0]]=(votes[o[0][0]]||0)+1;n++;top[o[0][0]]=Math.max(top[o[0][0]]||0,o[0][1])}}
+        const w=Object.entries(votes).sort((a,b)=>b[1]-a[1])[0];
+        if(w&&w[1]>=2&&w[1]*2>n)cand.push({k,agent:w[0],s:w[1]+top[w[0]]})}
       // one agent per team: the clearest match keeps it
       cand.sort((a,b)=>b.s-a.s);const used=new Set(),list=(cs[side]||[]).slice(0,5);while(list.length<5)list.push("");
       for(const c of cand){if(used.has(c.agent))continue;used.add(c.agent);const old=list.indexOf(c.agent);if(old>=0&&old!==c.k)list[old]="";list[c.k]=c.agent}
@@ -1107,7 +1110,7 @@ async function libComps(segs,compsBy){
 async function savePortraits(R){
   const rows=[];(R.pvecs||[]).forEach((vs,si)=>{const c=(R.compsBy&&R.compsBy[si])||R.comps;if(!vs||!c)return;
     vs.forEach((v,i)=>{const side=i<5?"left":"right",a=(c[side]||[])[i%5];if(v&&a&&AGENTS.includes(a))rows.push({agent:a,side,px:v})})});
-  if(rows.length)try{await TL.sb.from("agent_portraits").insert(rows)}catch(e){}
+  if(rows.length)try{const{error}=await TL.sb.from("agent_portraits").insert(rows);if(error)console.warn("agent_portraits",error)}catch(e){}
 }
 function compsCheck(R,box){
   const checks=[];
