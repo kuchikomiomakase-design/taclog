@@ -172,3 +172,6 @@ footer.site a{color:var(--ink2)}
 .fixtbl select{min-width:0;padding:4px 6px;font-size:13px}
 .fixtbl tr.focus td{background:var(--accent-soft)}
 .fixbox{display:grid;gap:6px;padding:10px 12px;border:1px dashed var(--line2);border-radius:10px}
+
+.fixcomp{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.fixcomp select{padding:4px 6px;font-size:13px;min-width:0}

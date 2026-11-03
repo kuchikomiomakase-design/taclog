@@ -145,9 +145,13 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   function openRoundEditor(matchId, focusRound, field) {
     const m = APP.matches.find((x) => x.id === matchId); if (!m) { status("その試合が見つかりません(別のチームかタイトルの試合かもしれません)。"); return; }
     const rs = JSON.parse(JSON.stringify(m.rounds || []));
+    const AG = ["Astra","Breach","Brimstone","Chamber","Clove","Cypher","Deadlock","Fade","Gekko","Harbor","Iso","Jett","KAY/O","Killjoy","Neon","Omen","Phoenix","Raze","Reyna","Sage","Skye","Sova","Tejo","Veto","Viper","Vyse","Waylay","Yoru"];
+    // team compositions can be fixed here too (a wrong composition makes the first-kill names wrong)
+    const compSel = (side) => Array.from({ length: 5 }, (_, i) => { const v = ((m.comps && m.comps[side]) || [])[i] || ""; const sl = h("select", {}, [h("option", { value: "" }, "?"), ...AG.map((a) => h("option", { value: a }, a))]); sl.value = AG.includes(v) ? v : ""; return sl; });
+    const compL = compSel("left"), compR = compSel("right");
     const agents = [...new Set([...((m.comps && m.comps.left) || []), ...((m.comps && m.comps.right) || [])])];
     const opt = (pairs, v) => { const s = h("select", {}, pairs.map(([val, label]) => h("option", { value: val }, label))); s.value = v == null ? "" : String(v); return s; };
-    const agentSel = (v) => { const list = agents.slice(); if (v && !list.includes(v)) list.unshift(v); return opt([["", "不明"]].concat(list.map((a) => [a, a])), v || ""); };
+    const agentSel = (v) => { const list = agents.slice(); const pairs = [["", "不明"]].concat(list.map((a) => [a, a])); if (v && !list.includes(v)) pairs.push([v, v + "(この試合にいない?)"]); return opt(pairs, v || ""); };
     const rows = rs.map((r) => {
       const win = opt([["", "不明"], ["true", "勝ち"], ["false", "負け"]], r.win == null ? "" : String(r.win));
       const side = opt([["attack", "アタック"], ["defense", "ディフェンス"]], r.side || "attack");
@@ -172,6 +176,12 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     save.onclick = async () => {
       save.disabled = true; msg.textContent = "保存しています…";
       const out = rows.map((tr) => tr._get());
+      const newComps = { left: compL.map((x) => x.value).filter(Boolean), right: compR.map((x) => x.value).filter(Boolean) };
+      if (JSON.stringify(newComps) !== JSON.stringify({ left: (m.comps && m.comps.left) || [], right: (m.comps && m.comps.right) || [] })) {
+        const { error: ce } = await sb.rpc("update_comps", { m: m.id, c: newComps });
+        if (ce) { msg.textContent = /update_comps/.test(ce.message || "") ? "構成を直すには、管理者が設定(016)を済ませる必要があります。" : TL.errText(ce); save.disabled = false; return; }
+        m.comps = { ...(m.comps || {}), ...newComps };
+      }
       const { error } = await sb.rpc("update_rounds", { m: m.id, rs: out });
       if (error) { msg.textContent = /update_rounds/.test(error.message || "") ? "手直しを使うには、管理者が設定(014)を済ませる必要があります。" : TL.errText(error); save.disabled = false; return; }
       // tell the operator what was fixed (to improve the reading)
@@ -184,6 +194,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     dlg.append(
       h("div", { class: "spread" }, h("strong", {}, "ラウンドを直す:" + (m.date ? fmtDate(m.date) : "") + (m.opp ? " vs " + m.opp : "") + " " + (mapName(m.map) || "")), h("button", { class: "btn small ghost", type: "button", onclick: () => { dlg.close(); dlg.remove(); } }, "閉じる")),
       h("p", { class: "small muted", style: "margin:0" }, (focusRound ? "第" + focusRound + "ラウンド" + (hint ? "の" + hint : "") + "を直してください(色が付いた行)。" : "") + "読み取れなかった・間違えたところを選び直して保存すると、ダッシュボードやAIの答えに反映されます。録画を見返して確かめるのがおすすめです。"),
+      h("div", { class: "fixcomp" }, h("span", { class: "small" }, "自チーム"), ...compL, h("span", { class: "small" }, "相手"), ...compR),
       h("div", { class: "tblbox", style: "max-height:60vh;overflow:auto" }, h("table", { class: "tbl dtbl fixtbl" },
         h("thead", {}, h("tr", {}, ["R", "勝敗", "攻守", "設置", "ファーストキル", "FKを取った人", "最初に倒された人", "無効"].map((t) => h("th", {}, t)))), h("tbody", {}, rows))),
       h("div", { class: "row" }, save, msg));

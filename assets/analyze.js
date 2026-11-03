@@ -44,7 +44,7 @@ function loadFile(f){return new Promise((resolve,reject)=>{
 $("file").addEventListener("change",()=>{const f=$("file").files[0];if(f)loadFile(f).catch(()=>{})});
 
 /* ---------- analysis ---------- */
-let ctl=null,lastResult=null,POVMODE=false;
+let ctl=null,lastResult=null,POVMODE=false,lastCompsBy=null;
 function prog(p,text){$("progBox").hidden=false;$("progBar").style.width=Math.round(p*100)+"%";$("progText").textContent=text}
 async function buildImage(times,startIdx){
   const c=crop(),th=Math.round(TILE_W*c.sh/c.sw),cellW=LABEL_W+TILE_W;
@@ -66,6 +66,27 @@ async function readTiles(blobs,from,to){
    +"Reply with only JSON: {\"tiles\":[\"3-2|1:24\",\"3-2|S\",\"?-?|-\"]} containing exactly "+(to-from+1)+" strings.";
   const r=await SAMPLE.json(prompt,{images:blobs,signal:ctl.signal,modelTier:"fast",task:"tiles"});
   const arr=r&&Array.isArray(r.tiles)?r.tiles:[];return arr;
+}
+const AGENTS=["Astra","Breach","Brimstone","Chamber","Clove","Cypher","Deadlock","Fade","Gekko","Harbor","Iso","Jett","KAY/O","Killjoy","Neon","Omen","Phoenix","Raze","Reyna","Sage","Skye","Sova","Tejo","Veto","Viper","Vyse","Waylay","Yoru"];
+const agentOf=n=>{const k=String(n||"").toLowerCase().replace(/[^a-z]/g,"");return AGENTS.find(a=>a.toLowerCase().replace(/[^a-z]/g,"")===k)||null};
+// Team compositions per map: the portrait bar from 3 moments inside rounds (everyone alive), enlarged, each read separately, then a vote.
+// Names must be real agents; a name seen only once out of three is dropped.
+async function readCompsFor(segs){
+  const W=video.videoWidth,H=video.videoHeight,out=[];
+  for(const rs of segs){
+    const pick=[0.2,0.5,0.8].map(f=>rs[Math.min(rs.length-1,Math.floor(rs.length*f))]).filter(Boolean),cw=1800,ch=Math.round(cw*(H*(SY1-SY0+0.01))/(W*(SX1-SX0)));
+    if(!pick.length){out.push({left:[],right:[]});continue}
+    const cv=document.createElement("canvas");cv.width=cw;cv.height=ch*pick.length+20*pick.length;const x=cv.getContext("2d");x.fillStyle="#000";x.fillRect(0,0,cv.width,cv.height);x.font="bold 16px monospace";
+    for(let i=0;i<pick.length;i++){if(ctl.signal.aborted)throw{code:"cancelled"};const r=pick[i];await seek(Math.min(duration-0.5,(r.st??r.start+45)+4));
+      x.fillStyle="#F2B33D";x.fillText("Strip "+(i+1),6,i*(ch+20)+15);x.drawImage(video,W*SX0,0,W*(SX1-SX0),H*(SY1+0.01),0,i*(ch+20)+20,cw,ch)}
+    const blob=await new Promise(r=>cv.toBlob(r,"image/jpeg",0.92));
+    try{const r=await SAMPLE.json("Each numbered strip is the top bar of a VALORANT screen from the SAME match: 5 agent portraits of the recording team LEFT of the score, 5 of the enemy team RIGHT of it. For EACH strip list the agents left to right. Use only these names: "+AGENTS.join(", ")+". Use \"?\" for a portrait you cannot identify. Reply only JSON: {\"strips\":[{\"left\":[\"Jett\",\"?\"],\"right\":[\"Sova\"]}]}",{images:[blob],signal:ctl.signal,modelTier:"default",task:"comps"});
+      const st=Array.isArray(r.strips)?r.strips:[];const vote=side=>{const c={};st.forEach(x=>[...new Set((x[side]||[]).map(agentOf).filter(Boolean))].forEach(a=>c[a]=(c[a]||0)+1));
+        const need=st.length>=2?2:1;return Object.entries(c).filter(([,n])=>n>=need).sort((a,b)=>b[1]-a[1]).map(([a])=>a).slice(0,5)};
+      out.push({left:vote("left"),right:vote("right")});
+    }catch(e){if(e&&e.code==="cancelled")throw e;out.push({left:[],right:[]})}
+  }
+  return out;
 }
 async function readComps(){
   const W=video.videoWidth,H=video.videoHeight,strip=document.createElement("canvas");strip.width=1400;const sh=Math.round(1400*(H*0.11)/W);strip.height=sh*3;const x=strip.getContext("2d");
@@ -253,12 +274,16 @@ async function readFirstKillers(segs){
     const part=cells.slice(i,i+16);
     const blob=await gridOf(part,440,176,2,(x,ox,oy)=>x.drawImage(video,W*0.66,H*0.035,W*0.34,H*0.17,ox+36,oy,404,174));
     const want=part.map((c,k)=>{const f=segs[c.si][c.ri].fk;return (k+1)+":"+(f==="us"?"green":f==="them"?"red":"any")}).join(", ");
-    try{const r=await SAMPLE.json("Each numbered cell is the kill feed (top-right of a VALORANT screen) at the moment of the first kill of a round. An entry is: killer agent portrait (and name), weapon, victim agent portrait (and name). Green/teal entries = killer on the player's team, red = enemy team. For each cell take the entry of the given colour (if several, the oldest one; 'any' = whichever entry is there): "+want+". Identify both AGENTS from the portraits (names may be hidden or blurred). Reply only JSON with one string per cell in order: {\"k\":[\"Jett>Sova|g\",\"-\"]} = killer agent > victim agent, then |g for green or |r for red. Use \"-\" if unreadable, and ? for one unreadable side.",{images:[blob],signal:ctl.signal,modelTier:"default",task:"killers"});
+    try{const r=await SAMPLE.json("Each numbered cell is the kill feed (top-right of a VALORANT screen) at the moment of the first kill of a round. An entry is: killer agent portrait (and name), weapon, victim agent portrait (and name). Green/teal entries = killer on the player's team, red = enemy team. For each cell take the entry of the given colour (if several, the oldest one; 'any' = whichever entry is there): "+want+". Identify both AGENTS from the portraits (names may be hidden or blurred). Use only these agent names: "+AGENTS.join(", ")+". Reply only JSON with one string per cell in order: {\"k\":[\"Jett>Sova|g\",\"-\"]} = killer agent > victim agent, then |g for green or |r for red. Use \"-\" if unreadable, and ? for one unreadable side.",{images:[blob],signal:ctl.signal,modelTier:"default",task:"killers"});
       const arr=Array.isArray(r.k)?r.k:[];
       part.forEach((c,k)=>{const r0=segs[c.si][c.ri],raw=String(arr[k]||"").trim(),m=raw.match(/^(.*?)\|\s*([gr])\s*$/i),body=(m?m[1]:raw).trim();
-        const [kn,vn]=body.split(">").map(x=>String(x||"").trim().slice(0,30));
-        if(kn&&!BAD.test(kn))r0.fkBy=kn;
-        if(vn&&!BAD.test(vn))r0.fkVictim=vn;
+        const [kn0,vn0]=body.split(">").map(x=>String(x||"").trim().slice(0,30));
+        // only agents of this match (both teams); anything else is a misread and stays unknown
+        const cs=(lastCompsBy&&lastCompsBy[c.si])||{left:[],right:[]},inMatch=cs.left.concat(cs.right);
+        const fix=n=>{const a=agentOf(n);if(!a)return null;return !inMatch.length||inMatch.includes(a)?a:null};
+        const kn=fix(kn0),vn=fix(vn0);
+        if(kn)r0.fkBy=kn;
+        if(vn)r0.fkVictim=vn;
         if(r0.fk==="tie"&&m)r0.fk=m[2].toLowerCase()==="g"?"us":"them"});
     }catch(e){if(e&&e.code==="cancelled")throw e}
   }
@@ -561,7 +586,7 @@ async function readKit(segs,me,maps,known,comps){
     const sheet=fixed?await sheetOf(+si):null;
     const names=sheet?[...refBy[si].values()].map(x=>x.name):[];
     const dict=window.TLKit&&maps&&maps[si]&&TLKit.CALLOUTS[maps[si]]?TLKit.CALLOUTS[maps[si]]:"";
-    const L=(comps&&comps.left)||[],Rr=(comps&&comps.right)||[];
+    const cs=(lastCompsBy&&lastCompsBy[si])||comps,L=(cs&&cs.left)||[],Rr=(cs&&cs.right)||[];
     const who=L.length||Rr.length?" The kill feed may show PLAYER names instead of agents: always answer with the AGENT (from the portrait). Agents in this match: recording team = "+(L.join(", ")||"?")+"; enemy team = "+(Rr.join(", ")||"?")+(me[si]?"; the recording player plays "+me[si]+" (an entry named 'Me' or the player's own name is "+me[si]+")":"")+".":"";
     for(let i=0;i<evs.length;i+=36){
       const part=evs.slice(i,i+36),blobs=[];prog(0.996,"撃ち合いの場所と相手を読み取っています…("+Math.min(evs.length,i+36)+"/"+evs.length+")");
@@ -833,6 +858,7 @@ async function fastPov(loc){
   ok.sort((a,b)=>(a.m.rounds[0].start+a.sh)-(b.m.rounds[0].start+b.sh));
   const segs=ok.map(f=>f.m.rounds.map((r,i,rs)=>{const nx=rs[i+1];const o={...r,start:Math.round(r.start+f.sh),plantAt:r.plantAt!=null?Math.round(r.plantAt+f.sh):null,_st:r.st!=null?r.st+f.sh:null,_next:nx?nx.start+f.sh:null};
     delete o.st;delete o.kit;delete o.myFk;delete o.myFd;delete o.myDead;delete o.myDeathT;return o}));
+  lastCompsBy=ok.map(f=>f.m.comps&&f.m.comps.left?{left:f.m.comps.left,right:f.m.comps.right||[]}:{left:[],right:[]});
   const maps=ok.map(f=>f.m.map||null),known=ok.map(f=>f.m),comps=ok[0].m.comps&&ok[0].m.comps.left?{left:ok[0].m.comps.left,right:ok[0].m.comps.right||[]}:{left:[],right:[]};
   prog(0.9,"この録画の人の分を読み取っています…");
   const all=segs.flat().filter(r=>r._st!=null);
@@ -850,7 +876,7 @@ async function runAnalysis(){
   if(!duration)return false;
   ctl=new AbortController();$("go").disabled=true;$("stop").hidden=false;$("result").hidden=true;
   const p=plan(),times=[];for(let i=0;i<p.n;i++)times.push(3+i*p.iv);
-  const samples=[];lastErr=null;SNAPS={};COACH={};POVMODE=false;let limitHit=null;
+  const samples=[];lastErr=null;SNAPS={};COACH={};POVMODE=false;lastCompsBy=null;let limitHit=null;
   try{
     // team plan: up to 6 maps a day (Japan time). Check before spending anything.
     try{const{data}=await TL.sb.rpc("maps_today",{t:APP.team.id});const d=Array.isArray(data)?data[0]:data;
@@ -872,7 +898,7 @@ async function runAnalysis(){
     lastReads=sp.reads;
     if(!buildRounds(samples,"attack").some(rs=>rs.length)){lastErr={code:"no_rounds",message:"ラウンドを見つけられませんでした(試合の画面が映っていない録画かもしれません)。"};prog(0,lastErr.message);return false}
     prog(0.93,"エージェント構成を読み取っています…");
-    const comps=await readComps();
+    const compsBy=await readCompsFor(buildRounds(samples,"attack"));lastCompsBy=compsBy;const comps=compsBy[0]||{left:[],right:[]};
     let segs=buildRounds(samples,"attack");
     prog(0.95,"攻守を判定しています…");
     const cands=[];segs.forEach((rs,si)=>rs.filter(r=>r.n<=3||(r.n>=13&&r.n<=15)).forEach(r=>cands.push({si,n:r.n,t:firstBuy(r,samples)})));
@@ -898,7 +924,7 @@ async function runAnalysis(){
     TRAIN=null;try{await collectTraining(segs,maps,comps,me)}catch(e){if(e&&e.code==="cancelled")throw e}
     segs.forEach(rs=>rs.forEach(r=>{if(r._st!=null)r.st=Math.round(r._st);delete r._st;delete r._next}));
     prog(1,"完了しました");
-    lastResult={coach:COACH,snaps:SNAPS,segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
+    lastResult={compsBy,coach:COACH,snaps:SNAPS,segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
     showResult();
     return true;
   }catch(e){
@@ -973,7 +999,7 @@ async function saveLast(meta){
     const map=(si===0&&meta.map)?meta.map:((R.maps&&R.maps[si])||"");
     let same=null;try{same=await findSame(meta.date,map,R.segs[si],si+1)}catch(e){same=null}
     if(same){await savePov(same.id,si,R);await keepSnaps(same.id,si,R);out.merged++;continue}
-    const{data,error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:meta.date||"",opp:meta.opp||"",map,start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:meta.yt||"",file:fileName,part:si+1,comps:{...R.comps,me:(R.me&&R.me[si])||null},rounds:R.segs[si]}});
+    const{data,error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:meta.date||"",opp:meta.opp||"",map,start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:meta.yt||"",file:fileName,part:si+1,comps:{...((R.compsBy&&R.compsBy[si])||R.comps),me:(R.me&&R.me[si])||null},rounds:R.segs[si]}});
     if(error)throw error;
     if(data){await savePov(data,si,R);await keepSnaps(data,si,R)}
     out.created++;
