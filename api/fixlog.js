@@ -2,7 +2,7 @@
 // When someone fixes rounds by hand, tell the operator's Discord contact channel what the analysis got wrong or could not read,
 // so the reading can be improved (which match, which round, what changed, where in the recording).
 const { send, fail, readBody, getUser, membership, rest, discord, noPing, env } = require("./_lib");
-const NAME = { win: "勝敗", side: "攻守", site: "設置サイト", planted: "設置", fk: "ファーストキル", fkBy: "倒した人", fkVictim: "倒された人", void: "無効" };
+const NAME = { win: "勝敗", side: "攻守", site: "設置サイト", planted: "設置", fk: "ファーストキル", fkBy: "FKを取った人", fkVictim: "最初に倒された人", void: "無効" };
 const val = (v) => (v === true ? "はい/勝ち" : v === false ? "いいえ/負け" : v == null || v === "" ? "不明" : String(v)).slice(0, 30);
 
 module.exports = async (req, res) => {

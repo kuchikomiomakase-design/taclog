@@ -185,7 +185,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
       h("div", { class: "spread" }, h("strong", {}, "ラウンドを直す:" + (m.date ? fmtDate(m.date) : "") + (m.opp ? " vs " + m.opp : "") + " " + (mapName(m.map) || "")), h("button", { class: "btn small ghost", type: "button", onclick: () => { dlg.close(); dlg.remove(); } }, "閉じる")),
       h("p", { class: "small muted", style: "margin:0" }, (focusRound ? "第" + focusRound + "ラウンド" + (hint ? "の" + hint : "") + "を直してください(色が付いた行)。" : "") + "読み取れなかった・間違えたところを選び直して保存すると、ダッシュボードやAIの答えに反映されます。録画を見返して確かめるのがおすすめです。"),
       h("div", { class: "tblbox", style: "max-height:60vh;overflow:auto" }, h("table", { class: "tbl dtbl fixtbl" },
-        h("thead", {}, h("tr", {}, ["R", "勝敗", "攻守", "設置", "ファーストキル", "倒した人", "倒された人", "無効"].map((t) => h("th", {}, t)))), h("tbody", {}, rows))),
+        h("thead", {}, h("tr", {}, ["R", "勝敗", "攻守", "設置", "ファーストキル", "FKを取った人", "最初に倒された人", "無効"].map((t) => h("th", {}, t)))), h("tbody", {}, rows))),
       h("div", { class: "row" }, save, msg));
     document.body.append(dlg); dlg.showModal();
     const f = dlg.querySelector("tr.focus"); if (f) f.scrollIntoView({ block: "center" });
