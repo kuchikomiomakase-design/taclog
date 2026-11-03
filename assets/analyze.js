@@ -221,6 +221,15 @@ async function findStarts(segs,samples){
   const by=new Map();cells.forEach((c,k)=>{const x=parseTile(res[k]);if(typeof x.x==="number"&&x.x>30&&x.x<=100&&x.L!=null&&x.R!=null&&x.L+"-"+x.R===c.r.score)(by.get(c.r)||by.set(c.r,[]).get(c.r)).push(c.t-(100-x.x))});
   by.forEach((est,r)=>{const cl=[];est.forEach(e=>{const c=cl.find(c=>Math.abs(c.v-e)<=5);if(c){c.n++;c.v=(c.v*(c.n-1)+e)/c.n}else cl.push({v:e,n:1})});
     cl.sort((a,b)=>b.n-a.n||a.v-b.v);if(cl[0].n>=2||cl.length===1)r._restart=cl[0].v});
+  // still missing: look between the neighbours' barrier drops (they are known exactly by now)
+  const near=[];
+  segs.forEach(rs=>{const sv=rs.map((r,ri)=>r._restart!=null?r._restart:roundStartOf(r,samples,rs[ri+1]?rs[ri+1].start:null,rs[ri-1]?rs[ri-1].start:null));
+    rs.forEach((r,ri)=>{if(sv[ri]!=null)return;const a=ri>0?sv[ri-1]:null,b=ri<rs.length-1?sv[ri+1]:null;if(a==null&&b==null)return;
+      const from=a!=null?a+45:b-260,to=b!=null?b-28:a+260;for(let t=Math.max(0,from);t<=to&&t<duration-0.5;t+=4)near.push({r,t})})});
+  if(near.length){const res2=await readTimes(near.map(c=>c.t));const by2=new Map();
+    near.forEach((c,k)=>{const x=parseTile(res2[k]);if(typeof x.x==="number"&&x.x>30&&x.x<=100&&x.L!=null&&x.R!=null&&x.L+"-"+x.R===c.r.score)(by2.get(c.r)||by2.set(c.r,[]).get(c.r)).push(c.t-(100-x.x))});
+    by2.forEach((est,r)=>{const cl=[];est.forEach(e=>{const c=cl.find(c=>Math.abs(c.v-e)<=5);if(c){c.n++;c.v=(c.v*(c.n-1)+e)/c.n}else cl.push({v:e,n:1})});
+      cl.sort((a,b)=>b.n-a.n||a.v-b.v);if(cl[0].n>=2)r._restart=cl[0].v})}
   // safety net: two rounds of a map can never share a barrier drop. If they do, the start is unknown for both (no guessing).
   segs.forEach(rs=>{const st=rs.map((r,ri)=>({r,v:r._restart!=null?r._restart:roundStartOf(r,samples,rs[ri+1]?rs[ri+1].start:null,rs[ri-1]?rs[ri-1].start:null)}));
     for(let i=1;i<st.length;i++){const a=st[i-1],b=st[i];if(a.v!=null&&b.v!=null&&b.v-a.v<25){a.r._noStart=true;b.r._noStart=true}}});
@@ -276,11 +285,13 @@ async function readFeed(segs,jobs){
 }
 async function readFirstKills(segs,samples){
   const jobs=[];
-  segs.forEach((rs,si)=>rs.forEach((r,ri)=>{const next=rs[ri+1]?rs[ri+1].start:null;if(r._noStart){r._next=next;return}let st=roundStartOf(r,samples,next,rs[ri-1]?rs[ri-1].start:null);r._next=next;
-    if(st!=null)r._st=st;
+  // exact barrier drops first (all rounds), then each round ends where the next one's buy phase begins at the latest
+  segs.forEach(rs=>rs.forEach((r,ri)=>{if(r._noStart)return;const st=roundStartOf(r,samples,rs[ri+1]?rs[ri+1].start:null,rs[ri-1]?rs[ri-1].start:null);if(st!=null)r._st=st}));
+  segs.forEach(rs=>rs.forEach((r,ri)=>{const nx=rs[ri+1];r._next=!nx?null:nx._st!=null?nx._st-30:nx.start!=null?nx.start+25:null}));
+  segs.forEach((rs,si)=>rs.forEach((r,ri)=>{const next=r._next;if(r._noStart)return;let st=r._st!=null?r._st:null;
     // no timer was read for this round: the first kill can still be found from an estimated start (score change + end of round + buy phase).
     // Only for the first kill; ability / ult numbers keep using the exact barrier time, so the buy phase is never counted there.
-    else if(r.start!=null)st=r.start+(r.n===1||r.n===13?45:37);
+    if(st==null&&r.start!=null)st=r.start+(r.n===1||r.n===13?45:37);
     if(st==null)return;
     jobs.push({si,ri,st,est:r._st==null,end:Math.min(st+75,r.plantAt!=null?r.plantAt+40:Infinity,next??Infinity,duration-0.3)})}));
   if(!jobs.length)return;
@@ -1009,6 +1020,7 @@ async function runAnalysis(){
     await findStarts(segs,samples);
     prog(0.96,"ファーストキルを読み取っています…");
     await readFirstKills(segs,samples);
+    try{await libComps(segs,compsBy)}catch(e){if(e&&e.code==="cancelled")throw e}
     prog(0.97,"設置したサイトを読み取っています…");
     const pc=[];segs.forEach((rs,si)=>rs.forEach((r,ri)=>{if(r.plantAt!=null)pc.push({si,ri,t:Math.min(duration-0.2,r.plantAt+4)})}));
     const sites=await readSites(pc);pc.forEach((c,k)=>{segs[c.si][c.ri].site=sites[k]||null});
@@ -1062,6 +1074,41 @@ function showResult(){
 
 // Agents are the one thing a picture reader can mix up (Viper/Vyse, Fade/Killjoy...). Show the real portraits from the recording
 // next to what was read, so the person confirms or fixes the 10 agents before saving. Names already used in the rounds follow the fix.
+// ---------- agent portraits checked by people (shared sample book) ----------
+// After analysis the person confirms the 10 agents next to their faces. Those faces (24x24, game art only) are kept as samples,
+// and later analyses compare each top-bar face with them: a clear match replaces the AI's guess. The AI is only a fallback.
+const PV=24,pvCv=document.createElement("canvas");pvCv.width=PV;pvCv.height=PV;const pvX=pvCv.getContext("2d",{willReadFrequently:true});
+function slotBox(i){const W=video.videoWidth,H=video.videoHeight,sl=SLOTS||defaultSlots(),cx=W*(SX0+sl.cols[i]/SW*(SX1-SX0)),half=0.0165*W*(sl.k||1);return{x:cx-half*0.65,y:H*(SY0+0.013),w:half*1.3,h:H*0.048}}
+function slotVec(i){const b=slotBox(i);pvX.drawImage(video,b.x,b.y,b.w,b.h,0,0,PV,PV);const d=pvX.getImageData(0,0,PV,PV).data,v=new Uint8Array(PV*PV*3);for(let k=0;k<PV*PV;k++){v[k*3]=d[k*4];v[k*3+1]=d[k*4+1];v[k*3+2]=d[k*4+2]}return v}
+const vecB64=v=>btoa(String.fromCharCode.apply(null,v));
+const b64Vec=s=>{const b=atob(s),v=new Uint8Array(b.length);for(let i=0;i<b.length;i++)v[i]=b.charCodeAt(i);return v};
+function nv(v){const n=v.length;let m=0;for(let i=0;i<n;i++)m+=v[i];m/=n;const o=new Float32Array(n);let q=0;for(let i=0;i<n;i++){o[i]=v[i]-m;q+=o[i]*o[i]}q=Math.sqrt(q)||1;for(let i=0;i<n;i++)o[i]/=q;return o}
+const dotv=(a,b)=>{let s=0;for(let i=0;i<a.length;i++)s+=a[i]*b[i];return s};
+async function libComps(segs,compsBy){
+  let lib=[];try{const{data}=await TL.sb.from("agent_portraits").select("agent,side,px").order("id",{ascending:false}).limit(4000);lib=(data||[]).filter(x=>AGENTS.includes(x.agent)).map(x=>({agent:x.agent,side:x.side,v:nv(b64Vec(x.px))}))}catch(e){return}
+  if(!lib.length)return;
+  for(let si=0;si<segs.length;si++){
+    const rs=segs[si].filter(r=>r._st!=null).slice(0,6);if(!rs.length)continue;
+    const vs=[];for(const r of rs){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(Math.min(duration-0.3,r._st+3));vs.push([...Array(10).keys()].map(i=>nv(slotVec(i))))}
+    const cs=compsBy[si]||(compsBy[si]={left:[],right:[]});
+    for(const side of ["left","right"]){
+      const cand=[];
+      for(let k=0;k<5;k++){const i=side==="left"?k:k+5,best={};
+        for(const L of lib){if(L.side!==side)continue;let s=0;for(const v of vs)s+=dotv(v[i],L.v);s/=vs.length;if(!(L.agent in best)||s>best[L.agent])best[L.agent]=s}
+        const o=Object.entries(best).sort((a,b)=>b[1]-a[1]);if(!o.length)continue;
+        const [a1,s1]=o[0],s2=o[1]?o[1][1]:-1;if(s1>=0.8&&s1-s2>=0.08)cand.push({k,agent:a1,s:s1})}
+      // one agent per team: the clearest match keeps it
+      cand.sort((a,b)=>b.s-a.s);const used=new Set(),list=(cs[side]||[]).slice(0,5);while(list.length<5)list.push("");
+      for(const c of cand){if(used.has(c.agent))continue;used.add(c.agent);const old=list.indexOf(c.agent);if(old>=0&&old!==c.k)list[old]="";list[c.k]=c.agent}
+      cs[side]=list;
+    }
+  }
+}
+async function savePortraits(R){
+  const rows=[];(R.pvecs||[]).forEach((vs,si)=>{const c=(R.compsBy&&R.compsBy[si])||R.comps;if(!vs||!c)return;
+    vs.forEach((v,i)=>{const side=i<5?"left":"right",a=(c[side]||[])[i%5];if(v&&a&&AGENTS.includes(a))rows.push({agent:a,side,px:v})})});
+  if(rows.length)try{await TL.sb.from("agent_portraits").insert(rows)}catch(e){}
+}
 function compsCheck(R,box){
   const checks=[];
   R.segs.forEach((rs,si)=>{
@@ -1073,7 +1120,8 @@ function compsCheck(R,box){
     const sl=SLOTS||defaultSlots(),pics=[];
     const pic=()=>{const cv=document.createElement("canvas");cv.width=72;cv.height=72;cv.style.cssText="width:100%;max-width:72px;aspect-ratio:1;border-radius:6px;background:#111;display:block;margin:0 auto 4px";pics.push(cv);return cv};
     if(r0)(async()=>{try{await seek(Math.min(duration-0.3,r0.st+3));const W=video.videoWidth,H=video.videoHeight,half=0.0165*W*(sl.k||1);
-      pics.forEach((cv,i)=>{const cx=W*(SX0+sl.cols[i]/SW*(SX1-SX0));cv.getContext("2d").drawImage(video,cx-half,H*SY0,half*2,H*(SY1-SY0),0,0,72,72)})}catch(e){}})();
+      pics.forEach((cv,i)=>{const cx=W*(SX0+sl.cols[i]/SW*(SX1-SX0));cv.getContext("2d").drawImage(video,cx-half,H*SY0,half*2,H*(SY1-SY0),0,0,72,72)});
+      (R.pvecs=R.pvecs||[])[si]=[...Array(10).keys()].map(i=>vecB64(slotVec(i)))}catch(e){}})();
     const other=side=>side==="left"?"right":"left";
     const ok=h("span",{class:"pill warn"},"未確認");const st={done:false};checks.push(st);
     const confirm=()=>{st.done=true;ok.textContent="確認済み";ok.className="pill win";gate()};
@@ -1135,6 +1183,7 @@ async function saveLast(meta){
     if(data){await savePov(data,si,R);await keepSnaps(data,si,R)}
     out.created++;
   }
+  await savePortraits(R);
   return out;
 }
 window.ANALYZER={loadFile,runAnalysis,saveLast,result:()=>lastResult,error:()=>lastErr,stop:()=>ctl&&ctl.abort()};
