@@ -119,18 +119,17 @@ async function readSites(cells){
   return out;
 }
 
-function roundStartOf(r,samples,next){
+function roundStartOf(r,samples,next,prev){
   if(r._restart!=null)return r._restart;
-  const it=samples.filter(x=>x.t>=r.start-60&&(next==null||x.t<next)&&typeof x.x==="number"&&x.x>30&&x.x<=100);
+  // Every timer reading also shows the score, and the score during a round is always (round number - 1) in total:
+  // a reading belongs to THIS round only when its own score adds up to n-1. This keeps a short neighbour round from lending its barrier drop.
+  const lo=prev!=null?prev+20:r.start-150,hi=next!=null?next+110:r.start+200;
+  const it=samples.filter(x=>x.t>=lo&&x.t<hi&&typeof x.x==="number"&&x.x>30&&x.x<=100&&x.oL!=null&&x.oR!=null&&x.oL+x.oR+1===r.n&&x.oL+"-"+x.oR===r.score);
   if(!it.length)return null;
-  // group the readings that point to the same barrier drop (±5 s). A single odd reading must never move the start:
-  // a later start (restarted round) only counts when at least 2 readings agree on it.
   const cl=[];it.map(x=>x.t-(100-x.x)).forEach(e=>{const c=cl.find(c=>Math.abs(c.v-e)<=5);if(c){c.n++;c.v=(c.v*(c.n-1)+e)/c.n}else cl.push({v:e,n:1})});
-  cl.sort((a,b)=>a.v-b.v);
-  const ok=cl.filter(c=>c.v>=r.start-60&&(next==null||c.v<next));if(!ok.length)return null;
-  // the FIRST barrier drop of the window (a later one is usually the next round's, seen because its score change was noticed late).
-  // Restarted rounds are handled by findRestarts (strict).
-  return ok[0].v;
+  // the barrier drop most readings agree on (pistol rounds: a 0:45 buy timer read as the round timer gives a lone early cluster). Ties: the earliest.
+  cl.sort((a,b)=>b.n-a.n||a.v-b.v);
+  return cl[0].v;
 }
 // Custom games: a round can be restarted (someone died by mistake before it started) or ended by force. A restarted round stays under
 // the same score but runs longer: read the timer more often in long rounds and keep the LAST barrier drop as its start.
@@ -142,7 +141,7 @@ async function findRestarts(segs){
   if(!cells.length)return;
   prog(0.95,"やり直したラウンドがないか確認しています…");
   const res=await readTimes(cells.map(c=>Math.min(duration-0.5,c.t)));
-  const by=new Map();cells.forEach((c,k)=>{const x=parseTile(res[k]);if(typeof x.x==="number"&&x.x>30&&x.x<=100){(by.get(c.r)||by.set(c.r,[]).get(c.r)).push(c.t-(100-x.x))}});
+  const by=new Map();cells.forEach((c,k)=>{const x=parseTile(res[k]);if(typeof x.x==="number"&&x.x>30&&x.x<=100&&x.L!=null&&x.R!=null&&x.L+"-"+x.R===c.r.score){(by.get(c.r)||by.set(c.r,[]).get(c.r)).push(c.t-(100-x.x))}});
   by.forEach((est,r)=>{est.sort((a,b)=>a-b);const cl=[];est.forEach(e=>{const c=cl.find(c=>Math.abs(c.v-e)<=5);if(c){c.n++;c.v=(c.v+e)/2}else cl.push({v:e,n:1})});
     const good=cl.filter(c=>c.n>=2);if(good.length>=2&&good[good.length-1].n>=3&&good[good.length-1].v-good[0].v<130){r._restart=good[good.length-1].v;r.restarted=true}});
 }
@@ -211,20 +210,24 @@ async function aliveSteady(t){
 // so every round gets its exact barrier drop.
 async function findStarts(segs,samples){
   const cells=[];
-  segs.forEach(rs=>rs.forEach((r,ri)=>{const nx=rs[ri+1];if(r.start==null||r._restart!=null)return;
-    if(roundStartOf(r,samples,nx?nx.start:null)!=null)return;
-    const pv=rs[ri-1],from=Math.max(pv?pv.start+20-r.start:-30,-50),to=r.n===1||r.n===13?86:70;
-    for(let d=from;d<=to;d+=6){const t=r.start+d;if(nx&&t>=nx.start-2)break;if(t>0&&t<duration-0.5)cells.push({r,t})}}));
+  segs.forEach(rs=>rs.forEach((r,ri)=>{const nx=rs[ri+1],pv=rs[ri-1];if(r.start==null||r._restart!=null)return;
+    if(roundStartOf(r,samples,nx?nx.start:null,pv?pv.start:null)!=null)return;
+    // look from shortly after the previous round began up to a while after the next score change (the change itself may be placed early or late)
+    const from=Math.max(pv?pv.start+25:r.start-60,r.start-90),to=nx?Math.min(nx.start+90,r.start+220):r.start+130;
+    for(let t=from;t<=to;t+=5){if(t>0&&t<duration-0.5)cells.push({r,t})}}));
   if(!cells.length)return;
   prog(0.95,"ラウンドの始まりを確認しています…");
   const res=await readTimes(cells.map(c=>c.t));
-  const by=new Map();cells.forEach((c,k)=>{const x=parseTile(res[k]);if(typeof x.x==="number"&&x.x>30&&x.x<=100)(by.get(c.r)||by.set(c.r,[]).get(c.r)).push(c.t-(100-x.x))});
+  const by=new Map();cells.forEach((c,k)=>{const x=parseTile(res[k]);if(typeof x.x==="number"&&x.x>30&&x.x<=100&&x.L!=null&&x.R!=null&&x.L+"-"+x.R===c.r.score)(by.get(c.r)||by.set(c.r,[]).get(c.r)).push(c.t-(100-x.x))});
   by.forEach((est,r)=>{const cl=[];est.forEach(e=>{const c=cl.find(c=>Math.abs(c.v-e)<=5);if(c){c.n++;c.v=(c.v*(c.n-1)+e)/c.n}else cl.push({v:e,n:1})});
-    const best=cl.reduce((a,b)=>b.n>a.n?b:a);if(best.n>=2||cl.length===1)r._restart=best.v});
+    cl.sort((a,b)=>b.n-a.n||a.v-b.v);if(cl[0].n>=2||cl.length===1)r._restart=cl[0].v});
+  // safety net: two rounds of a map can never share a barrier drop. If they do, the start is unknown for both (no guessing).
+  segs.forEach(rs=>{const st=rs.map((r,ri)=>({r,v:r._restart!=null?r._restart:roundStartOf(r,samples,rs[ri+1]?rs[ri+1].start:null,rs[ri-1]?rs[ri-1].start:null)}));
+    for(let i=1;i<st.length;i++){const a=st[i-1],b=st[i];if(a.v!=null&&b.v!=null&&b.v-a.v<25){a.r._noStart=true;b.r._noStart=true}}});
 }
 async function readFirstKills(segs,samples){
   const jobs=[];
-  segs.forEach((rs,si)=>rs.forEach((r,ri)=>{const next=rs[ri+1]?rs[ri+1].start:null;let st=roundStartOf(r,samples,next);r._next=next;
+  segs.forEach((rs,si)=>rs.forEach((r,ri)=>{const next=rs[ri+1]?rs[ri+1].start:null;if(r._noStart){r._next=next;return}let st=roundStartOf(r,samples,next,rs[ri-1]?rs[ri-1].start:null);r._next=next;
     if(st!=null)r._st=st;
     // no timer was read for this round: the first kill can still be found from an estimated start (score change + end of round + buy phase).
     // Only for the first kill; ability / ult numbers keep using the exact barrier time, so the buy phase is never counted there.
@@ -710,7 +713,7 @@ async function collectTraining(segs,maps,comps,me){
     // top bar: every 6 s, labelled with the confirmed alive counts (us, them). Skip the 3 s around a change (not sure which side of it).
     for(let t=r._st+2;t<=end;t+=6){const rel=t-r._st;if(r.alv.some(([tt])=>Math.abs(tt-rel)<3&&tt>0))continue;
       if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);
-      TRAIN.items.push({kind:"topbar",t:Math.round(t*10)/10,map:si,round:r.n,label:{alive:stateAt(rel)},blob:await cropBlob(SX0,SY0,SX1-SX0,SY1-SY0)})}
+      TRAIN.items.push({kind:"topbar",t:Math.round(t*10)/10,map:si,round:r.n,label:{alive:stateAt(rel),score:r.score},blob:await cropBlob(SX0,SY0,SX1-SX0,SY1-SY0)})}
     // kill feed (+ minimap) at each fight read from the kill feed
     for(const f of (r.fights||[])){const t=r._st+f.t+0.5;if(t>=duration-0.3)continue;await seek(t);
       TRAIN.items.push({kind:"killfeed",t:Math.round(t*10)/10,map:si,round:r.n,label:{k:f.k,v:f.v,g:f.g},blob:await cropBlob(0.68,0.035,0.32,0.22)});
@@ -847,7 +850,7 @@ async function sparseScores(loc,readFn,onProg){
   }
   loc.forEach((l,i)=>{
     const own=reads.get(i),x=own&&own.x!=null?own.x:(l.spike?"S":null);
-    samples.push({t:l.t,L:sc[i]?sc[i].L:null,R:sc[i]?sc[i].R:null,x,ai:!!own});
+    samples.push({t:l.t,L:sc[i]?sc[i].L:null,R:sc[i]?sc[i].R:null,x,ai:!!own,oL:own?own.L:null,oR:own?own.R:null});
   });
   return{samples,reads:reads.size};
 }
@@ -986,6 +989,7 @@ function showResult(){
   if(R.segs.every(rs=>rs.every(r=>!r.fk)))box.append(h("div",{class:"notice"},"この録画ではファーストキルを読み取れませんでした。画面上の顔アイコン(生存状況)の位置がいつもと違う可能性があります。試合中の画面のスクリーンショットを1枚お問い合わせから送ってください。"));
   if(R.segs.length>1)box.append(h("p",{class:"small muted",style:"margin:0"},"途中でスコアが0-0に戻ったので、別のマップとして分けました。"));
   box.append(h("p",{class:"small muted",style:"margin:0"},"マップは録画のミニマップから自動で判定しました。違っていたら、保存後に試合チャンネルで直せます。設置時の残り時間は、読み取り間隔の半分くらいの誤差があります。ファーストキルは生存人数の変化から1秒単位で判定し、その瞬間のキルログから取った人を読んでいます。"+(R.starts&&R.starts.every(x=>x.auto)?" 攻守は画面の表示から自動で判定しました。":" 攻守を自動で判定できなかったマップは、手順2で選んだ「最初の攻守」を使っています。")));
+  compsCheck(R,box);
   const save=h("button",{type:"button",class:"btn primary"},"この結果を保存する");
   save.onclick=async()=>{save.disabled=true;try{
     const sv=await saveLast({date:$("mDate").value,opp:$("mOpp").value.trim(),map:$("mMap").value,yt:$("mYt").value.trim()});
@@ -993,6 +997,30 @@ function showResult(){
   box.append(h("div",{class:"row"},save));
 }
 
+// Agents are the one thing a picture reader can mix up (Viper/Vyse, Fade/Killjoy...). Show the real portraits from the recording
+// next to what was read, so the person confirms or fixes the 10 agents before saving. Names already used in the rounds follow the fix.
+function compsCheck(R,box){
+  R.segs.forEach((rs,si)=>{
+    const c=(R.compsBy&&R.compsBy[si])||R.comps;if(!c)return;
+    c.left=(c.left||[]).slice(0,5);c.right=(c.right||[]).slice(0,5);while(c.left.length<5)c.left.push("");while(c.right.length<5)c.right.push("");
+    if(R.compsBy)R.compsBy[si]=c;
+    const r0=rs.find(r=>r.st!=null&&Array.isArray(r.alv)&&r.alv.length)||rs.find(r=>r.st!=null);
+    const cv=document.createElement("canvas");cv.width=860;cv.height=Math.round(860*(SY1-SY0)/(SX1-SX0)*video.videoHeight/video.videoWidth);cv.style.cssText="width:100%;max-width:860px;border-radius:6px;display:block";
+    if(r0)(async()=>{try{await seek(Math.min(duration-0.3,r0.st+3));const W=video.videoWidth,H=video.videoHeight;cv.getContext("2d").drawImage(video,W*SX0,H*SY0,W*(SX1-SX0),H*(SY1-SY0),0,0,cv.width,cv.height)}catch(e){}})();
+    const other=side=>side==="left"?"right":"left";
+    const sel=(side,i)=>{const s=h("select",{class:"input",style:"min-width:0;padding:4px 6px;font-size:13px"},h("option",{value:""},"—"),AGENTS.map(a=>h("option",{value:a},a)));s.value=c[side][i]||"";
+      s.onchange=()=>{const was=c[side][i],now=s.value;c[side][i]=now;
+        // rename in this map's rounds, only where the old name cannot belong to the other team
+        if(was&&now&&!c[other(side)].includes(was))rs.forEach(r=>{["fkBy","fkVictim"].forEach(k=>{if(r[k]===was)r[k]=now});(r.fights||[]).forEach(f=>{if(f.k===was)f.k=now;if(f.v===was)f.v=now})});
+        if(R.me&&R.me[si]===was&&side==="left")R.me[si]=now;ok.textContent="確認済み";ok.className="pill win"};return s};
+    const grid=side=>h("div",{style:"display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px"},[0,1,2,3,4].map(i=>sel(side,i)));
+    const ok=h("span",{class:"pill warn"},"要確認");
+    box.append(h("div",{class:"card",style:"padding:10px;display:grid;gap:6px"},
+      h("div",{class:"row"},h("b",{},(R.segs.length>1?"マップ"+(si+1)+"の":"")+"エージェント構成"),ok,h("span",{class:"small muted"},"録画の画面と見比べて、違っていたら直してください(左が自チーム、どちらも画面の左から順)。")),
+      cv,h("div",{style:"display:grid;grid-template-columns:1fr 1fr;gap:10px"},h("div",{},h("div",{class:"small muted"},"自チーム"),grid("left")),h("div",{},h("div",{class:"small muted"},"相手"),grid("right"))),
+      h("div",{class:"row"},(()=>{const b=h("button",{class:"btn small",type:"button"},"この構成で合っている");b.onclick=()=>{ok.textContent="確認済み";ok.className="pill win"};return b})())));
+  });
+}
 
 // Several players may record the same scrim from their own view. A recording whose rounds match a match already saved
 // (same day ±1, same map or unknown, same round results) is attached to it as another point of view instead of a new match,
@@ -1030,7 +1058,7 @@ async function saveLast(meta){
     const map=(si===0&&meta.map)?meta.map:((R.maps&&R.maps[si])||"");
     let same=null;try{same=await findSame(meta.date,map,R.segs[si],si+1)}catch(e){same=null}
     if(same){await savePov(same.id,si,R);await keepSnaps(same.id,si,R);out.merged++;continue}
-    const{data,error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:meta.date||"",opp:meta.opp||"",map,start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:meta.yt||"",file:fileName,part:si+1,comps:{...((R.compsBy&&R.compsBy[si])||R.comps),me:(R.me&&R.me[si])||null},rounds:R.segs[si]}});
+    const{data,error}=await TL.sb.rpc("save_match",{t:APP.team.id,m:{date:meta.date||"",opp:meta.opp||"",map,start_side:(R.starts&&R.starts[si]?R.starts[si].side:$("mSide").value),yt:meta.yt||"",file:fileName,part:si+1,comps:(c=>({...c,left:(c.left||[]).filter(Boolean),right:(c.right||[]).filter(Boolean),me:(R.me&&R.me[si])||null}))((R.compsBy&&R.compsBy[si])||R.comps),rounds:R.segs[si]}});
     if(error)throw error;
     if(data){await savePov(data,si,R);await keepSnaps(data,si,R)}
     out.created++;
