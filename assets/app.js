@@ -393,6 +393,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     if (!window.TLSnaps || !TLSnaps.supported) { box.hidden = true; return; }
     const sel = $("snapDays"); sel.value = String(TLSnaps.days());
     sel.onchange = async () => { TLSnaps.setDays(+sel.value); await TLSnaps.cleanup(); show(); };
+    const cb = $("contrib"); if (cb) { try { cb.checked = localStorage.getItem("taclog_contrib") === "1"; } catch (e) {} cb.onchange = () => { try { localStorage.setItem("taclog_contrib", cb.checked ? "1" : "0"); } catch (e) {} }; }
     $("snapClear").onclick = async () => { await TLSnaps.clearAll(); show(); };
     async function show() { const u = await TLSnaps.usage(); $("snapUse").textContent = u ? "今このブラウザでTacLogが使っている容量:約" + (u.used / 1e9 >= 1 ? (u.used / 1e9).toFixed(1) + "GB" : Math.round(u.used / 1e6) + "MB") + "(1マップ約20〜50MB)" : ""; }
     show();

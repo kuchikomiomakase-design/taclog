@@ -613,6 +613,48 @@ function fillFirstKills(segs){
     if(r.fk&&r.fk!=="tie"&&f&&(f.g===(r.fk==="us"))){if(!r.fkBy&&f.k&&f.k!=="?")r.fkBy=f.k;if(!r.fkVictim&&f.v&&f.v!=="?")r.fkVictim=f.v}
   }));
 }
+
+// ---------- training material (to teach TacLog's own recognizers) ----------
+// Only when "精度向上のための教材を作る" is on in Settings. After the analysis, small crops of the screen (top bar with portraits,
+// kill feed, minimap) are cut at known moments and labelled with what the analysis found (alive counts, who killed whom, place).
+// Nothing is sent anywhere: a zip is made on this PC for the user to hand over.
+let TRAIN=null;
+const contribOn=()=>{try{return localStorage.getItem("taclog_contrib")==="1"}catch(e){return false}};
+async function cropBlob(sx,sy,sw,sh,maxW){const W=video.videoWidth,H=video.videoHeight,w=Math.min(maxW||sw*W,sw*W),hh=Math.round(w*sh*H/(sw*W));
+  const c=document.createElement("canvas");c.width=Math.round(w);c.height=hh;c.getContext("2d").drawImage(video,sx*W,sy*H,sw*W,sh*H,0,0,c.width,hh);
+  return await new Promise(r=>c.toBlob(r,"image/jpeg",0.9))}
+async function collectTraining(segs,maps,comps,me){
+  if(!contribOn())return;
+  TRAIN={items:[],meta:{file:fileName,w:video.videoWidth,h:video.videoHeight,maps,comps,me,made:new Date().toISOString()}};
+  const all=[];segs.forEach((rs,si)=>rs.forEach(r=>{if(r._st!=null&&Array.isArray(r.alv))all.push({si,r})}));
+  let done=0;
+  for(const {si,r} of all){
+    prog(0.999,"精度向上の教材を作っています…("+(++done)+"/"+all.length+")");
+    const end=Math.min(r._next!=null?r._next-1:r._st+100,r._st+145,duration-0.3);
+    const stateAt=t=>{let s=[5,5];for(const [tt,u,e] of r.alv)if(tt<=t)s=[u,e];return s};
+    // top bar: every 6 s, labelled with the confirmed alive counts (us, them). Skip the 3 s around a change (not sure which side of it).
+    for(let t=r._st+2;t<=end;t+=6){const rel=t-r._st;if(r.alv.some(([tt])=>Math.abs(tt-rel)<3&&tt>0))continue;
+      if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);
+      TRAIN.items.push({kind:"topbar",t:Math.round(t*10)/10,map:si,round:r.n,label:{alive:stateAt(rel)},blob:await cropBlob(SX0,SY0,SX1-SX0,SY1-SY0)})}
+    // kill feed (+ minimap) at each fight read from the kill feed
+    for(const f of (r.fights||[])){const t=r._st+f.t+0.5;if(t>=duration-0.3)continue;await seek(t);
+      TRAIN.items.push({kind:"killfeed",t:Math.round(t*10)/10,map:si,round:r.n,label:{k:f.k,v:f.v,g:f.g},blob:await cropBlob(0.68,0.035,0.32,0.22)});
+      if(f.p&&f.p!=="?")TRAIN.items.push({kind:"minimap",t:Math.round(t*10)/10,map:si,round:r.n,label:{place:f.p,map:maps&&maps[si]||null},blob:await cropBlob(MM.x,MM.y,MM.w,MM.h)})}
+  }
+}
+async function exportTraining(btn){
+  if(!TRAIN||!TRAIN.items.length)return;
+  btn.disabled=true;const old=btn.textContent;btn.textContent="まとめています…";
+  try{
+    if(!window.JSZip)await new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";s.onload=res;s.onerror=rej;document.head.append(s)});
+    const z=new JSZip(),lines=[];
+    TRAIN.items.forEach((it,i)=>{const name=it.kind+"/"+String(i).padStart(5,"0")+".jpg";z.file(name,it.blob);lines.push(JSON.stringify({file:name,kind:it.kind,t:it.t,map:it.map,round:it.round,label:it.label}))});
+    z.file("labels.jsonl",lines.join("\n"));z.file("meta.json",JSON.stringify(TRAIN.meta,null,1));
+    const blob=await z.generateAsync({type:"blob",compression:"STORE"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="taclog-kyozai-"+String(fileName||"rec").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_")+".zip";document.body.append(a);a.click();a.remove();
+    btn.textContent="書き出しました";
+  }catch(e){btn.textContent=old;btn.disabled=false;alert("書き出せませんでした:"+(e&&e.message||e))}
+}
 function markMine(segs,me){
   segs.forEach((rs,si)=>{const mine=agentKey(me[si]);rs.forEach(r=>{
     if(!mine||!r.fk||r.fk==="tie"){r.myFk=null;r.myFd=null;return}
@@ -821,6 +863,7 @@ async function runAnalysis(){
     let known=[];try{known=await knownMatches(segs,maps)}catch(e){known=[]}
     await readKit(segs,me,maps,known,comps);
     fillFirstKills(segs);markMine(segs,me);markVoid(segs);
+    TRAIN=null;try{await collectTraining(segs,maps,comps,me)}catch(e){if(e&&e.code==="cancelled")throw e}
     segs.forEach(rs=>rs.forEach(r=>{if(r._st!=null)r.st=Math.round(r._st);delete r._st;delete r._next}));
     prog(1,"完了しました");
     lastResult={coach:COACH,snaps:SNAPS,segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
@@ -839,6 +882,7 @@ function showResult(){
   const R=lastResult,box=$("result");box.hidden=false;box.replaceChildren();
   const rate=R.samples?Math.round(R.read/R.samples*100):0;
   if(!R.segs.length||!R.segs[0].length){box.append(h("div",{class:"status"},"ラウンドを見つけられませんでした(読み取れた画面 "+rate+"%)。試合の画面(上のスコアと残り時間)が映っている録画か確認してください。"));return}
+  if(TRAIN&&TRAIN.items.length){const mb=(TRAIN.items.reduce((a,x)=>a+(x.blob?x.blob.size:0),0)/1e6).toFixed(1);const b=h("button",{class:"btn small",type:"button"},"精度向上の教材を書き出す("+TRAIN.items.length+"枚・約"+mb+"MB)");b.onclick=()=>exportTraining(b);box.append(h("div",{class:"row"},b,h("span",{class:"small muted"},"書き出したzipを運営に送ると、読み取りの精度向上に使われます(画面の一部の小さな画像だけで、録画や声は入りません)。")))}
   box.append(h("div",{class:"row"},h("span",{class:"pill win"},"読み取れた画面 "+rate+"%"),h("span",{class:"pill"},R.segs.length>1?R.segs.length+"マップ分":"1マップ"),
     R.comps.left.length?h("span",{class:"pill mute"},"自チーム:"+R.comps.left.join(" / ")):null,R.comps.right.length?h("span",{class:"pill mute"},"相手:"+R.comps.right.join(" / ")):null,
     (()=>{const all=R.segs.flat(),n=all.filter(r=>r.fk!=null).length;return h("span",{class:"pill "+(n>=all.length*0.9?"win":"warn"),title:"ファーストキルがどちらのチームに入ったか判定できたラウンド"},"ファーストキル判定 "+n+"/"+all.length)})(),
