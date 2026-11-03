@@ -1097,7 +1097,7 @@ async function libComps(segs,compsBy){
       for(let k=0;k<5;k++){const i=side==="left"?k:k+5,votes={},top={};let n=0;
         for(const v of vs){const best={};for(const L of lib){if(L.side!==side)continue;const sc=dotv(v[i],L.v);if(!(L.agent in best)||sc>best[L.agent])best[L.agent]=sc}
           const o=Object.entries(best).sort((a,b)=>b[1]-a[1]);if(!o.length)continue;
-          if(!o[1]||o[0][1]-o[1][1]>=0.05){votes[o[0][0]]=(votes[o[0][0]]||0)+1;n++;top[o[0][0]]=Math.max(top[o[0][0]]||0,o[0][1])}}
+          if(o[1]&&o[0][1]>=0.6&&o[0][1]-o[1][1]>=0.05){votes[o[0][0]]=(votes[o[0][0]]||0)+1;n++;top[o[0][0]]=Math.max(top[o[0][0]]||0,o[0][1])}}
         const w=Object.entries(votes).sort((a,b)=>b[1]-a[1])[0];
         if(w&&w[1]>=2&&w[1]*2>n)cand.push({k,agent:w[0],s:w[1]+top[w[0]]})}
       // one agent per team: the clearest match keeps it
