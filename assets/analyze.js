@@ -128,9 +128,9 @@ function roundStartOf(r,samples,next){
   const cl=[];it.map(x=>x.t-(100-x.x)).forEach(e=>{const c=cl.find(c=>Math.abs(c.v-e)<=5);if(c){c.n++;c.v=(c.v*(c.n-1)+e)/c.n}else cl.push({v:e,n:1})});
   cl.sort((a,b)=>a.v-b.v);
   const ok=cl.filter(c=>c.v>=r.start-60&&(next==null||c.v<next));if(!ok.length)return null;
-  let st=ok.reduce((a,b)=>b.n>a.n?b:a);                                   // the barrier most readings agree on
-  for(const c of ok)if(c.v>st.v+20&&c.n>=2)st=c;                            // restarted: a later barrier seen at least twice
-  return st.v;
+  // the FIRST barrier drop of the window (a later one is usually the next round's, seen because its score change was noticed late).
+  // Restarted rounds are handled by findRestarts (strict).
+  return ok[0].v;
 }
 // Custom games: a round can be restarted (someone died by mistake before it started) or ended by force. A restarted round stays under
 // the same score but runs longer: read the timer more often in long rounds and keep the LAST barrier drop as its start.
@@ -144,7 +144,7 @@ async function findRestarts(segs){
   const res=await readTimes(cells.map(c=>Math.min(duration-0.5,c.t)));
   const by=new Map();cells.forEach((c,k)=>{const x=parseTile(res[k]);if(typeof x.x==="number"&&x.x>30&&x.x<=100){(by.get(c.r)||by.set(c.r,[]).get(c.r)).push(c.t-(100-x.x))}});
   by.forEach((est,r)=>{est.sort((a,b)=>a-b);const cl=[];est.forEach(e=>{const c=cl.find(c=>Math.abs(c.v-e)<=5);if(c){c.n++;c.v=(c.v+e)/2}else cl.push({v:e,n:1})});
-    const good=cl.filter(c=>c.n>=2);if(good.length>=2){r._restart=good[good.length-1].v;r.restarted=true}});
+    const good=cl.filter(c=>c.n>=2);if(good.length>=2&&good[good.length-1].n>=3&&good[good.length-1].v-good[0].v<130){r._restart=good[good.length-1].v;r.restarted=true}});
 }
 function markVoid(segs){
   segs.forEach(rs=>rs.forEach((r,ri)=>{const nx=rs[ri+1];if(!nx)return;
@@ -242,7 +242,7 @@ async function readFirstKills(segs,samples){
     // Only a few frames per round: confirm everyone is alive at the start, then jump (binary search) to the moment the first player dies, then skip to the next round.
     let ok=null,fk=null,fkT=null;const memo={};
     const at=async(t)=>{if(memo[t])return memo[t];if(ctl.signal.aborted)throw{code:"cancelled"};return memo[t]=await aliveSteady(t)};
-    const dead=async(t)=>{const a=await at(t);return a[0]<5||a[1]<5};
+    const dead=async(t)=>{const a=await at(t);if(a[0]===0&&a[1]===0)return false;return a[0]<5||a[1]<5};   // 0v0 = no portraits on screen, not a death
     const tries=j.est?[2,8,14,-6,20,26,-12,32,38,44]:[2,5,0,8,11,14,17,20];   // an estimated start can be further off
     for(const d of tries){const t=Math.ceil(j.st+d);if(t>j.end||t<0)continue;const a=await at(t);if(a[0]===5&&a[1]===5){ok=t;break}} // round start can be a few seconds off
     // never saw 5v5 (portraits hard to read at that moment): nobody can die before the barrier drops, so start from there anyway,
@@ -286,6 +286,7 @@ async function readFirstKillers(segs){
         // only agents of this match (both teams); anything else is a misread and stays unknown
         const cs=(lastCompsBy&&lastCompsBy[c.si])||{left:[],right:[]},inMatch=cs.left.concat(cs.right);
         const fix=n=>{const a=agentOf(n);if(!a)return null;return !inMatch.length||inMatch.includes(a)?a:null};
+        r0._fkByRaw=agentOf(kn0);r0._fkVicRaw=agentOf(vn0);
         const kn=fix(kn0),vn=fix(vn0);
         if(kn)r0.fkBy=kn;
         if(vn)r0.fkVictim=vn;
@@ -531,7 +532,7 @@ async function readKit(segs,me,maps,known,comps){
     prog(0.99,"ラウンドの流れとスキルを確認しています… ("+(++done)+"/"+jobs.length+"ラウンド)");
     const S=[];
     const snap=snapStart();
-    for(let t=j.a;t<=j.end;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const al=aliveNow();S.push({t,us:al[0],en:al[1],...(hud&&j.b!=null&&t<=j.b?kitNow(KIT_KX):{ok:false,bars:[],held:null})});snapAdd(snap,j.r.n,t-j.base)}
+    for(let t=j.a;t<=j.end;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);let al=aliveNow();if(al[0]===0&&al[1]===0){const pv=S[S.length-1];al=pv?[pv.us,pv.en]:[5,5]}S.push({t,us:al[0],en:al[1],...(hud&&j.b!=null&&t<=j.b?kitNow(KIT_KX):{ok:false,bars:[],held:null})});snapAdd(snap,j.r.n,t-j.base)}
     try{const blobs=await snapEnd(snap);if(blobs.length)((SNAPS[j.si]=SNAPS[j.si]||{})[j.r.n]=blobs)}catch(e){}
     // An attack win without a plant needs kills: if nobody died in the window, the start was probably wrong - look wider (earlier)
     {const atkWin=(j.r.side==="attack")===(j.r.win===true);
@@ -611,16 +612,19 @@ async function readKit(segs,me,maps,known,comps){
         blobs.push(await new Promise(r=>cv.toBlob(r,"image/jpeg",0.85)));
       }
       try{
-        const r=await SAMPLE.json(!fixed?"Each numbered cell is the kill feed (top-right of a VALORANT screen) right after someone died. For each cell give the newest death(s): killer agent > victim agent (identify AGENTS from the portraits; names may be player names or hidden; green/teal entry = killer on the recording team, red = enemy). Reply only JSON, one list per cell in order (usually 1 death, sometimes 2): {\"f\":[[{\"k\":\"Jett\",\"v\":\"Sova\",\"g\":true}],[]]} (g = true if the killer is on the recording team; use \"?\" for anything you cannot tell)."+who:(sheet?"Image 1 is a reference sheet from the SAME match: each tile is the minimap with the recording player's own icon, labelled with the name of the place where that player stood at that moment. ":"")+
+        const fightPrompt=!fixed?"Each numbered cell is the kill feed (top-right of a VALORANT screen) right after someone died. For each cell give the newest death(s): killer agent > victim agent (identify AGENTS from the portraits; names may be player names or hidden; green/teal entry = killer on the recording team, red = enemy). Reply only JSON, one list per cell in order (usually 1 death, sometimes 2): {\"f\":[[{\"k\":\"Jett\",\"v\":\"Sova\",\"g\":true}],[]]} (g = true if the killer is on the recording team; use \"?\" for anything you cannot tell)."+who:(sheet?"Image 1 is a reference sheet from the SAME match: each tile is the minimap with the recording player's own icon, labelled with the name of the place where that player stood at that moment. ":"")+
           "The other images have numbered cells. Each cell shows the minimap and the kill feed (top-right of the screen) right after someone died. Each death leaves an X marker on the minimap (blue/teal X = a player of the recording team, red X = an enemy); a magenta circle marks where a NEW X appeared in the last 2 seconds (found automatically, it can be missing or slightly off: then use the newest kill feed entry and the X closest to it). "+
           "For each cell give the newest death(s): killer agent > victim agent (identify AGENTS from the kill feed portraits; green/teal entry = killer on the recording team, red = enemy), and the place of the NEW X marker (the circled one)"+(sheet?", named by comparing its position with the reference tiles (use those names; for a spot between tiles pick the nearest)":"")+(dict?". Known place names on this map: "+dict:"")+
-          ". Reply only JSON, one list per cell in order (usually 1 death, sometimes 2): {\"f\":[[{\"k\":\"Jett\",\"v\":\"Sova\",\"g\":true,\"p\":\"A Main\"}],[]]} (g = true if the killer is on the recording team; use \"?\" for anything you cannot tell)."+who,
+          ". Reply only JSON, one list per cell in order (usually 1 death, sometimes 2): {\"f\":[[{\"k\":\"Jett\",\"v\":\"Sova\",\"g\":true,\"p\":\"A Main\"}],[]]} (g = true if the killer is on the recording team; use \"?\" for anything you cannot tell)."+who;
+        const r=await SAMPLE.json(fightPrompt,
           {images:(sheet?[sheet]:[]).concat(blobs),signal:ctl.signal,modelTier:"fast",task:"fights"});
-        const arr=Array.isArray(r.f)?r.f:[];
+        let arr=Array.isArray(r.f)?r.f:[];
+        // the cheap model found (almost) nothing although people died: ask the better model once
+        if(arr.filter(x=>Array.isArray(x)&&x.length).length<part.length*0.5){try{const r2=await SAMPLE.json(fightPrompt,{images:(sheet?[sheet]:[]).concat(blobs),signal:ctl.signal,modelTier:"default",task:"fights2"});if(Array.isArray(r2.f))arr=r2.f}catch(e){if(e&&e.code==="cancelled")throw e}}
         part.forEach((c,k)=>{const list=Array.isArray(arr[k])?arr[k]:[];list.slice(0,Math.max(1,c.n)+1).forEach(e=>{if(!e||typeof e!=="object")return;
-          const canon=(n)=>{n=String(n||"?").trim();if(/^(me|自分)$/i.test(n)&&me[si])return me[si];const k=agentKey(n);const hit=L.concat(Rr).find(a=>agentKey(a)===k);return hit||(L.length+Rr.length?"?":n.slice(0,20))};
+          const canon=(n)=>{n=String(n||"?").trim();if(/^(me|自分)$/i.test(n)&&me[si])return me[si];return agentOf(n)||"?"};
           const kk=canon(e.k),vv=canon(e.v);let g=e.g===true?true:e.g===false?false:null;
-          if(L.some(a=>a===kk))g=true;else if(Rr.some(a=>a===kk))g=false;else if(Rr.some(a=>a===vv))g=true;else if(L.some(a=>a===vv))g=false;
+          if(g==null){if(L.some(a=>a===kk))g=true;else if(Rr.some(a=>a===kk))g=false;else if(Rr.some(a=>a===vv))g=true;else if(L.some(a=>a===vv))g=false}
           const f={t:Math.max(0,Math.round(c.t-c.j.base)),k:kk,v:vv,g,p:String(e.p||"?").slice(0,40)};
           if(!fixed)f.p="?";f._t=c.t;
           if(!c.j.r.fights.some(x=>agentKey(x.v)===agentKey(f.v)&&agentKey(f.v)))c.j.r.fights.push(f)})});
@@ -650,6 +654,27 @@ async function readKit(segs,me,maps,known,comps){
 }
 // Last chance for the first kill, after the whole-round pass: the first change of the alive counts (every 2 s) and the first fight
 // read from the kill feed. Used only for rounds the quick search could not settle.
+// The kill feed names (dozens per map, each with a team colour) are a second witness for who is in the match.
+// An agent seen there on one team 2+ times replaces a portrait-read agent that the kill feed never shows on that team.
+function reconcileComps(segs,compsBy){
+  segs.forEach((rs,si)=>{const cs=compsBy&&compsBy[si];if(!cs)return;const cnt={left:{},right:{}};
+    const add=(side,a)=>{if(a&&a!=="?")cnt[side][a]=(cnt[side][a]||0)+1};
+    rs.forEach(r=>{(r.fights||[]).forEach(f=>{if(f.g===true){add("left",f.k);add("right",f.v)}else if(f.g===false){add("right",f.k);add("left",f.v)}});
+      if(r.fk==="us"){add("left",r._fkByRaw);add("right",r._fkVicRaw)}else if(r.fk==="them"){add("right",r._fkByRaw);add("left",r._fkVicRaw)}});
+    for(const side of ["left","right"]){
+      const other=side==="left"?"right":"left";let list=(cs[side]||[]).slice();
+      const seen=Object.entries(cnt[side]).filter(([a,n])=>n>=2&&!list.includes(a)&&!(cs[other]||[]).includes(a)).sort((a,b)=>b[1]-a[1]).map(([a])=>a);
+      for(const a of seen){const drop=list.find(x=>!cnt[side][x]);if(drop)list[list.indexOf(drop)]=a;else if(list.length<5)list.push(a)}
+      cs[side]=list.slice(0,5);
+    }
+    // names are now limited to the corrected composition
+    const inMatch=(cs.left||[]).concat(cs.right||[]);
+    rs.forEach(r=>{if(!r.fkBy&&r._fkByRaw&&inMatch.includes(r._fkByRaw))r.fkBy=r._fkByRaw;if(!r.fkVictim&&r._fkVicRaw&&inMatch.includes(r._fkVicRaw))r.fkVictim=r._fkVicRaw;
+      if(r.fkBy&&!inMatch.includes(r.fkBy))r.fkBy=null;if(r.fkVictim&&!inMatch.includes(r.fkVictim))r.fkVictim=null;
+      (r.fights||[]).forEach(f=>{if(f.k!=="?"&&!inMatch.includes(f.k))f.k="?";if(f.v!=="?"&&!inMatch.includes(f.v))f.v="?"});
+      delete r._fkByRaw;delete r._fkVicRaw});
+  });
+}
 function fillFirstKills(segs){
   segs.forEach(rs=>rs.forEach(r=>{
     const f=(Array.isArray(r.fights)?r.fights:[]).slice().sort((a,b)=>a.t-b.t)[0];
@@ -925,7 +950,7 @@ async function runAnalysis(){
     await readMyDeaths(segs,me);
     let known=[];try{known=await knownMatches(segs,maps)}catch(e){known=[]}
     await readKit(segs,me,maps,known,comps);
-    fillFirstKills(segs);markMine(segs,me);markVoid(segs);
+    reconcileComps(segs,compsBy);fillFirstKills(segs);markMine(segs,me);markVoid(segs);
     TRAIN=null;try{await collectTraining(segs,maps,comps,me)}catch(e){if(e&&e.code==="cancelled")throw e}
     segs.forEach(rs=>rs.forEach(r=>{if(r._st!=null)r.st=Math.round(r._st);delete r._st;delete r._next}));
     prog(1,"完了しました");
