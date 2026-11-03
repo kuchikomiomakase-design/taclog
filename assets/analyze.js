@@ -95,10 +95,16 @@ async function readSites(cells){
 
 function roundStartOf(r,samples,next){
   if(r._restart!=null)return r._restart;
-  const it=samples.filter(x=>x.t>=r.start&&(next==null||x.t<next)&&typeof x.x==="number"&&x.x>30&&x.x<=100);
+  const it=samples.filter(x=>x.t>=r.start-60&&(next==null||x.t<next)&&typeof x.x==="number"&&x.x>30&&x.x<=100);
   if(!it.length)return null;
-  // several readings: if a later one points to a barrier much later than the first (the round was restarted), take the last start
-  const est=it.map(x=>x.t-(100-x.x));let st=est[0];for(const e of est)if(e>st+20)st=e;return st;
+  // group the readings that point to the same barrier drop (±5 s). A single odd reading must never move the start:
+  // a later start (restarted round) only counts when at least 2 readings agree on it.
+  const cl=[];it.map(x=>x.t-(100-x.x)).forEach(e=>{const c=cl.find(c=>Math.abs(c.v-e)<=5);if(c){c.n++;c.v=(c.v*(c.n-1)+e)/c.n}else cl.push({v:e,n:1})});
+  cl.sort((a,b)=>a.v-b.v);
+  const ok=cl.filter(c=>c.v>=r.start-60&&(next==null||c.v<next));if(!ok.length)return null;
+  let st=ok.reduce((a,b)=>b.n>a.n?b:a);                                   // the barrier most readings agree on
+  for(const c of ok)if(c.v>st.v+20&&c.n>=2)st=c;                            // restarted: a later barrier seen at least twice
+  return st.v;
 }
 // Custom games: a round can be restarted (someone died by mistake before it started) or ended by force. A restarted round stays under
 // the same score but runs longer: read the timer more often in long rounds and keep the LAST barrier drop as its start.
@@ -116,9 +122,9 @@ async function findRestarts(segs){
 }
 function markVoid(segs){
   segs.forEach(rs=>rs.forEach((r,ri)=>{const nx=rs[ri+1];if(!nx)return;
-    if(r._st==null&&r.st==null){if(r.start!=null&&nx.start-r.start<40&&!r.planted)r.void=true;return}   // ended during the buy phase
+    if(r._st==null&&r.st==null)return;   // start not known: do not guess (a late-noticed score change also makes a round look short)
     const st=r._st??r.st;
-    const alv=Array.isArray(r.alv)?r.alv:[];const deaths=alv.length>1;
+    const alv=Array.isArray(r.alv)?r.alv:null;if(!alv)return;const deaths=alv.length>1;
     if(nx.start-st<20&&!deaths&&!r.planted){r.void=true}}));
 }
 // First kill without AI: each agent portrait in the top bar loses its detail when that player dies.
@@ -181,13 +187,14 @@ async function findStarts(segs,samples){
   const cells=[];
   segs.forEach(rs=>rs.forEach((r,ri)=>{const nx=rs[ri+1];if(r.start==null||r._restart!=null)return;
     if(roundStartOf(r,samples,nx?nx.start:null)!=null)return;
-    const from=r.n===1||r.n===13?36:26,to=r.n===1||r.n===13?86:70;
-    for(let d=from;d<=to;d+=6){const t=r.start+d;if(nx&&t>=nx.start-2)break;if(t<duration-0.5)cells.push({r,t})}}));
+    const pv=rs[ri-1],from=Math.max(pv?pv.start+20-r.start:-30,-50),to=r.n===1||r.n===13?86:70;
+    for(let d=from;d<=to;d+=6){const t=r.start+d;if(nx&&t>=nx.start-2)break;if(t>0&&t<duration-0.5)cells.push({r,t})}}));
   if(!cells.length)return;
   prog(0.95,"ラウンドの始まりを確認しています…");
   const res=await readTimes(cells.map(c=>c.t));
   const by=new Map();cells.forEach((c,k)=>{const x=parseTile(res[k]);if(typeof x.x==="number"&&x.x>30&&x.x<=100)(by.get(c.r)||by.set(c.r,[]).get(c.r)).push(c.t-(100-x.x))});
-  by.forEach((est,r)=>{est.sort((a,b)=>a-b);r._restart=est[Math.floor(est.length/2)]});
+  by.forEach((est,r)=>{const cl=[];est.forEach(e=>{const c=cl.find(c=>Math.abs(c.v-e)<=5);if(c){c.n++;c.v=(c.v*(c.n-1)+e)/c.n}else cl.push({v:e,n:1})});
+    const best=cl.reduce((a,b)=>b.n>a.n?b:a);if(best.n>=2||cl.length===1)r._restart=best.v});
 }
 async function readFirstKills(segs,samples){
   const jobs=[];
@@ -491,6 +498,13 @@ async function readKit(segs,me,maps,known,comps){
     const snap=snapStart();
     for(let t=j.a;t<=j.end;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const al=aliveNow();S.push({t,us:al[0],en:al[1],...(hud&&j.b!=null&&t<=j.b?kitNow(KIT_KX):{ok:false,bars:[],held:null})});snapAdd(snap,j.r.n,t-j.base)}
     try{const blobs=await snapEnd(snap);if(blobs.length)((SNAPS[j.si]=SNAPS[j.si]||{})[j.r.n]=blobs)}catch(e){}
+    // An attack win without a plant needs kills: if nobody died in the window, the start was probably wrong - look wider (earlier)
+    {const atkWin=(j.r.side==="attack")===(j.r.win===true);
+      if(j.r.win!=null&&atkWin&&!j.r.planted&&!S.some(x=>x.us<5||x.en<5)){
+        const rs=segs[j.si],ri=rs.indexOf(j.r),pv=rs[ri-1],from=Math.max(pv&&pv.start!=null?pv.start+15:0,j.base-70);
+        const extra=[];for(let t=from;t<j.a;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const al=aliveNow();extra.push({t,us:al[0],en:al[1],ok:false,bars:[],held:null})}
+        if(extra.some(x=>x.us<5||x.en<5)){S.unshift(...extra);j.a=from}
+      }}
     j.S=S;
     // alive counts only go down in a round: accept a drop once it is seen twice in a row (or at the last look)
     const alv=[[0,5,5]];let cu=5,ce=5;
