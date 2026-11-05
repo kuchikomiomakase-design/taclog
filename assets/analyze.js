@@ -243,37 +243,65 @@ function feedNow(){
   const W=video.videoWidth,H=video.videoHeight;feedX.drawImage(video,W*FD.x,H*FD.y,W*FD.w,H*FD.h,0,0,FW,FH);
   const d=feedX.getImageData(0,0,FW,FH).data,T=new Uint8Array(FW*FH),Rd=new Uint8Array(FW*FH),tc=new Uint16Array(FH),rc=new Uint16Array(FH);
   for(let y=0;y<FH;y++)for(let x=0;x<FW;x++){const i=y*FW+x,r=d[i*4],g=d[i*4+1],b=d[i*4+2];
-    if(g>r+35&&b>r+15&&g>110){T[i]=1;tc[y]++}else if(r>165&&r>g+70&&r>b+55){Rd[i]=1;rc[y]++}}
+    if(g>r+35&&b>r+15&&g>95){T[i]=1;tc[y]++}else if(r>110&&r>g+60&&r>b+50){Rd[i]=1;rc[y]++}}
   const rows=[];let y=0;
   while(y<FH){
-    if(tc[y]>=FW*0.08&&rc[y]>=FW*0.08){const y0=y;while(y<FH&&tc[y]>=FW*0.05&&rc[y]>=FW*0.05)y++;const n=y-y0;
+    if(tc[y]>=FW*0.08&&rc[y]>=FW*0.08){const y0b=y;while(y<FH&&tc[y]>=FW*0.05&&rc[y]>=FW*0.05)y++;
+      // two lines touching (no gap between them) are one tall band: cut it into lines of the normal height (~39 px apart)
+      const parts=Math.max(1,Math.round((y-y0b)/39));
+      for(let q=0;q<parts;q++){const y0=Math.round(y0b+(y-y0b)*q/parts),y1=Math.round(y0b+(y-y0b)*(q+1)/parts),n=y1-y0;
       if(n>=26){   // a whole line (a line sliding in or out is thinner: seen at the next look)
-        let st=0,sr=0,ct=0,cr=0,mxT=-1,mxR=-1;
-        for(let x=0;x<FW;x++){let a=0,b=0;for(let yy=y0;yy<y;yy++){a+=T[yy*FW+x];b+=Rd[yy*FW+x]}
-          if(a>=n*0.5){st+=x;ct++;mxT=x}if(b>=n*0.5){sr+=x;cr++;mxR=x}}
-        if(ct>=20&&cr>=20){const us=st/ct<sr/cr;rows.push({y0,y1:y,team:us?"us":"them",split:us?mxT:mxR})}
-      }
+        let st=0,sr=0,ct=0,cr=0;const colT=new Uint8Array(FW),colR=new Uint8Array(FW);
+        for(let x=0;x<FW;x++){let a=0,b=0;for(let yy=y0;yy<y1;yy++){a+=T[yy*FW+x];b+=Rd[yy*FW+x]}
+          if(a>=n*0.5){st+=x;ct++;colT[x]=1}if(b>=n*0.5){sr+=x;cr++;colR[x]=1}}
+        if(ct>=20&&cr>=20){const us=st/ct<sr/cr,vc=us?colR:colT;
+          // where the victim part begins: the first run of 10 columns in the victim colour (stable from one look to the next)
+          let split=-1,run=0;for(let x=0;x<FW;x++){run=vc[x]?run+1:0;if(run===10){split=x-9;break}}
+          if(split>=0)rows.push({y0,y1,team:us?"us":"them",split})}
+      }}
     }else y++;
   }
   return rows;
 }
 // new lines = what is left after the old ones that are still there (the oldest may have gone from the top)
 function feedNew(P,C){const same=(a,b)=>a.team===b.team&&Math.abs(a.split-b.split)<=6;
-  for(let d=0;d<=P.length;d++){const k=Math.min(P.length-d,C.length);let ok=true;for(let i=0;i<k;i++)if(!same(P[d+i],C[i])){ok=false;break}if(ok)return C.slice(Math.min(C.length,P.length-d))}
-  return C}
+  // longest common run in order (old lines keep their order; one line missed in either look is skipped)
+  const m=P.length,n=C.length,D=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=m-1;i>=0;i--)for(let j=n-1;j>=0;j--)D[i][j]=same(P[i],C[j])?D[i+1][j+1]+1:Math.max(D[i+1][j],D[i][j+1]);
+  let i=0,j=0,last=-1;while(i<m&&j<n){if(same(P[i],C[j])){last=j;i++;j++}else if(D[i+1][j]>=D[i][j+1])i++;else j++}
+  return C.slice(last+1)}
+// best matching of the faces now in the top bar to the faces at the start of the round (one face per player); returns who is gone
+function faceAssign(F,T,cand,slots){
+  let best=-1e9,bestGone=null,second=-1e9;const perm=(rest,i,used,sum)=>{
+    if(i===slots.length){const gone=cand.filter(c=>!used.includes(c)),key=gone.join(",");
+      if(sum>best){if(bestGone&&bestGone.join(",")!==key)second=Math.max(second,best);best=sum;bestGone=gone}else if(bestGone&&key!==bestGone.join(","))second=Math.max(second,sum);return}
+    for(const c of rest)perm(rest.filter(x=>x!==c),i+1,used.concat(c),sum+dotv(F[slots[i]],T[c]))};
+  perm(cand,0,[],0);return{gone:bestGone||[],margin:second>-1e9?best-second:9};
+}
 async function readFeed(segs,jobs){
   let done=0;
   for(const j of jobs){
     prog(0.95,"キルログを読み取っています… ("+(++done)+"/"+jobs.length+"ラウンド)");
     const r=segs[j.si][j.ri],base=r._st!=null?r._st:j.st,from=Math.max(0,base-12);   // first look in the buy phase (nobody can die yet), so even a kill right at the barrier counts
     const end=Math.min(r._next!=null?r._next-1:base+145,base+145,duration-0.3);
-    let P=null;const kills=[];
+    let P=null,T=null;const kills=[],alive={us:[0,1,2,3,4],them:[5,6,7,8,9]};
+    const faces=()=>[...Array(10).keys()].map(i=>nv(slotVec(i)));
     for(let t=from;t<=end;t+=1.5){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const C=feedNow();
-      if(P===null){P=C;continue}   // lines already there at the first look belong to the previous round
+      if(P===null){P=C;T=faces();continue}   // first look (buy phase): old lines belong to the previous round; everyone's face is in the top bar
       const nw=feedNew(P,C);
       // the line appeared since the last look: find the moment (0.25 s steps back)
       if(nw.length){let at=t;for(let b=t-0.25;b>t-1.5;b-=0.25){await seek(b);if(feedNew(P,feedNow()).length>=nw.length)at=b;else break}
-        nw.forEach((x,k)=>kills.push({t:Math.round((at-base)*4)/4,team:x.team,at,y0:x.y0,y1:x.y1,frame:t,row:C.indexOf(x)}));await seek(t)}
+        await seek(t);const F=faces();
+        const add=nw.map(x=>({t:Math.round((at-base)*4)/4,team:x.team,at,y0:x.y0,y1:x.y1,frame:t,row:C.indexOf(x),vicSlot:null}));
+        // who died: the dead player's face leaves the top bar and the others close up toward the middle.
+        // Match the remaining faces with this round's own faces from the buy phase: the face that is missing is the victim.
+        for(const vt of ["us","them"]){const ls=add.filter(k=>(k.team==="us"?"them":"us")===vt);if(!ls.length)continue;
+          const cand=alive[vt],left=cand.length-ls.length;if(left<0)continue;
+          const slots=vt==="us"?[...Array(left).keys()].map(q=>4-q):[...Array(left).keys()].map(q=>5+q);
+          const res=faceAssign(F,T,cand,slots);alive[vt]=cand.filter(c=>!res.gone.includes(c));
+          if(ls.length===1&&res.gone.length===1&&res.margin>=0.08)ls[0].vicSlot=res.gone[0];
+          else if(res.margin>=0.08)ls.forEach(k=>k.vicSet=res.gone)}
+        add.forEach(k=>kills.push(k))}
       P=C;
     }
     // deaths per team from the kill feed (killer teal = an enemy died)
@@ -376,7 +404,9 @@ async function readFeedNames(segs){
     const add=(team,name,agent)=>{if(!name||name==="?")return null;const L=teams[team];let e=L.find(x=>nameSim(x.name,name)>=0.75);if(!e){e={name,votes:{},n:0};L.push(e)}e.n++;
       const ok=team==="us"?cs.left:cs.right;if(agent&&(!ok.length||ok.includes(agent)))e.votes[agent]=(e.votes[agent]||0)+1;return e};
     const mine=cells.filter(c=>c.si===si);
-    mine.forEach(c=>{const kt=c.k.team,vt=kt==="us"?"them":"us";c.ke=add(kt,c.kn,c.ka);c.ve=add(vt,c.vn,c.va)});
+    const slotAgent=i=>i==null?null:(i<5?cs.left[i]:cs.right[i-5])||null;
+    mine.forEach(c=>{const kt=c.k.team,vt=kt==="us"?"them":"us";c.ke=add(kt,c.kn,c.ka);c.ve=add(vt,c.vn,c.va);
+      c.vs=slotAgent(c.k.vicSlot);if(c.vs&&c.ve){c.ve.votes[c.vs]=(c.ve.votes[c.vs]||0)+3}});
     for(const team of ["us","them"]){
       // one agent per player and one player per agent: strongest votes first
       const pairs=[];teams[team].forEach(e=>Object.entries(e.votes).forEach(([a,v])=>pairs.push({e,a,v,share:v/Math.max(1,Object.values(e.votes).reduce((x,y)=>x+y,0))})));
@@ -394,7 +424,7 @@ async function readFeedNames(segs){
       teams[team].filter(e=>!e.agent).forEach(e=>{const m=real.filter(x=>x.agent).sort((a,b)=>nameSim(b.name,e.name)-nameSim(a.name,e.name))[0];if(m&&nameSim(m.name,e.name)>=0.6)e.agent=m.agent});
       TRAIN_NAMES[si]=TRAIN_NAMES[si]||{};TRAIN_NAMES[si][team]=teams[team].map(e=>({name:e.name,n:e.n,votes:e.votes,agent:e.agent||null}));
     }
-    mine.forEach(c=>{const r=rs[c.ri],kill=r._feed.kills[c.ki];kill.by=c.ke&&c.ke.agent||null;kill.vic=c.ve&&c.ve.agent||null;kill.read=[c.kn,c.ka,c.vn,c.va].map(x=>x||"?").join(">")});
+    mine.forEach(c=>{const r=rs[c.ri],kill=r._feed.kills[c.ki];kill.by=c.ke&&c.ke.agent||null;kill.vic=c.vs||(c.ve&&c.ve.agent)||null;kill.read=[c.kn,c.ka,c.vn,c.va].map(x=>x||"?").join(">")});
     rs.forEach(r=>{if(!r._feed)return;const f=r._feed.kills[0];if(!f)return;r.fkBy=f.by||null;r.fkVictim=f.vic||null});
   });
   return true;
