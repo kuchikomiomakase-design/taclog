@@ -335,9 +335,58 @@ async function readFirstKills(segs,samples){
     const r=segs[j.si][j.ri];r.fk=fk;r.fkT=fkT;
   }
   await settleTies(segs);
-  await readFirstKillers(segs);
+  try{await libComps(segs,lastCompsBy||[])}catch(e){if(e&&e.code==="cancelled")throw e}
+  const named=await readFeedNames(segs);
+  // rounds without the kill feed (fallback maps): the old one-picture reader
+  if(!named||segs.some(rs=>rs.some(r=>!r._feed&&r.fkT!=null))){segs.forEach(rs=>rs.forEach(r=>{if(r._feed)r.fkT=null}));await readFirstKillers(segs)}
+  segs.forEach(rs=>rs.forEach(r=>{delete r.fkT}));
 }
 
+// ---------- who got each kill: player NAMES are text (easy to read), agent faces are not ----------
+// Every kill-feed line of the map is read once (name + agent on both sides). A player keeps the same agent all map, so each
+// name collects many votes for its agent; the clear winner (one agent per player, only agents of that team) decides.
+// A single misread face can no longer leave a round unknown or wrong.
+function normName(n){return String(n||"").replace(/^[^|｜]{0,8}[|｜]\s*/,"").replace(/[\s.…]+$/g,"").replace(/\s+/g,"").toLowerCase().slice(0,24)}
+function nameSim(a,b){if(!a||!b)return 0;if(a===b)return 1;const m=a.length,n=b.length;if(Math.min(m,n)>=4&&(a.startsWith(b)||b.startsWith(a)))return 0.9;
+  const d=Array.from({length:m+1},(_,i)=>i);for(let j=1;j<=n;j++){let pv=d[0];d[0]=j;for(let i=1;i<=m;i++){const t=d[i];d[i]=Math.min(d[i]+1,d[i-1]+1,pv+(a[i-1]===b[j-1]?0:1));pv=t}}return 1-d[m]/Math.max(m,n)}
+async function readFeedNames(segs){
+  const W=video.videoWidth,H=video.videoHeight,cells=[];
+  segs.forEach((rs,si)=>rs.forEach((r,ri)=>{if(r._feed)r._feed.kills.forEach((k,ki)=>cells.push({si,ri,ki,k,t:Math.min(duration-0.2,k.frame)}))}));
+  if(!cells.length)return false;
+  const CW=700,CH=52,DW=660;
+  for(let i=0;i<cells.length;i+=20){
+    prog(0.96,"キルログの名前を読み取っています… ("+Math.min(cells.length,i+20)+"/"+cells.length+")");
+    const part=cells.slice(i,i+20);
+    const blob=await gridOf(part,CW,CH,2,(x,ox,oy,c)=>{const k=c.k,y0=H*(FD.y+Math.max(0,k.y0-3)/FH*FD.h),hh=H*((k.y1-k.y0+6)/FH*FD.h);
+      x.drawImage(video,W*FD.x,y0,W*FD.w,hh,ox+38,oy+2,DW,Math.min(CH-4,Math.round(DW*hh/(W*FD.w))))});
+    const cs=(lastCompsBy&&lastCompsBy[part[0].si])||{left:[],right:[]};
+    const want=part.map((c,k)=>(k+1)+":"+(c.k.team==="us"?"green":"red")).join(", ");
+    try{const r=await SAMPLE.json("Each numbered strip is ONE kill feed line of VALORANT: killer agent portrait, killer PLAYER NAME, weapon, victim PLAYER NAME, victim agent portrait. Killer colour per strip: "+want+" (green = killer on the player's team, red = enemy). "+
+      (cs.left.length&&cs.right.length?"Agents in the match: green team = "+cs.left.join(", ")+"; red team = "+cs.right.join(", ")+". ":"")+LOOK+
+      " For each strip in order output \"killerName>killerAgent>victimName>victimAgent\". Copy the player names exactly as written (any script). Use ? for anything you cannot read. Reply only JSON: {\"k\":[\"...\",\"...\"]}",{images:[blob],signal:ctl.signal,modelTier:"default",task:"feednames"});
+      const arr=Array.isArray(r.k)?r.k:[];
+      part.forEach((c,k)=>{const f=String(arr[k]||"").split(">").map(x=>String(x||"").trim());c.kn=normName(f[0]);c.ka=agentOf(f[1]);c.vn=normName(f[2]);c.va=agentOf(f[3])});
+    }catch(e){if(e&&e.code==="cancelled")throw e}
+  }
+  // per map and team: merge spellings of the same name, then vote name -> agent
+  segs.forEach((rs,si)=>{
+    const cs=(lastCompsBy&&lastCompsBy[si])||{left:[],right:[]};
+    const teams={us:[],them:[]};   // [{name, votes:{agent:n}, n}]
+    const add=(team,name,agent)=>{if(!name||name==="?")return null;const L=teams[team];let e=L.find(x=>nameSim(x.name,name)>=0.75);if(!e){e={name,votes:{},n:0};L.push(e)}e.n++;
+      const ok=team==="us"?cs.left:cs.right;if(agent&&(!ok.length||ok.includes(agent)))e.votes[agent]=(e.votes[agent]||0)+1;return e};
+    const mine=cells.filter(c=>c.si===si);
+    mine.forEach(c=>{const kt=c.k.team,vt=kt==="us"?"them":"us";c.ke=add(kt,c.kn,c.ka);c.ve=add(vt,c.vn,c.va)});
+    for(const team of ["us","them"]){
+      // one agent per player and one player per agent: strongest votes first
+      const pairs=[];teams[team].forEach(e=>Object.entries(e.votes).forEach(([a,v])=>pairs.push({e,a,v,share:v/Math.max(1,Object.values(e.votes).reduce((x,y)=>x+y,0))})));
+      pairs.sort((a,b)=>b.v-a.v||b.share-a.share);const usedA=new Set();
+      pairs.forEach(p=>{if(p.e.agent||usedA.has(p.a))return;if(p.v>=2&&p.share>=0.5||p.v>=1&&p.share===1&&p.e.n<=2){p.e.agent=p.a;usedA.add(p.a)}});
+    }
+    mine.forEach(c=>{const r=rs[c.ri],kill=r._feed.kills[c.ki];kill.by=c.ke&&c.ke.agent||null;kill.vic=c.ve&&c.ve.agent||null});
+    rs.forEach(r=>{if(!r._feed)return;const f=r._feed.kills[0];if(!f)return;r.fkBy=f.by||null;r.fkVictim=f.vic||null});
+  });
+  return true;
+}
 async function readFirstKillers(segs){
   // Only the name of whoever got the first kill. Which team got it is already known from the portraits (free), so the AI is told which colour to look for
   // and answers with just a name per cell (short answers = cheaper).
@@ -1020,7 +1069,6 @@ async function runAnalysis(){
     await findStarts(segs,samples);
     prog(0.96,"ファーストキルを読み取っています…");
     await readFirstKills(segs,samples);
-    try{await libComps(segs,compsBy)}catch(e){if(e&&e.code==="cancelled")throw e}
     prog(0.97,"設置したサイトを読み取っています…");
     const pc=[];segs.forEach((rs,si)=>rs.forEach((r,ri)=>{if(r.plantAt!=null)pc.push({si,ri,t:Math.min(duration-0.2,r.plantAt+4)})}));
     const sites=await readSites(pc);pc.forEach((c,k)=>{segs[c.si][c.ri].site=sites[k]||null});
