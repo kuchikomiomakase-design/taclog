@@ -420,6 +420,12 @@ async function readFeedNames(segs){
       // exactly one player and one agent left over: they belong together
       const freeE=real.filter(e=>!e.agent),freeA=ok.filter(a=>!usedA.has(a));
       if(freeE.length===1&&freeA.length===1&&real.length===ok.length){freeE[0].agent=freeA[0];usedA.add(freeA[0])}
+      // four players of the team already known: the one agent left belongs to the remaining player (the most frequent unknown name
+      // that is not just a misspelling of a known one), e.g. someone who got kills but never died this map
+      else{const decided=teams[team].filter(e=>e.agent),fa=ok.filter(a=>!usedA.has(a));
+        if(fa.length===1&&new Set(decided.map(e=>e.agent)).size===ok.length-1){
+          const rest=teams[team].filter(e=>!e.agent&&!decided.some(d=>nameSim(d.name,e.name)>=0.6)).sort((a,b)=>b.n-a.n);
+          if(rest.length&&(rest.length===1||rest[0].n>rest[1].n)){rest[0].agent=fa[0];usedA.add(fa[0])}}}
       // a misspelt copy of a decided name follows it
       teams[team].filter(e=>!e.agent).forEach(e=>{const m=real.filter(x=>x.agent).sort((a,b)=>nameSim(b.name,e.name)-nameSim(a.name,e.name))[0];if(m&&nameSim(m.name,e.name)>=0.6)e.agent=m.agent});
       TRAIN_NAMES[si]=TRAIN_NAMES[si]||{};TRAIN_NAMES[si][team]=teams[team].map(e=>({name:e.name,n:e.n,votes:e.votes,agent:e.agent||null}));
@@ -890,19 +896,38 @@ async function collectTraining(segs,maps,comps,me){
       if(f.p&&f.p!=="?")TRAIN.items.push({kind:"minimap",t:Math.round(t*10)/10,map:si,round:r.n,label:{place:f.p,map:maps&&maps[si]||null},blob:await cropBlob(MM.x,MM.y,MM.w,MM.h)})}
   }
 }
+async function trainingZip(){
+  if(!window.JSZip)await new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";s.onload=res;s.onerror=rej;document.head.append(s)});
+  const z=new JSZip(),lines=[];
+  TRAIN.items.forEach((it,i)=>{const name=it.kind+"/"+String(i).padStart(5,"0")+".jpg";z.file(name,it.blob);lines.push(JSON.stringify({file:name,kind:it.kind,t:it.t,map:it.map,round:it.round,label:it.label}))});
+  z.file("labels.jsonl",lines.join("\n"));z.file("meta.json",JSON.stringify(TRAIN.meta,null,1));
+  return z.generateAsync({type:"blob",compression:"STORE"});
+}
+const kyozaiName=()=>"taclog-kyozai-"+String(fileName||"rec").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_")+".zip";
+function downloadBlob(blob,name){const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove()}
 async function exportTraining(btn){
   if(!TRAIN||!TRAIN.items.length)return;
   btn.disabled=true;const old=btn.textContent;btn.textContent="まとめています…";
-  try{
-    if(!window.JSZip)await new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";s.onload=res;s.onerror=rej;document.head.append(s)});
-    const z=new JSZip(),lines=[];
-    TRAIN.items.forEach((it,i)=>{const name=it.kind+"/"+String(i).padStart(5,"0")+".jpg";z.file(name,it.blob);lines.push(JSON.stringify({file:name,kind:it.kind,t:it.t,map:it.map,round:it.round,label:it.label}))});
-    z.file("labels.jsonl",lines.join("\n"));z.file("meta.json",JSON.stringify(TRAIN.meta,null,1));
-    const blob=await z.generateAsync({type:"blob",compression:"STORE"});
-    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="taclog-kyozai-"+String(fileName||"rec").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_")+".zip";document.body.append(a);a.click();a.remove();
-    btn.textContent="書き出しました";
-  }catch(e){btn.textContent=old;btn.disabled=false;alert("書き出せませんでした:"+(e&&e.message||e))}
+  try{downloadBlob(await trainingZip(),kyozaiName());btn.textContent="書き出しました"}
+  catch(e){btn.textContent=old;btn.disabled=false;alert("書き出せませんでした:"+(e&&e.message||e))}
 }
+// The last 3 training sets are also kept in this browser (TacLog's own storage, never uploaded), so starting another analysis
+// before exporting does not lose them. Settings-free: older ones are replaced automatically.
+const KZ={async dir(){const r=await navigator.storage.getDirectory();return r.getDirectoryHandle("kyozai",{create:true})},
+  async save(){try{if(!navigator.storage||!navigator.storage.getDirectory||!TRAIN||!TRAIN.items.length)return;const blob=await trainingZip(),d=await KZ.dir();
+    const f=await d.getFileHandle(Date.now()+"__"+kyozaiName(),{create:true}),w=await f.createWritable();await w.write(blob);await w.close();
+    const all=await KZ.list();for(const x of all.slice(3)){try{await d.removeEntry(x.key)}catch(e){}}}catch(e){}},
+  async list(){const out=[];try{const d=await KZ.dir();for await(const [key,hd] of d.entries()){const m=key.match(/^(\d+)__(.+)$/);if(m)out.push({key,at:+m[1],name:m[2],hd})}}catch(e){}return out.sort((a,b)=>b.at-a.at)}};
+async function kyozaiPanel(){
+  const host=$("file")&&$("file").closest("div");if(!host||document.getElementById("kzPanel"))return;
+  const box=h("div",{id:"kzPanel",class:"small muted",style:"margin-top:6px"});host.after(box);
+  const draw=async()=>{const all=await KZ.list();box.replaceChildren();if(!all.length)return;
+    box.append("保存してある教材(直近"+all.length+"回分): ");
+    all.forEach(x=>{const b=h("button",{class:"btn small",type:"button",style:"margin:2px 4px"},new Date(x.at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})+" の分");
+      b.onclick=async()=>{try{downloadBlob(await x.hd.getFile(),x.name)}catch(e){alert("書き出せませんでした")}};box.append(b)})};
+  KZ.redraw=draw;draw();
+}
+setTimeout(()=>kyozaiPanel().catch(()=>{}),1500);
 // First kill must be one of the two teams. For rounds still undecided (a trade within the same instant), read the kill feed right
 // after it with the better model: the TOP (oldest) entry is the first kill; its colour says which team got it.
 async function settleTies(segs){
@@ -1126,6 +1151,7 @@ async function runAnalysis(){
     await readKit(segs,me,maps,known,comps);
     reconcileComps(segs,compsBy);fillFirstKills(segs);markMine(segs,me);markVoid(segs);
     TRAIN=null;try{await collectTraining(segs,maps,comps,me)}catch(e){if(e&&e.code==="cancelled")throw e}
+    KZ.save().then(()=>KZ.redraw&&KZ.redraw()).catch(()=>{});
     segs.forEach(rs=>rs.forEach(r=>{if(r._st!=null)r.st=Math.round(r._st);delete r._st;delete r._next;delete r._feed;delete r._fkRow;delete r._noStart}));
     prog(1,"完了しました");
     lastResult={compsBy,coach:COACH,snaps:SNAPS,segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
