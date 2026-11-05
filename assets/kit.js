@@ -164,6 +164,10 @@
   // alive-count flow of a round, e.g. "4v5>4v4>2v3" (us v them)
   const flow = (r) => (Array.isArray(r.alv) && r.alv.length > 1 ? "+S:" + r.alv.slice(1).map((x) => x[1] + "v" + x[2]).join(">") : "") +
     (Array.isArray(r.fights) && r.fights.length ? "+FT:" + r.fights.map((f) => f.t + "s_" + String(f.k).replace(/[,\s>]+/g, "") + ">" + String(f.v).replace(/[,\s>]+/g, "") + (f.g === true ? "(us)" : f.g === false ? "(them)" : "") + "@" + String(f.p).replace(/[,\s]+/g, "_")).join("/") : "");
-  const K = { guessMap, teamKD, CALLOUTS, calloutText, SLOT, summarize, marks, summaryText, places, placeText, situations, situationText, flow };
+  // the first killer belongs to the team that got the first kill and the victim to the other team: names that break this are dropped (never shown)
+  const cleanFk = (m) => { const c = (m && m.comps) || {}, L = c.left || [], R = c.right || []; if (!L.length || !R.length || !Array.isArray(m.rounds)) return m;
+    m.rounds.forEach((r) => { if (!r || (r.fk !== "us" && r.fk !== "them")) return; const own = r.fk === "us" ? L : R, opp = r.fk === "us" ? R : L;
+      if (r.fkBy && !own.includes(r.fkBy)) r.fkBy = null; if (r.fkVictim && !opp.includes(r.fkVictim)) r.fkVictim = null; }); return m; };
+  const K = { cleanFk, guessMap, teamKD, CALLOUTS, calloutText, SLOT, summarize, marks, summaryText, places, placeText, situations, situationText, flow };
   if (typeof module !== "undefined" && module.exports) module.exports = K; else root.TLKit = K;
 })(typeof window !== "undefined" ? window : this);

@@ -80,7 +80,7 @@ async function look(req, res, body, m, auth, question) {
   const images = (Array.isArray(body.images) ? body.images : []).slice(0, 10).filter((b) => typeof b === "string" && b.length < 3_500_000);
   if (!looks.length || !images.length) return fail(res, 400, "画像がありません。");
   const ids = [...new Set(looks.map((x) => x.match))].join(",");
-  const matches = await rest("matches?select=id,date,opp,map,comps,rounds&team_id=eq." + body.teamId + "&id=in.(" + ids + ")", { token: auth.token });
+  const matches = ((await rest("matches?select=id,date,opp,map,comps,rounds&team_id=eq." + body.teamId + "&id=in.(" + ids + ")", { token: auth.token })) || []).map(KIT.cleanFk);
   if (!matches || !matches.length) return fail(res, 404, "試合が見つかりません。");
   const content = images.map((data) => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data } }));
   content.push({ type: "text", text: "あなたはVALORANTチームの分析コーチです。画像は、この試合のラウンド(" + looks.map((x) => x.round + "ラウンド目").join("・") + ")を、バリアが消えてから2秒ごとに並べたものです。各コマの左上の「R番号 分:秒」はラウンド番号とバリアが消えてからの時間、左が画面全体(縮小)、真ん中がミニマップ(青・緑の印=味方、赤=敵、×=倒れた場所)、右がキルログ(緑=味方が倒した、赤=倒された)です。録画した人の視点なので、その人が倒れたあとは味方を観戦している画面になります。\n下のデータ(このチームの記録)と画像だけを根拠に、質問に短く具体的に答えてください。画像からわかったこと(どこで誰が倒れたか、人数の流れ、スキルの使い方、立ち位置)を時間つきで示し、改善点があれば1〜3個。わからないことは推測と書いてください。答えは質問と同じ言語で。\n\nデータ:\n" + dataText(matches, {}) + "\n" + kitText(matches, {}) + "\n\n" + (body.draft ? "データだけで作った答え(参考): " + String(body.draft).slice(0, 1200) + "\n\n" : "") + "質問: " + question + "\n\n返答はJSONのみ: {\"answer\":\"答えの文章\",\"chart\":null,\"scenes\":[{\"match\":\"match=の値\",\"round\":ラウンド番号,\"note\":\"短い説明\"}]}" });
@@ -111,7 +111,7 @@ module.exports = async (req, res) => {
     if ((await poolUsed(body.teamId, plan, month, used)) >= lim.questions && !(await noLimit(body.teamId))) return fail(res, 429, "question limit", "question_limit");
 
     const since = new Date(Date.now() - lim.days * 864e5).toISOString().slice(0, 10);
-    const matches = await rest("matches?select=id,date,opp,map,comps,rounds&team_id=eq." + body.teamId + "&game=eq." + (["valorant","ow2"].includes(body.game) ? body.game : "valorant") + "&or=(date.gte." + since + ",date.is.null)&order=date.desc&limit=200", { token: auth.token });
+    const matches = await rest("matches?select=id,date,opp,map,comps,rounds&team_id=eq." + body.teamId + "&game=eq." + (["valorant","ow2"].includes(body.game) ? body.game : "valorant") + "&or=(date.gte." + since + ",date.is.null)&order=date.desc&limit=200", { token: auth.token }).then((x) => (x || []).map(KIT.cleanFk));
     if (!matches || !matches.length) return fail(res, 400, "まだ分析した試合がありません。");
     let povs = {};
     try {

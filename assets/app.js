@@ -111,7 +111,7 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
   async function loadMatches() {
     const { data, error } = await sb.from("matches").select("*").eq("team_id", APP.team.id).eq("game", APP.game || "valorant").order("date", { ascending: false }).order("created_at", { ascending: false });
     if (error) { status(TL.errText(error)); return; }
-    APP.matches = data || []; renderMatches(); renderChannel(); if (!$("view-dash").hidden && window.renderDash) window.renderDash();
+    APP.matches = (data || []).map((m) => (window.TLKit ? TLKit.cleanFk(m) : m)); renderMatches(); renderChannel(); if (!$("view-dash").hidden && window.renderDash) window.renderDash();
   }
   APP.reloadMatches = loadMatches;
 
@@ -157,7 +157,12 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
       const side = opt([["attack", "アタック"], ["defense", "ディフェンス"]], r.side || "attack");
       const plant = opt([["", "設置なし"], ["A", "A"], ["B", "B"], ["C", "C"], ["?", "設置(サイト不明)"]], r.planted ? (r.site || "?") : "");
       const fk = opt([["", "不明"], ["us", "自チーム"], ["them", "相手"]], r.fk === "tie" ? "" : (r.fk || ""));
-      const by = agentSel(r.fkBy), vic = agentSel(r.fkVictim);
+      const L = (m.comps && m.comps.left) || [], R = (m.comps && m.comps.right) || [];
+      const teamSel = (v, list) => { const pairs = [["", "不明"]].concat(list.map((a) => [a, a])); return opt(pairs, list.includes(v) ? v : ""); };
+      const by = teamSel(r.fkBy, r.fk === "us" ? L : r.fk === "them" ? R : []), vic = teamSel(r.fkVictim, r.fk === "us" ? R : r.fk === "them" ? L : []);
+      // FK取った人 = the team that got the first kill, 最初に倒された人 = the other team (no other choice is possible)
+      fk.onchange = () => { const own = fk.value === "us" ? L : fk.value === "them" ? R : [], opp = fk.value === "us" ? R : fk.value === "them" ? L : [];
+        const b = by.value, v = vic.value; by.replaceChildren(...teamSel(b, own).childNodes); by.value = own.includes(b) ? b : ""; vic.replaceChildren(...teamSel(v, opp).childNodes); vic.value = opp.includes(v) ? v : ""; };
       const vd = h("input", { type: "checkbox", title: "強制終了したラウンド(数字に入れない)" }); vd.checked = !!r.void;
       const tr = h("tr", { class: r.n === focusRound ? "focus" : "" }, h("td", { class: "num" }, r.n), h("td", {}, win), h("td", {}, side), h("td", {}, plant), h("td", {}, fk), h("td", {}, by), h("td", {}, vic), h("td", { style: "text-align:center" }, vd));
       tr._get = () => {
