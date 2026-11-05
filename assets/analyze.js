@@ -346,6 +346,7 @@ async function readFirstKills(segs,samples){
 // Every kill-feed line of the map is read once (name + agent on both sides). A player keeps the same agent all map, so each
 // name collects many votes for its agent; the clear winner (one agent per player, only agents of that team) decides.
 // A single misread face can no longer leave a round unknown or wrong.
+let TRAIN_NAMES=[];
 function normName(n){return String(n||"").replace(/^[^|｜]{0,8}[|｜]\s*/,"").replace(/[\s.…]+$/g,"").replace(/\s+/g,"").toLowerCase().slice(0,24)}
 function nameSim(a,b){if(!a||!b)return 0;if(a===b)return 1;const m=a.length,n=b.length;if(Math.min(m,n)>=4&&(a.startsWith(b)||b.startsWith(a)))return 0.9;
   const d=Array.from({length:m+1},(_,i)=>i);for(let j=1;j<=n;j++){let pv=d[0];d[0]=j;for(let i=1;i<=m;i++){const t=d[i];d[i]=Math.min(d[i]+1,d[i-1]+1,pv+(a[i-1]===b[j-1]?0:1));pv=t}}return 1-d[m]/Math.max(m,n)}
@@ -381,8 +382,19 @@ async function readFeedNames(segs){
       const pairs=[];teams[team].forEach(e=>Object.entries(e.votes).forEach(([a,v])=>pairs.push({e,a,v,share:v/Math.max(1,Object.values(e.votes).reduce((x,y)=>x+y,0))})));
       pairs.sort((a,b)=>b.v-a.v||b.share-a.share);const usedA=new Set();
       pairs.forEach(p=>{if(p.e.agent||usedA.has(p.a))return;if(p.v>=2&&p.share>=0.5||p.v>=1&&p.share===1&&p.e.n<=2){p.e.agent=p.a;usedA.add(p.a)}});
+      // names seen often enough to be real players (one-off misspellings are left out)
+      const real=teams[team].filter(e=>e.n>=2),ok=(team==="us"?cs.left:cs.right).filter(Boolean);
+      // still undecided: the strongest remaining vote among free agents
+      real.filter(e=>!e.agent).sort((a,b)=>b.n-a.n).forEach(e=>{const o=Object.entries(e.votes).filter(([a])=>!usedA.has(a)).sort((a,b)=>b[1]-a[1]);
+        if(o.length&&(!o[1]||o[0][1]>o[1][1])){e.agent=o[0][0];usedA.add(o[0][0])}});
+      // exactly one player and one agent left over: they belong together
+      const freeE=real.filter(e=>!e.agent),freeA=ok.filter(a=>!usedA.has(a));
+      if(freeE.length===1&&freeA.length===1&&real.length===ok.length){freeE[0].agent=freeA[0];usedA.add(freeA[0])}
+      // a misspelt copy of a decided name follows it
+      teams[team].filter(e=>!e.agent).forEach(e=>{const m=real.filter(x=>x.agent).sort((a,b)=>nameSim(b.name,e.name)-nameSim(a.name,e.name))[0];if(m&&nameSim(m.name,e.name)>=0.6)e.agent=m.agent});
+      TRAIN_NAMES[si]=TRAIN_NAMES[si]||{};TRAIN_NAMES[si][team]=teams[team].map(e=>({name:e.name,n:e.n,votes:e.votes,agent:e.agent||null}));
     }
-    mine.forEach(c=>{const r=rs[c.ri],kill=r._feed.kills[c.ki];kill.by=c.ke&&c.ke.agent||null;kill.vic=c.ve&&c.ve.agent||null});
+    mine.forEach(c=>{const r=rs[c.ri],kill=r._feed.kills[c.ki];kill.by=c.ke&&c.ke.agent||null;kill.vic=c.ve&&c.ve.agent||null;kill.read=[c.kn,c.ka,c.vn,c.va].map(x=>x||"?").join(">")});
     rs.forEach(r=>{if(!r._feed)return;const f=r._feed.kills[0];if(!f)return;r.fkBy=f.by||null;r.fkVictim=f.vic||null});
   });
   return true;
@@ -811,8 +823,12 @@ function fillFirstKills(segs){
       else if(f&&f.g!=null)r.fk=f.g?"us":"them";
       if(r.fk!=null)r.fkFrom="timeline";
     }
-    if(r.fk&&f&&(f.g===(r.fk==="us"))){if(!r.fkBy&&f.k&&f.k!=="?")r.fkBy=f.k;if(!r.fkVictim&&f.v&&f.v!=="?")r.fkVictim=f.v}
+    if(!r._feed&&r.fk&&f&&(f.g===(r.fk==="us"))){if(!r.fkBy&&f.k&&f.k!=="?")r.fkBy=f.k;if(!r.fkVictim&&f.v&&f.v!=="?")r.fkVictim=f.v}
   }));
+  // the first killer is on the team that got the first kill, the victim on the other one: anything else is a misread
+  segs.forEach((rs,si)=>{const cs=(lastCompsBy&&lastCompsBy[si])||{left:[],right:[]};if(!cs.left.length||!cs.right.length)return;
+    rs.forEach(r=>{if(r.fk!=="us"&&r.fk!=="them")return;const own=r.fk==="us"?cs.left:cs.right,opp=r.fk==="us"?cs.right:cs.left;
+      if(r.fkBy&&!own.includes(r.fkBy))r.fkBy=null;if(r.fkVictim&&!opp.includes(r.fkVictim))r.fkVictim=null})});
 }
 
 // ---------- training material (to teach TacLog's own recognizers) ----------
@@ -826,7 +842,8 @@ async function cropBlob(sx,sy,sw,sh,maxW){const W=video.videoWidth,H=video.video
   return await new Promise(r=>c.toBlob(r,"image/jpeg",0.9))}
 async function collectTraining(segs,maps,comps,me){
   if(!contribOn())return;
-  TRAIN={items:[],meta:{file:fileName,w:video.videoWidth,h:video.videoHeight,maps,comps,me,made:new Date().toISOString()}};
+  TRAIN={items:[],meta:{file:fileName,w:video.videoWidth,h:video.videoHeight,maps,comps,me,made:new Date().toISOString(),
+    names:TRAIN_NAMES,feed:segs.map(rs=>rs.map(r=>({n:r.n,fk:r.fk,fkBy:r.fkBy||null,fkVictim:r.fkVictim||null,kills:r._feed?r._feed.kills.map(k=>({t:k.t,team:k.team,read:k.read||null,by:k.by||null,vic:k.vic||null})):null})))}};
   const all=[];segs.forEach((rs,si)=>rs.forEach(r=>{if(r._st!=null&&Array.isArray(r.alv))all.push({si,r})}));
   let done=0;
   for(const {si,r} of all){
@@ -1033,7 +1050,7 @@ async function runAnalysis(){
   if(!duration)return false;
   ctl=new AbortController();$("go").disabled=true;$("stop").hidden=false;$("result").hidden=true;
   const p=plan(),times=[];for(let i=0;i<p.n;i++)times.push(3+i*p.iv);
-  const samples=[];lastErr=null;SNAPS={};COACH={};POVMODE=false;lastCompsBy=null;let limitHit=null;
+  const samples=[];lastErr=null;SNAPS={};COACH={};POVMODE=false;lastCompsBy=null;TRAIN_NAMES=[];let limitHit=null;
   try{
     // team plan: up to 6 maps a day (Japan time). Check before spending anything.
     try{const{data}=await TL.sb.rpc("maps_today",{t:APP.team.id});const d=Array.isArray(data)?data[0]:data;
