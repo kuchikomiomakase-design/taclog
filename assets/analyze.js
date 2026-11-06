@@ -230,6 +230,18 @@ async function findStarts(segs,samples){
     near.forEach((c,k)=>{const x=parseTile(res2[k]);if(typeof x.x==="number"&&x.x>30&&x.x<=100&&x.L!=null&&x.R!=null&&x.L+"-"+x.R===c.r.score)(by2.get(c.r)||by2.set(c.r,[]).get(c.r)).push(c.t-(100-x.x))});
     by2.forEach((est,r)=>{const cl=[];est.forEach(e=>{const c=cl.find(c=>Math.abs(c.v-e)<=5);if(c){c.n++;c.v=(c.v*(c.n-1)+e)/c.n}else cl.push({v:e,n:1})});
       cl.sort((a,b)=>b.n-a.n||a.v-b.v);if(cl[0].n>=2)r._restart=cl[0].v})}
+  // still missing, with both neighbours known: between "previous barrier + 100 s" (its round timer is over by then) and
+  // "next barrier - 30 s" (its buy phase), any round timer on screen can only be this round's. Read every 2 s there.
+  // The score is only used to throw out a reading that clearly belongs elsewhere (total must be round number - 1).
+  const far=[];
+  segs.forEach(rs=>{const sv=rs.map((r,ri)=>r._restart!=null?r._restart:roundStartOf(r,samples,rs[ri+1]?rs[ri+1].start:null,rs[ri-1]?rs[ri-1].start:null));
+    rs.forEach((r,ri)=>{if(sv[ri]!=null||ri===0||ri===rs.length-1)return;const a=sv[ri-1],b=sv[ri+1];if(a==null||b==null||b-a<140)return;
+      for(let t=a+100;t<=b-30&&t<duration-0.5;t+=2)far.push({r,t,a,b})})});
+  if(far.length){prog(0.95,"見つからなかったラウンドの始まりを探しています…");const res3=await readTimes(far.map(c=>c.t));const by3=new Map();
+    far.forEach((c,k)=>{const x=parseTile(res3[k]);if(typeof x.x!=="number"||x.x<=30||x.x>100)return;if(x.L!=null&&x.R!=null&&x.L+x.R+1!==c.r.n)return;
+      const v=c.t-(100-x.x);if(v>c.a+37&&v<c.b-60)(by3.get(c.r)||by3.set(c.r,[]).get(c.r)).push(v)});
+    by3.forEach((est,r)=>{const cl=[];est.forEach(e=>{const c=cl.find(c=>Math.abs(c.v-e)<=5);if(c){c.n++;c.v=(c.v*(c.n-1)+e)/c.n}else cl.push({v:e,n:1})});
+      cl.sort((a,b)=>b.n-a.n||a.v-b.v);if(cl[0].n>=2&&(!cl[1]||cl[0].n>cl[1].n)){r._restart=cl[0].v;r._stHow="between"}})}
   // safety net: two rounds of a map can never share a barrier drop. If they do, the start is unknown for both (no guessing).
   segs.forEach(rs=>{const st=rs.map((r,ri)=>({r,v:r._restart!=null?r._restart:roundStartOf(r,samples,rs[ri+1]?rs[ri+1].start:null,rs[ri-1]?rs[ri-1].start:null)}));
     for(let i=1;i<st.length;i++){const a=st[i-1],b=st[i];if(a.v!=null&&b.v!=null&&b.v-a.v<25){a.r._noStart=true;b.r._noStart=true}}});
@@ -879,7 +891,7 @@ async function cropBlob(sx,sy,sw,sh,maxW){const W=video.videoWidth,H=video.video
 async function collectTraining(segs,maps,comps,me){
   if(!contribOn())return;
   TRAIN={items:[],meta:{file:fileName,w:video.videoWidth,h:video.videoHeight,maps,comps,me,made:new Date().toISOString(),
-    names:TRAIN_NAMES,feed:segs.map(rs=>rs.map(r=>({n:r.n,fk:r.fk,fkBy:r.fkBy||null,fkVictim:r.fkVictim||null,kills:r._feed?r._feed.kills.map(k=>({t:k.t,team:k.team,read:k.read||null,by:k.by||null,vic:k.vic||null})):null})))}};
+    names:TRAIN_NAMES,feed:segs.map(rs=>rs.map(r=>({n:r.n,st:r._st!=null?Math.round(r._st):null,how:r._stHow||(r._noStart?"conflict":r._st==null?"none":"timer"),fk:r.fk,fkBy:r.fkBy||null,fkVictim:r.fkVictim||null,kills:r._feed?r._feed.kills.map(k=>({t:k.t,team:k.team,read:k.read||null,by:k.by||null,vic:k.vic||null})):null})))}};
   const all=[];segs.forEach((rs,si)=>rs.forEach(r=>{if(r._st!=null&&Array.isArray(r.alv))all.push({si,r})}));
   let done=0;
   for(const {si,r} of all){
@@ -1152,7 +1164,7 @@ async function runAnalysis(){
     reconcileComps(segs,compsBy);fillFirstKills(segs);markMine(segs,me);markVoid(segs);
     TRAIN=null;try{await collectTraining(segs,maps,comps,me)}catch(e){if(e&&e.code==="cancelled")throw e}
     KZ.save().then(()=>KZ.redraw&&KZ.redraw()).catch(()=>{});
-    segs.forEach(rs=>rs.forEach(r=>{if(r._st!=null)r.st=Math.round(r._st);delete r._st;delete r._next;delete r._feed;delete r._fkRow;delete r._noStart}));
+    segs.forEach(rs=>rs.forEach(r=>{if(r._st!=null)r.st=Math.round(r._st);delete r._st;delete r._next;delete r._feed;delete r._fkRow;delete r._noStart;delete r._stHow}));
     prog(1,"完了しました");
     lastResult={compsBy,coach:COACH,snaps:SNAPS,segs,comps,starts,maps,me,samples:samples.length,read:samples.filter(s=>s.L!=null).length};
     showResult();
