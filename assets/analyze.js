@@ -309,11 +309,14 @@ async function readFeed(segs,jobs){
     const end=Math.min(r._next!=null?r._next-1:base+145,base+145,duration-0.3);
     let P=null,T=null;const kills=[],alive={us:[0,1,2,3,4],them:[5,6,7,8,9]};
     const faces=()=>[...Array(10).keys()].map(i=>nv(slotVec(i)));
-    for(let t=from;t<=end;t+=1.5){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const C=feedNow();
+    // a line stays on screen for several seconds, so a look every 2 s never misses one
+    let dead={us:0,them:0};
+    for(let t=from;t<=end;t+=2){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);const C=feedNow();
       if(P===null){P=C;T=faces();continue}   // first look (buy phase): old lines belong to the previous round; everyone's face is in the top bar
       const nw=feedNew(P,C);
-      // the line appeared since the last look: find the moment (0.25 s steps back)
-      if(nw.length){let at=t;for(let b=t-0.25;b>t-1.5;b-=0.25){await seek(b);if(feedNew(P,feedNow()).length>=nw.length)at=b;else break}
+      // the line appeared since the last look: find the moment to 0.5 s (two looks back: 1 s, then 0.5 s)
+      if(nw.length){let at=t;const seen=async b=>{await seek(b);return feedNew(P,feedNow()).length>=nw.length};
+        if(await seen(t-1)){at=t-1;if(await seen(t-1.5))at=t-1.5}else if(await seen(t-0.5))at=t-0.5;
         await seek(t);const F=faces();
         const add=nw.map(x=>({t:Math.round((at-base)*4)/4,team:x.team,at,y0:x.y0,y1:x.y1,frame:t,row:C.indexOf(x),vicSlot:null}));
         // who died: the dead player's face leaves the top bar and the others close up toward the middle.
@@ -324,8 +327,9 @@ async function readFeed(segs,jobs){
           const res=faceAssign(F,T,cand,slots);alive[vt]=cand.filter(c=>!res.gone.includes(c));
           if(ls.length===1&&res.gone.length===1&&res.margin>=0.08)ls[0].vicSlot=res.gone[0];
           else if(res.margin>=0.08)ls.forEach(k=>k.vicSet=res.gone)}
-        add.forEach(k=>kills.push(k))}
+        add.forEach(k=>{kills.push(k);dead[k.team==="us"?"them":"us"]++})}
       P=C;
+      if(dead.us>=5||dead.them>=5)break;   // one team is wiped out: the round is over, nothing more to read
     }
     // deaths per team from the kill feed (killer teal = an enemy died)
     const alv=[[0,5,5]];let u=5,e=5;
