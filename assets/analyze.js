@@ -395,20 +395,26 @@ async function readFeedNames(segs){
   segs.forEach((rs,si)=>rs.forEach((r,ri)=>{if(r._feed)r._feed.kills.forEach((k,ki)=>cells.push({si,ri,ki,k,t:Math.min(duration-0.2,k.frame)}))}));
   if(!cells.length)return false;
   const CW=700,CH=52,DW=660;
-  for(let i=0;i<cells.length;i+=20){
-    prog(0.96,"キルログの名前を読み取っています… ("+Math.min(cells.length,i+20)+"/"+cells.length+")");
-    const part=cells.slice(i,i+20);
+  // the answer is keyed by strip number, so one skipped strip can no longer shift every answer after it
+  const readBatch=async(part)=>{
     const blob=await gridOf(part,CW,CH,2,(x,ox,oy,c)=>{const k=c.k,y0=H*(FD.y+Math.max(0,k.y0-3)/FH*FD.h),hh=H*((k.y1-k.y0+6)/FH*FD.h);
       x.drawImage(video,W*FD.x,y0,W*FD.w,hh,ox+38,oy+2,DW,Math.min(CH-4,Math.round(DW*hh/(W*FD.w))))});
     const cs=(lastCompsBy&&lastCompsBy[part[0].si])||{left:[],right:[]};
     const want=part.map((c,k)=>(k+1)+":"+(c.k.team==="us"?"green":"red")).join(", ");
     try{const r=await SAMPLE.json("Each numbered strip is ONE kill feed line of VALORANT: killer agent portrait, killer PLAYER NAME, weapon, victim PLAYER NAME, victim agent portrait. Killer colour per strip: "+want+" (green = killer on the player's team, red = enemy). "+
       (cs.left.length&&cs.right.length?"Agents in the match: green team = "+cs.left.join(", ")+"; red team = "+cs.right.join(", ")+". ":"")+LOOK+
-      " For each strip in order output \"killerName>killerAgent>victimName>victimAgent\". Copy the player names exactly as written (any script). Use ? for anything you cannot read. Reply only JSON: {\"k\":[\"...\",\"...\"]}",{images:[blob],signal:ctl.signal,modelTier:"default",task:"feednames"});
-      const arr=Array.isArray(r.k)?r.k:[];
-      part.forEach((c,k)=>{const f=String(arr[k]||"").split(">").map(x=>String(x||"").trim());c.kn=normName(f[0]);c.ka=agentOf(f[1]);c.vn=normName(f[2]);c.va=agentOf(f[3])});
+      " For EVERY strip number 1-"+part.length+" give \"killerName>killerAgent>victimName>victimAgent\". Copy the player names exactly as written (any script). Use ? only for a part you cannot read. Reply only JSON keyed by strip number: {\"1\":\"...\",\"2\":\"...\"}",{images:[blob],signal:ctl.signal,modelTier:"default",task:"feednames"});
+      part.forEach((c,k)=>{const raw=r&&(r[String(k+1)]!=null?r[String(k+1)]:Array.isArray(r.k)?r.k[k]:null);if(raw==null)return;
+        const f=String(raw).split(">").map(x=>String(x||"").trim());c.kn=normName(f[0]);c.ka=agentOf(f[1]);c.vn=normName(f[2]);c.va=agentOf(f[3])});
     }catch(e){if(e&&e.code==="cancelled")throw e}
+  };
+  for(let i=0;i<cells.length;i+=20){
+    prog(0.96,"キルログの名前を読み取っています… ("+Math.min(cells.length,i+20)+"/"+cells.length+")");
+    await readBatch(cells.slice(i,i+20));
   }
+  // lines that came back unread (no killer name): read again in small groups
+  const again=cells.filter(c=>!c.kn||c.kn==="?");
+  for(let i=0;i<again.length;i+=6){prog(0.965,"読めなかった行を読み直しています… ("+Math.min(again.length,i+6)+"/"+again.length+")");await readBatch(again.slice(i,i+6))}
   // per map and team: merge spellings of the same name, then vote name -> agent
   segs.forEach((rs,si)=>{
     const cs=(lastCompsBy&&lastCompsBy[si])||{left:[],right:[]};
