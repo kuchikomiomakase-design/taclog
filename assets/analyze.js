@@ -266,10 +266,21 @@ function feedNow(){
         let st=0,sr=0,ct=0,cr=0;const colT=new Uint8Array(FW),colR=new Uint8Array(FW);
         for(let x=0;x<FW;x++){let a=0,b=0;for(let yy=y0;yy<y1;yy++){a+=T[yy*FW+x];b+=Rd[yy*FW+x]}
           if(a>=n*0.5){st+=x;ct++;colT[x]=1}if(b>=n*0.5){sr+=x;cr++;colR[x]=1}}
-        if(ct>=20&&cr>=20){const us=st/ct<sr/cr,vc=us?colR:colT;
-          // where the victim part begins: the first run of 10 columns in the victim colour (stable from one look to the next)
-          let split=-1,run=0;for(let x=0;x<FW;x++){run=vc[x]?run+1:0;if(run===10){split=x-9;break}}
-          if(split>=0)rows.push({y0,y1,team:us?"us":"them",split})}
+        // Read the line from its right end: the victim part is the right-most block of one colour (it reaches the right part of
+        // the feed), the killer part is the block of the other colour just left of it. Colour elsewhere on screen (sky, smoke,
+        // a red wall) is ignored, and a line always sits below the top-bar faces (y >= 45 of 238).
+        if(y0>=45){
+          const blocks=(col,c)=>{const out=[];let s0=-1,last=-1;for(let x=0;x<FW;x++){if(col[x]){if(s0<0)s0=x;else if(x-last>12){out.push({c,a:s0,b:last});s0=x}last=x}}if(s0>=0)out.push({c,a:s0,b:last});return out.filter(k=>k.b-k.a>=6)};
+          // pieces of one colour separated by white name text or icons belong together when no other colour lies between them
+          const raw=blocks(colT,"T").concat(blocks(colR,"R")).sort((p,q)=>p.a-q.a),m=[];
+          raw.forEach(k=>{const l=m[m.length-1];if(l&&l.c===k.c&&k.a-l.b<=90)l.b=Math.max(l.b,k.b);else m.push({...k})});
+          const all=m.filter(k=>k.b-k.a>=40).sort((p,q)=>q.b-p.b);
+          // victim block + the other colour right before it = one line. If colour from the background makes a longer chain
+          // (red | teal | red), prefer the pair whose victim part stops before the screen edge (a line ends with the victim's face).
+          const pairs=[];all.forEach(v=>{if(v.b<FW*0.55)return;const k=all.find(k=>k.c!==v.c&&k.b<=v.a+20&&k.b>=v.a-20);if(k)pairs.push({v,k})});
+          const pick=pairs.find(p=>p.v.b<FW-5)||pairs[0];
+          if(pick)rows.push({y0,y1,team:pick.k.c==="T"?"us":"them",split:pick.v.a})
+        }
       }}
     }else y++;
   }
