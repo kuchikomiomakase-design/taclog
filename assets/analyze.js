@@ -329,7 +329,10 @@ async function readFeed(segs,jobs){
           else if(res.margin>=0.08)ls.forEach(k=>k.vicSet=res.gone)}
         add.forEach(k=>{kills.push(k);dead[k.team==="us"?"them":"us"]++})}
       P=C;
-      if(dead.us>=5||dead.them>=5)break;   // one team is wiped out: the round is over, nothing more to read
+      // one team wiped out: the round is over. The count alone can be one too high (a line seen twice is only removed later),
+      // so also check the top bar: the wiped team's last face (next to the score) must be gone.
+      if(dead.us>=5||dead.them>=5){const side=dead.us>=5?"us":"them",slot=side==="us"?4:5,F=faces(),own=side==="us"?[0,1,2,3,4]:[5,6,7,8,9];
+        if(Math.max(...own.map(c=>dotv(F[slot],T[c])))<0.45)break}
     }
     // deaths per team from the kill feed (killer teal = an enemy died)
     const alv=[[0,5,5]];let u=5,e=5;
@@ -463,7 +466,14 @@ async function readFeedNames(segs){
       teams[team].filter(e=>!e.agent).forEach(e=>{const m=real.filter(x=>x.agent).sort((a,b)=>nameSim(b.name,e.name)-nameSim(a.name,e.name))[0];if(m&&nameSim(m.name,e.name)>=0.6)e.agent=m.agent});
       TRAIN_NAMES[si]=TRAIN_NAMES[si]||{};TRAIN_NAMES[si][team]=teams[team].map(e=>({name:e.name,n:e.n,votes:e.votes,agent:e.agent||null}));
     }
-    mine.forEach(c=>{const r=rs[c.ri],kill=r._feed.kills[c.ki];kill.by=c.ke&&c.ke.agent||null;kill.vic=c.vs||(c.ve&&c.ve.agent)||null;kill.read=[c.kn,c.ka,c.vn,c.va].map(x=>x||"?").join(">")});
+    mine.forEach(c=>{const r=rs[c.ri],kill=r._feed.kills[c.ki];kill.by=c.ke&&c.ke.agent||null;kill.vic=(c.ve&&c.ve.agent)||c.vs||null;kill.vKey=c.ve?(c.k.team==="us"?"them":"us")+":"+c.ve.name:null;kill.read=[c.kn,c.ka,c.vn,c.va].map(x=>x||"?").join(">")});
+    // the victim's player name is checked against the whole map (dozens of votes), so it decides who died; the face check is
+    // only used when the name could not be read (a face match can go wrong when the recording player dies and the view changes).
+    // A player dies once per round: the same victim name again in the same round is the same line counted twice -> dropped,
+    // and the alive counts are rebuilt from the cleaned list.
+    rs.forEach(r=>{if(!r._feed)return;const seen=new Set();
+      r._feed.kills=r._feed.kills.filter(k=>{if(!k.vKey)return true;if(seen.has(k.vKey))return false;seen.add(k.vKey);return true});
+      const alv=[[0,5,5]];let u=5,e=5;r._feed.kills.forEach(k=>{if(k.team==="us")e=Math.max(0,e-1);else u=Math.max(0,u-1);alv.push([Math.max(0,Math.round(k.t)),u,e])});r._feed.alv=alv});
     rs.forEach(r=>{if(!r._feed)return;const f=r._feed.kills[0];if(!f)return;r.fkBy=f.by||null;r.fkVictim=f.vic||null});
   });
   return true;
@@ -912,7 +922,7 @@ async function cropBlob(sx,sy,sw,sh,maxW){const W=video.videoWidth,H=video.video
 async function collectTraining(segs,maps,comps,me){
   if(!contribOn())return;
   TRAIN={items:[],meta:{file:fileName,w:video.videoWidth,h:video.videoHeight,maps,comps,me,made:new Date().toISOString(),
-    names:TRAIN_NAMES,feed:segs.map(rs=>rs.map(r=>({n:r.n,st:r._st!=null?Math.round(r._st):null,how:r._stHow||(r._noStart?"conflict":r._st==null?"none":"timer"),fk:r.fk,fkBy:r.fkBy||null,fkVictim:r.fkVictim||null,kills:r._feed?r._feed.kills.map(k=>({t:k.t,team:k.team,read:k.read||null,by:k.by||null,vic:k.vic||null})):null})))}};
+    names:TRAIN_NAMES,feed:segs.map(rs=>rs.map(r=>({n:r.n,score:r.score||null,win:r.win,side:r.side||null,planted:r.planted||null,site:r.site||null,st:r._st!=null?Math.round(r._st):null,how:r._stHow||(r._noStart?"conflict":r._st==null?"none":"timer"),fk:r.fk,fkBy:r.fkBy||null,fkVictim:r.fkVictim||null,kills:r._feed?r._feed.kills.map(k=>({t:k.t,team:k.team,read:k.read||null,by:k.by||null,vic:k.vic||null})):null})))}};
   const all=[];segs.forEach((rs,si)=>rs.forEach(r=>{if(r._st!=null&&Array.isArray(r.alv))all.push({si,r})}));
   let done=0;
   for(const {si,r} of all){
