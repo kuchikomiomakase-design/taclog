@@ -52,7 +52,12 @@ module.exports = async (req, res) => {
   try {
     const ev = JSON.parse(raw);
     const o = ev.data && ev.data.object;
-    if (ev.type === "checkout.session.completed" && o.subscription) await applySub(await stripe("subscriptions/" + o.subscription, null, "GET"));
+    // extra maps bought (one-time payment): add them to the team once, keyed by the checkout session
+    if (ev.type === "checkout.session.completed" && o.mode === "payment" && o.metadata && o.metadata.kind === "maps") {
+      if (o.payment_status === "paid") await rest("rpc/grant_maps", { method: "POST", service: true, body: { t: o.metadata.team_id, n: parseInt(o.metadata.maps, 10) || 10, r: o.id } });
+    } else if (ev.type === "checkout.session.async_payment_succeeded" && o.metadata && o.metadata.kind === "maps") {
+      await rest("rpc/grant_maps", { method: "POST", service: true, body: { t: o.metadata.team_id, n: parseInt(o.metadata.maps, 10) || 10, r: o.id } });
+    } else if (ev.type === "checkout.session.completed" && o.subscription) await applySub(await stripe("subscriptions/" + o.subscription, null, "GET"));
     else if (ev.type === "customer.subscription.created" || ev.type === "customer.subscription.updated" || ev.type === "customer.subscription.deleted") await applySub(o);
     send(res, 200, { received: true });
   } catch (e) { fail(res, 500, "webhook error"); }

@@ -92,12 +92,13 @@
 
   const errText = (e) => {
     const m = String((e && e.message) || e || "");
-    if (m.includes("analysis limit")) return "今月の分析回数の上限に達しました。チームプランにすると、1日6マップ分まで分析できます。";
+    if (m.includes("analysis limit")) return "無料プランの分析回数の上限に達しました。チームプランにすると、月40マップ分まで分析できます。";
     if (m.includes("question limit")) return "今月の質問回数の上限に達しました。プランを変えると回数が増えます。";
     if (m.includes("member limit")) return "このチームはメンバーの上限に達しています。";
     if (m.includes("invalid invite")) return "この招待リンクは無効か、期限が切れています。チームの管理者に新しいリンクをもらってください。";
     if (m.includes("daily view limit")) return "今日の2人目以降の視点は上限(1チーム1日24本)に達しました。日本時間の0時を過ぎると、また入れられます。";
-    if (m.includes("daily map limit")) return "今日の分析は上限(1日6マップ分)に達しました。日本時間の0時を過ぎると、また分析できます。";
+    if (m.includes("monthly map limit")) return "今月の分析は上限に達しました。設定画面の「追加マップ」(10マップ500円)を買うと続けて分析できます。来月の1日になると、また分析できます。";
+    if (m.includes("daily map limit")) return "今日の分析は上限に達しました。";
     if (m.includes("solo exists")) return "個人用はもう作ってあります。上のチームの欄から切り替えてください。";
     if (m.includes("view limit")) return "この試合にはもう5人分の視点が入っています。";
     if (m.includes("org plan required")) return "2つ目のチームを作るには、コーチ・組織プランが必要です。";

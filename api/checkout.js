@@ -1,4 +1,5 @@
 // POST /api/checkout {teamId, plan:"team"|"org"} -> {url}   (Stripe Checkout, monthly subscription)
+//      /api/checkout {teamId, kind:"maps", packs:1-10}       (one-time payment: 10 extra maps per pack)
 const { send, fail, readBody, getUser, membership, rest, stripe, env } = require("./_lib");
 
 module.exports = async (req, res) => {
@@ -8,7 +9,10 @@ module.exports = async (req, res) => {
     const body = await readBody(req);
     const m = await membership(body.teamId, auth);
     if (!m || m.role !== "admin") return fail(res, 403, "プランの変更は、チームの管理者だけができます。");
-    const price = body.plan === "org" ? env("STRIPE_PRICE_ORG") : env("STRIPE_PRICE_TEAM");
+    // extra maps: a one-time payment, 10 maps per pack (500 yen), kept until used
+    const maps = body.kind === "maps";
+    const packs = Math.max(1, Math.min(10, parseInt(body.packs, 10) || 1));
+    const price = maps ? env("STRIPE_PRICE_EXTRA_MAPS") : body.plan === "org" ? env("STRIPE_PRICE_ORG") : env("STRIPE_PRICE_TEAM");
     if (!price) return fail(res, 503, "料金の設定がまだ入っていません。");
     let customer = m.teams && m.teams.stripe_customer_id;
     if (!customer) {
@@ -17,6 +21,17 @@ module.exports = async (req, res) => {
       await rest("teams?id=eq." + body.teamId, { method: "PATCH", service: true, body: { stripe_customer_id: customer } });
     }
     const site = env("SITE_URL", "https://" + req.headers.host);
+    if (maps) {
+      if (!["team", "org", "solo"].includes(m.teams && m.teams.plan)) return fail(res, 400, "追加マップは有料プランで使えます。");
+      const s = await stripe("checkout/sessions", {
+        mode: "payment", customer, client_reference_id: body.teamId, locale: "ja",
+        line_items: { 0: { price, quantity: packs } },
+        metadata: { team_id: body.teamId, kind: "maps", maps: String(packs * 10) },
+        payment_intent_data: { metadata: { team_id: body.teamId, kind: "maps", maps: String(packs * 10) } },
+        success_url: site + "/app?maps=success#settings", cancel_url: site + "/app#settings"
+      });
+      return send(res, 200, { url: s.url });
+    }
     // Already paying for title add-ons: add the plan to the same subscription instead of starting a second one.
     const subId = m.teams && m.teams.stripe_subscription_id;
     if (subId) {

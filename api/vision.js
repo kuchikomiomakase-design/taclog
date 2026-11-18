@@ -8,17 +8,21 @@ module.exports = async (req, res) => {
     const auth = await getUser(req); if (!auth) return fail(res, 401, "ログインしてください。");
     const body = await readBody(req);
     const m = await membership(body.teamId, auth); if (!m) return fail(res, 403, "このチームのメンバーではありません。");
-    // team plan: 6 maps a day; once reached, no more reading today (saves AI cost). Before 010_daily_maps.sql this check is skipped.
-    const DAILY = { team: 6, org: 6, solo: 2 }, plan = (m.teams && m.teams.plan) || "free";
-    if (DAILY[plan]) {
+    // monthly map limit (team 40 / org 40 per team / solo 20) + bought extra maps; once used up, no more reading (saves AI cost).
+    // Before 019_monthly_maps.sql this check is skipped.
+    const MONTHLY = { team: 40, org: 40, solo: 20 }, plan = (m.teams && m.teams.plan) || "free";
+    if (MONTHLY[plan]) {
       try {
-        const day = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
-        const u = await rest("usage_daily?select=maps&team_id=eq." + body.teamId + "&day=eq." + day, { service: true });
-        if (u && u[0] && u[0].maps >= DAILY[plan] && !(await noLimit(body.teamId))) {
-          // another player's view of an already analysed match (cheap reads, tasks "pov...") is still fine with the all-views option
-          let views = plan === "org";
-          if (!views && /^pov/.test(String(body.task || ""))) { const t = await rest("teams?select=pov_option&id=eq." + body.teamId, { service: true }); views = !!(t && t[0] && t[0].pov_option); }
-          if (!(views && /^pov/.test(String(body.task || "")))) return fail(res, 429, "daily map limit", "daily_map_limit");
+        const jst = new Date(Date.now() + 9 * 3600e3).toISOString(), from = jst.slice(0, 8) + "01";
+        const u = await rest("usage_daily?select=maps&team_id=eq." + body.teamId + "&day=gte." + from, { service: true });
+        const used = (u || []).reduce((a, r) => a + (r.maps || 0), 0);
+        if (used >= MONTHLY[plan]) {
+          const t = await rest("teams?select=extra_maps,no_limit,pov_option&id=eq." + body.teamId, { service: true }), tm = (t && t[0]) || {};
+          if (!tm.no_limit && !(tm.extra_maps > 0)) {
+            // another player's view of an already analysed match (cheap reads, tasks "pov...") is still fine with the all-views option
+            const views = (plan === "org" || tm.pov_option) && /^pov/.test(String(body.task || ""));
+            if (!views) return fail(res, 429, "monthly map limit", "monthly_map_limit");
+          }
         }
       } catch (e) {}
     }

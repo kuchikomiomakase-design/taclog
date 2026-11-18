@@ -586,9 +586,20 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
     $("planName").textContent = PLAN_JA[t.plan] || t.plan;
     const mon = new Date().toISOString().slice(0, 7);
     const { data: u } = await sb.from("usage").select("*").eq("team_id", t.id).eq("month", mon).maybeSingle();
-    const lim = TL.C.TRIAL_UNLIMITED ? { a: null, q: null } : t.plan === "free" ? { a: 2, q: 20 } : t.plan === "team" ? { a: null, q: 300 } : t.plan === "org" ? { a: null, q: 600 } : t.plan === "solo" ? { a: null, q: 100 } : { a: null, q: null };
-    $("usageText").textContent = "今月:分析 " + ((u && u.analyses) || 0) + (lim.a ? "/" + lim.a : "") + "本 ・ 質問 " + ((u && u.questions) || 0) + (lim.q ? "/" + lim.q : "") + "回" + (t.plan === "org" ? "(質問は組織の全チームで合計600回)" : "") + (TL.C.TRIAL_UNLIMITED ? "(試作期間中は無制限)" : "");
-    if (t.plan === "team" || t.plan === "org" || t.plan === "solo") (async () => { try { const { data } = await sb.rpc("maps_today", { t: t.id }); const d = Array.isArray(data) ? data[0] : data; if (d && d.lim != null) $("usageText").textContent += " ・ 今日の分析 " + d.used + "/" + d.lim + "マップ分"; } catch (e) {} })();
+    const lim = TL.C.TRIAL_UNLIMITED ? { a: null, q: null } : t.plan === "free" ? { a: 2, q: 20 } : t.plan === "team" ? { a: null, q: 150 } : t.plan === "org" ? { a: null, q: 300 } : t.plan === "solo" ? { a: null, q: 50 } : { a: null, q: null };
+    $("usageText").textContent = "今月:分析 " + ((u && u.analyses) || 0) + (lim.a ? "/" + lim.a : "") + "本 ・ 質問 " + ((u && u.questions) || 0) + (lim.q ? "/" + lim.q : "") + "回" + (t.plan === "org" ? "(質問は組織の全チームで合計300回)" : "") + (TL.C.TRIAL_UNLIMITED ? "(試作期間中は無制限)" : "");
+    // monthly maps + extra maps (10 maps for 500 yen, kept until used); admins can buy more here
+    if (t.plan === "team" || t.plan === "org" || t.plan === "solo") (async () => { try {
+      const { data } = await sb.rpc("maps_month", { t: t.id }); const d = Array.isArray(data) ? data[0] : data; if (!d) return;
+      if (d.lim != null) $("usageText").textContent += " ・ 今月の分析 " + d.used + "/" + d.lim + "マップ分" + (d.extra ? "(追加マップ 残り" + d.extra + ")" : "");
+      if (d.lim != null && t.role === "admin") {
+        const sel = h("select", { class: "input", style: "width:auto;padding:4px 8px;font-size:13px", "aria-label": "追加マップの数" }, [1, 2, 3, 5].map((n) => h("option", { value: n }, (n * 10) + "マップ(" + (n * 500).toLocaleString() + "円)")));
+        const b = h("button", { class: "btn small", type: "button" }, "追加マップを買う");
+        b.onclick = async () => { b.disabled = true; try { const r = await TL.api("/api/checkout", { teamId: t.id, kind: "maps", packs: +sel.value }); if (r.url) location.href = r.url; } catch (e) { alert(TL.errText(e)); } finally { b.disabled = false; } };
+        const old = document.getElementById("extraMapsRow"); if (old) old.remove();
+        $("usageText").closest("div").after(h("div", { id: "extraMapsRow", class: "row small", style: "gap:8px;align-items:center" }, h("span", { class: "muted" }, "上限を超えて分析したいとき:"), sel, b, h("span", { class: "muted" }, "買った分は月をまたいで使えます")));
+      }
+    } catch (e) {} })();
     const br = $("billingRow"); br.replaceChildren();
     if (t.comp_until && new Date(t.comp_until) > new Date()) br.append(h("span", { class: "pill data" }, "テスター特典:" + new Date(t.comp_until).toLocaleDateString("ja-JP") + "まで" + (PLAN_JA[t.plan] || t.plan) + "プランを無料で利用中"));
     if (isAdmin && t.plan === "free") {   // tester / invite code: paid plan for free for a while
