@@ -160,7 +160,7 @@ TL.$("linkFolder").onclick=async()=>{await TLFolder.setDeleteAfter(TL.$("delAfte
   const qs=new URLSearchParams(location.search);
   if(qs.get("new")){show(1);return}   // adding another team (from the team bar's "+")
   if(teams.length&&!qs.get("step")){location.href="/app";return}
-  if(teams.length){const t=TL.currentTeam(teams);teamId=t.id;hasValo=(t.games||[]).includes("valorant");show(Number(qs.get("step"))||4)}else show(1);
+  if(teams.length){const t=TL.currentTeam(teams);teamId=t.id;hasValo=(t.games||[]).includes("valorant");show(Number(qs.get("step"))||4)}else if(TL.GAMES.length===1){game=TL.GAMES[0].id;hasValo=game==="valorant";show(2)}else show(1);   // one title only: no choice to make
 })();
 // team or personal (solo): personal users get their own one-person space and a guide written for them
 let kind="team";

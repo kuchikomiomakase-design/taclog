@@ -517,6 +517,8 @@ window.APP = { team: null, teams: [], me: null, matches: [], reloadMatches: () =
 
   /* ---------- settings ---------- */
   function renderTitles() {
+    // only one title for now: nothing to choose, so the whole "game titles" card is hidden
+    { const card = $("titleBox") && $("titleBox").closest("section"); if (card) card.hidden = TL.GAMES.length < 2; if (TL.GAMES.length < 2) return; }
     const t = APP.team, isAdmin = t.role === "admin", allowed = t.plan === "org" ? 99 : 1 + (t.extra_games || 0);
     const box = $("titleBox"), msg = $("titleMsg");
     const chosen = new Set(t.games || ["valorant"]);

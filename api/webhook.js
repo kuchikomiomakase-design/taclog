@@ -14,7 +14,7 @@ async function notify(team, before, after) {
     ], timestamp: new Date().toISOString() }] } }).catch(() => {});
 }
 
-const VALID = ["valorant", "ow2"];
+const VALID = ["valorant"];   // only VALORANT for now (Overwatch 2 removed until it is built)
 // One subscription can hold a plan item (team/org) and a title add-on item (quantity = extra titles).
 function readSub(sub) {
   const live = sub && ["active", "trialing", "past_due"].includes(sub.status);

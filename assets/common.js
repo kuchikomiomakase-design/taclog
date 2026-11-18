@@ -20,8 +20,7 @@
   const LOGO = '<svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><path d="M3 3h18l6 6v18H9l-6-6z" fill="none" stroke="var(--accent)" stroke-width="2"></path><path d="M9 11h12M15 11v11" stroke="var(--ink)" stroke-width="3" stroke-linecap="square"></path><path d="M21 21l3 3" stroke="var(--data)" stroke-width="2.5"></path></svg>';
   // Supported titles. "ready" = automatic recording analysis is available.
   const GAMES = [
-    { id: "valorant", name: "VALORANT", maker: "Riot Games", color: "#FF4655", ready: true },
-    { id: "ow2", name: "Overwatch 2", short: "OW2", maker: "Blizzard", color: "#F99E1A", ready: false }
+    { id: "valorant", name: "VALORANT", maker: "Riot Games", color: "#FF4655", ready: true }
   ];
   const gameName = (id) => { const g = GAMES.find((x) => x.id === id); return g ? (g.short || g.name) : id; };
   const ADDON_YEN = 500;
