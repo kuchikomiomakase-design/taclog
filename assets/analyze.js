@@ -848,6 +848,17 @@ async function readKit(segs,me,maps,known,comps){
       }catch(e){if(e&&e.code==="cancelled")throw e}
     }
   }
+  // who killed whom: the kill feed reading (player names voted across the whole map, colours read from the pixels) is exact,
+  // the fight reader above often is not ("?"). Each fight takes the killer, victim and team of the kill feed line at the same moment;
+  // a kill feed line no fight matched becomes a fight of its own (place unknown).
+  for(const j of jobs){const F=j.r._feed;if(!F||!F.kills.length)continue;const fs=j.r.fights||(j.r.fights=[]),used=new Set();
+    F.kills.forEach(k=>{if(!k.by&&!k.vic)return;const g=k.team==="us",at=k.at;
+      let best=null,bd=1e9;fs.forEach(f=>{if(used.has(f)||f._t==null)return;const d=Math.abs(f._t-at);
+        const fits=(f.g==null||f.g===g)&&(agentKey(f.v)===agentKey(k.vic)||f.v==="?"||!k.vic);if(fits&&d<=3&&d<bd){bd=d;best=f}});
+      if(best){used.add(best);best.k=k.by||best.k;best.v=k.vic||best.v;best.g=g}
+      else{const f={t:Math.max(0,Math.round(at-j.base)),k:k.by||"?",v:k.vic||"?",g,p:"?"};f._t=at;fs.push(f);used.add(f)}});
+    // a fight the kill feed never showed (a misread of the fight reader) is dropped when it names nobody
+    j.r.fights=fs.filter(f=>used.has(f)||(f.k!=="?"&&f.v!=="?")).sort((a,b)=>a.t-b.t)}
   // the recording player's own fights: the place is the location name the game shows for them (exact, even with a rotating minimap)
   const own=[];
   for(const j of jobs){if(!j.me||j.b==null)continue;const mine=agentKey(j.me);(j.r.fights||[]).forEach(f=>{if(f._t==null)return;
