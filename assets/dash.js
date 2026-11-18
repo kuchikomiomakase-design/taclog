@@ -159,14 +159,18 @@
     const o = TLKit.situations(ms.map((m) => m.rounds)), t = (label, a, sub) => tile(label, a[0], a[1], sub);
     const st = o.states, pick = (k) => st[k] || [0, 0];
     const clutch = Object.keys(st).filter((k) => /^1v[1-5]$/.test(k)).reduce((a, k) => [a[0] + st[k][0], a[1] + st[k][1]], [0, 0]);
+    const nr = o.noPlantRem, av = (a) => a.length ? "終了時の残り 平均" + Math.round(a.reduce((x, y) => x + y, 0) / a.length) + "秒" : "";
+    const sub = (txt) => h("h4", { class: "small", style: "margin:14px 0 6px;letter-spacing:.06em;color:var(--muted)" }, txt);
     return h("section", { class: "card dsec" }, h("h3", {}, "状況別の勝率"),
       h("p", { class: "small muted" }, "人数はバリアが消えてからの生存人数(自分たちv相手)。攻めの速さは、アタックで設置したときの残り時間で分けています。"),
-      h("div", { class: "dgrid" }, t("ポストプラント(アタック設置後)", o.postPlant), t("リテイク(ディフェンス)", o.retake), t("少人数戦(両方2人以下)", o.smallFight), t("クラッチ(1人残り)", clutch)),
-      h("div", { class: "dgrid" }, t("速攻(残り60秒以上で設置)", o.pace.fast), t("ふつう(残り30〜59秒)", o.pace.mid), t("ゆっくり(残り30秒未満)", o.pace.slow), t("設置なし(アタック)", o.pace.none)),
-      (() => { const nr = o.noPlantRem, av = (a) => a.length ? "終了時の残り 平均" + Math.round(a.reduce((x, y) => x + y, 0) / a.length) + "秒" : "";
-        return h("div", { class: "dgrid" }, t("設置なし・アタック(勝ち)", [o.pace.none[0], o.pace.none[1]], av(nr.atkWin)), tile("設置なし・アタック(負け)", o.pace.none[1] - o.pace.none[0], o.pace.none[1], av(nr.atkLoss)),
-          t("相手が設置しなかった(ディフェンス)", o.defNone, av(nr.defWin.concat(nr.defLoss))), tile("設置させずに勝った割合", o.defNone[0], o.defNone[1], "ディフェンスで設置なしのラウンド")); })(),
-      h("div", { class: "dgrid" }, t("人数有利 5v4", pick("5v4")), t("人数不利 4v5", pick("4v5")), t("2v2", pick("2v2")), t("1v1", pick("1v1"))));
+      sub("アタック"),
+      h("div", { class: "dgrid" }, t("ポストプラント(設置後)", o.postPlant), t("速攻(残り60秒以上で設置)", o.pace.fast), t("ふつう(残り30〜59秒で設置)", o.pace.mid), t("ゆっくり(残り30秒未満で設置)", o.pace.slow)),
+      h("div", { class: "dgrid" }, t("設置しなかったラウンド", o.pace.none, [av(nr.atkWin) && "勝ち:" + av(nr.atkWin), av(nr.atkLoss) && "負け:" + av(nr.atkLoss)].filter(Boolean).join(" ・ "))),
+      sub("ディフェンス"),
+      h("div", { class: "dgrid" }, t("リテイク(設置された後)", o.retake), t("設置させなかったラウンド", o.defNone, av(nr.defWin.concat(nr.defLoss)))),
+      sub("人数(アタック・ディフェンス合計)"),
+      h("div", { class: "dgrid" }, t("少人数戦(両方2人以下)", o.smallFight), t("クラッチ(1人残り)", clutch), t("人数有利 5v4", pick("5v4")), t("人数不利 4v5", pick("4v5"))),
+      h("div", { class: "dgrid" }, t("2v2", pick("2v2")), t("1v1", pick("1v1"))));
   }
   function placeTable(ms) {
     if (!window.TLKit) return null;

@@ -684,12 +684,12 @@ const drawMM=(x,ox,oy,s)=>{const W=video.videoWidth,H=video.videoHeight;x.drawIm
 const mmCv=document.createElement("canvas"),mmX=mmCv.getContext("2d",{willReadFrequently:true});
 function mmPixels(s,mh){mmCv.width=s;mmCv.height=mh;drawMM(mmX,0,0,s);return mmX.getImageData(0,0,s,mh).data}
 // new death markers: pixels with the X colours (blue = our team, red = enemy) that were not there 2 seconds ago -> up to 2 spots
-function newMarks(A,B,s,mh,C){   // A: 2 s before, B: now, C: 2 s later (a death marker stays where it is; moving player icons do not)
+function newMarks(A,B,s,mh,C,tol=2){   // A: 2 s before, B: now, C: 2 s later (a death marker stays where it is; moving player icons do not)
   const isX=(d,i)=>{const r=d[i],g=d[i+1],b=d[i+2];return(b>170&&r<80&&b-r>110)||(r>165&&r-g>60&&r-b>60)};
   const bins=new Map(),B8=10;
   for(let y=2;y<mh-2;y++)for(let x=2;x<s-2;x++){const i=(y*s+x)*4;if(!isX(B,i))continue;let old=false;
-    for(let dy=-2;dy<=2&&!old;dy++)for(let dx=-2;dx<=2;dx++){if(isX(A,((y+dy)*s+x+dx)*4)){old=true;break}}
-    if(old)continue;if(C){let stay=false;for(let dy=-1;dy<=1&&!stay;dy++)for(let dx=-1;dx<=1;dx++){if(isX(C,((y+dy)*s+x+dx)*4)){stay=true;break}}if(!stay)continue}
+    for(let dy=-tol;dy<=tol&&!old;dy++)for(let dx=-tol;dx<=tol;dx++){const yy=y+dy,xx=x+dx;if(yy<0||yy>=mh||xx<0||xx>=s)continue;if(isX(A,(yy*s+xx)*4)){old=true;break}}
+    if(old)continue;if(C){let stay=false;const t2=Math.max(1,tol-1);for(let dy=-t2;dy<=t2&&!stay;dy++)for(let dx=-t2;dx<=t2;dx++){const yy=y+dy,xx=x+dx;if(yy<0||yy>=mh||xx<0||xx>=s)continue;if(isX(C,(yy*s+xx)*4)){stay=true;break}}if(!stay)continue}
     const k=Math.floor(x/B8)+","+Math.floor(y/B8),v=bins.get(k)||{n:0,x:0,y:0};v.n++;v.x+=x;v.y+=y;bins.set(k,v)}
   const top=[...bins.values()].filter(v=>v.n>=4).sort((a,b)=>b.n-a.n),out=[];
   for(const v of top){const c=[v.x/v.n,v.y/v.n];if(out.every(o=>Math.hypot(o[0]-c[0],o[1]-c[1])>18))out.push(c);if(out.length>=2)break}
@@ -704,6 +704,59 @@ async function mmFixed(times){
   if(masks.length<3)return true;
   const iou=[];for(let k=1;k<masks.length;k++){let a=0,u=0;for(let i=0;i<masks[k].length;i++){const x=masks[k][i],y=masks[k-1][i];if(x&&y)a++;if(x||y)u++}iou.push(u?a/u:1)}
   iou.sort((a,b)=>a-b);return iou[Math.floor(iou.length/2)]>=0.55;
+}
+// ---------- rotating minimap ----------
+// Many players turn the minimap with their view. Each picture is turned back to one orientation (the map at the start of the
+// segment): the grey floor of the map is compared at every angle (6° steps, then 1°) and every shift, with a 2-D FFT on this PC.
+// Death markers and the reference sheet are then drawn on that turned-back picture, so places can be named as on a fixed minimap.
+const AN=64,anCv=document.createElement("canvas"),anX=anCv.getContext("2d",{willReadFrequently:true}),srcCv=document.createElement("canvas"),srcX=srcCv.getContext("2d");
+anCv.width=AN;anCv.height=AN;
+let MMROT=null;
+function fft2(re,im,n,inv){
+  const line=(off,st)=>{
+    for(let i=1,j=0;i<n;i++){let bit=n>>1;for(;j&bit;bit>>=1)j^=bit;j^=bit;if(i<j){const a=off+i*st,b=off+j*st;let t=re[a];re[a]=re[b];re[b]=t;t=im[a];im[a]=im[b];im[b]=t}}
+    for(let len=2;len<=n;len<<=1){const ang=(inv?2:-2)*Math.PI/len,wr=Math.cos(ang),wi=Math.sin(ang),h2=len>>1;
+      for(let i=0;i<n;i+=len){let cr=1,ci=0;for(let k=0;k<h2;k++){const a=off+(i+k)*st,b=a+h2*st,xr=re[b]*cr-im[b]*ci,xi=re[b]*ci+im[b]*cr;re[b]=re[a]-xr;im[b]=im[a]-xi;re[a]+=xr;im[a]+=xi;const t=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=t}}}};
+  for(let y=0;y<n;y++)line(y*n,1);for(let x=0;x<n;x++)line(x,n);
+  if(inv){const k=n*n;for(let i=0;i<k;i++){re[i]/=k;im[i]/=k}}
+}
+const mmRatio=()=>video.videoHeight*MM.h/(video.videoWidth*MM.w);
+function grabMM(){const W=video.videoWidth,H=video.videoHeight;srcCv.width=128;srcCv.height=Math.round(128*mmRatio());srcX.drawImage(video,W*MM.x,H*MM.y,W*MM.w,H*MM.h,0,0,srcCv.width,srcCv.height)}
+// the grey floor of the current minimap, turned by deg, as a mean-free AN x AN spectrum
+function floorSpec(deg){
+  const hh=Math.round(AN*mmRatio());anX.setTransform(1,0,0,1,0,0);anX.fillStyle="#000";anX.fillRect(0,0,AN,AN);
+  anX.translate(AN/2,AN/2);anX.rotate(deg*Math.PI/180);anX.drawImage(srcCv,-AN/2,-hh/2,AN,hh);anX.setTransform(1,0,0,1,0,0);
+  const d=anX.getImageData(0,0,AN,AN).data,re=new Float64Array(AN*AN),im=new Float64Array(AN*AN);let sum=0;
+  for(let i=0;i<AN*AN;i++){const r=d[i*4],g=d[i*4+1],b=d[i*4+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b);re[i]=mx-mn<22&&mn>120&&mx<215?1:0;sum+=re[i]}
+  const m=sum/(AN*AN);for(let i=0;i<AN*AN;i++)re[i]-=m;fft2(re,im,AN,false);return{re,im};
+}
+function corr(A,B){
+  const n=AN*AN,re=new Float64Array(n),im=new Float64Array(n);
+  for(let i=0;i<n;i++){const xr=A.re[i]*B.re[i]+A.im[i]*B.im[i],xi=A.im[i]*B.re[i]-A.re[i]*B.im[i],m=Math.hypot(xr,xi)+1e-9;re[i]=xr/m;im[i]=xi/m}
+  fft2(re,im,AN,true);let bi=0;for(let i=1;i<n;i++)if(re[i]>re[bi])bi=i;
+  let dy=Math.floor(bi/AN),dx=bi%AN;if(dy>AN/2)dy-=AN;if(dx>AN/2)dx-=AN;return{score:re[bi],dy,dx};
+}
+// how the current minimap has to be turned and moved to match the reference (null = not sure)
+function alignNow(){
+  if(!MMROT)return{deg:0,dy:0,dx:0,score:1};
+  grabMM();let best={score:-1};
+  for(let d=0;d<360;d+=6){const c=corr(MMROT.ref,floorSpec(d));if(c.score>best.score)best={...c,deg:d}}
+  const d0=best.deg;for(let d=d0-5;d<=d0+5;d++){if(d===d0)continue;const c=corr(MMROT.ref,floorSpec(d));if(c.score>best.score)best={...c,deg:d}}
+  return best.score>=0.08?best:null;
+}
+// draw the minimap turned back (or plainly when it is fixed); a picture that could not be matched is left black
+function drawMMx(x,ox,oy,s){
+  if(!MMROT){drawMM(x,ox,oy,s);return true}
+  const al=alignNow(),mh=Math.round(s*mmRatio());x.save();x.fillStyle="#000";x.fillRect(ox,oy,s,mh);if(!al){x.restore();return false}
+  const W=video.videoWidth,H=video.videoHeight;x.beginPath();x.rect(ox,oy,s,mh);x.clip();
+  x.translate(ox+s/2+al.dx*s/AN,oy+mh/2+al.dy*s/AN);x.rotate(al.deg*Math.PI/180);x.drawImage(video,W*MM.x,H*MM.y,W*MM.w,H*MM.h,-s/2,-mh/2,s,mh);x.restore();return true;
+}
+function mmPixelsX(s,mh){mmCv.width=s;mmCv.height=mh;const ok=drawMMx(mmX,0,0,s);return ok?mmX.getImageData(0,0,s,mh).data:null}
+// a rotating minimap: take the reference at the first moment, and use it only if most moments can be matched to it
+async function mmRotSetup(times){
+  if(!times.length)return false;await seek(times[0]);grabMM();MMROT={ref:floorSpec(0)};
+  let ok=0,n=0;for(const t of times.slice(1,9)){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);n++;if(alignNow())ok++}
+  if(!n||ok/n<0.6){MMROT=null;return false}return true;
 }
 // Small pictures of every round kept on this PC (so the recording itself can be deleted): every 2 seconds from the barrier drop,
 // the whole screen (small) + minimap + kill feed, 8 moments per image. Used later when a question needs to look at a round.
@@ -799,13 +852,15 @@ async function readKit(segs,me,maps,known,comps){
     const L=[...((refBy[si]||new Map()).values())].slice(0,24);if(!L.length)return null;
     const s=170,ch=Math.round(s*H*MM.h/(W*MM.w))+22,cols=6,cv=document.createElement("canvas");cv.width=cols*s;cv.height=Math.ceil(L.length/cols)*ch;
     const x=cv.getContext("2d");x.fillStyle="#000";x.fillRect(0,0,cv.width,cv.height);x.font="bold 14px sans-serif";x.textBaseline="top";
-    for(let i=0;i<L.length;i++){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(L[i].t);const ox=(i%cols)*s,oy=Math.floor(i/cols)*ch;drawMM(x,ox,oy+22,s);x.fillStyle="#F2B33D";x.fillText(L[i].name.slice(0,22),ox+4,oy+4)}
+    for(let i=0;i<L.length;i++){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(L[i].t);const ox=(i%cols)*s,oy=Math.floor(i/cols)*ch;drawMMx(x,ox,oy+22,s);x.fillStyle="#F2B33D";x.fillText(L[i].name.slice(0,22),ox+4,oy+4)}
     return await new Promise(r=>cv.toBlob(r,"image/jpeg",0.85));
   };
   // 3) every death: minimap 2 s before / at the moment + kill feed -> who killed whom, and where (new X marker on the minimap)
   const bySeg={};events.forEach(e=>{(bySeg[e.j.si]=bySeg[e.j.si]||[]).push(e)});
   for(const si of Object.keys(bySeg)){
-    const evs=bySeg[si],fixed=await mmFixed(evs.filter((_,k)=>k%Math.max(1,Math.floor(evs.length/10))===0).map(e=>e.t));
+    const evs=bySeg[si],pick=evs.filter((_,k)=>k%Math.max(1,Math.floor(evs.length/10))===0).map(e=>e.t);MMROT=null;
+    // fixed minimap as before; a rotating one is turned back picture by picture (no setting needed from the player)
+    const fixed=await mmFixed(pick)||await mmRotSetup([evs[0].j.a].concat(pick));
     const sheet=fixed?await sheetOf(+si):null;
     const names=sheet?[...refBy[si].values()].map(x=>x.name):[];
     const dict=window.TLKit&&maps&&maps[si]&&TLKit.CALLOUTS[maps[si]]?TLKit.CALLOUTS[maps[si]]:"";
@@ -819,10 +874,10 @@ async function readKit(segs,me,maps,known,comps){
         const x=cv.getContext("2d");x.fillStyle="#000";x.fillRect(0,0,cv.width,cv.height);x.font="bold 18px monospace";x.textBaseline="top";
         for(let k=0;k<cells.length;k++){const c=cells[k],ox=(k%cols)*cw,oy=Math.floor(k/cols)*chh;
           if(fixed){
-            await seek(Math.max(c.j.a,c.t-KSTEP));const before=mmPixels(s,mh);
-            await seek(Math.min(c.j.end,c.t+KSTEP));const later=mmPixels(s,mh);
-            await seek(c.t);const after=mmPixels(s,mh);drawMM(x,ox+34,oy,s);
-            newMarks(before,after,s,mh,later).forEach(([px,py])=>{x.strokeStyle="#FF00FF";x.lineWidth=3;x.beginPath();x.arc(ox+34+px,oy+py,13,0,Math.PI*2);x.stroke()});
+            await seek(Math.max(c.j.a,c.t-KSTEP));const before=mmPixelsX(s,mh);
+            await seek(Math.min(c.j.end,c.t+KSTEP));const later=mmPixelsX(s,mh);
+            await seek(c.t);const after=mmPixelsX(s,mh);drawMMx(x,ox+34,oy,s);
+            if(before&&after)newMarks(before,after,s,mh,later,MMROT?4:2).forEach(([px,py])=>{x.strokeStyle="#FF00FF";x.lineWidth=3;x.beginPath();x.arc(ox+34+px,oy+py,13,0,Math.PI*2);x.stroke()});
           }else await seek(c.t);
           x.drawImage(video,W*0.68,H*0.05,W*0.32,H*0.2,ox+34+s,oy,260,Math.round(260*H*0.2/(W*0.32)));
           x.fillStyle="#F2B33D";x.fillRect(ox,oy,34,24);x.fillStyle="#000";x.fillText(String(i+g+k+1),ox+4,oy+3)}
@@ -848,6 +903,7 @@ async function readKit(segs,me,maps,known,comps){
       }catch(e){if(e&&e.code==="cancelled")throw e}
     }
   }
+  MMROT=null;   // the turned-back minimap is only for the fights above
   // who killed whom: the kill feed reading (player names voted across the whole map, colours read from the pixels) is exact,
   // the fight reader above often is not ("?"). Each fight takes the killer, victim and team of the kill feed line at the same moment;
   // a kill feed line no fight matched becomes a fight of its own (place unknown).
