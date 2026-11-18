@@ -510,6 +510,24 @@ async function readFirstKillers(segs){
 
 function flip(s){return s==="attack"?"defense":"attack"}
 function startFrom(n,side){return n<=12?side:n<=24?flip(side):((n-25)%2===0?side:flip(side))}
+// Attack/defence from the small icon at the inner end of each team's top bar: ring = attacker, spiky = defender.
+// Compared by the outline of the coloured shape (32x32) with templates learned from labelled frames; no AI.
+const SIDE_A="4N/f3t/d3NzZ2tzZ1dbU09PT2N3c2Nra2dra29jW2dzo3tLR0dHR0M7O0c7LzcvJyMrP09LOzs/Oz8/R09LR0+fg2djZ2dnX1dfa1dPU09DR09jb2dfW1dfY2Nna2tre4OPj4uHg39zc4eTg3t/e29vc3uLh293d3+Lg397f4OPg29nY2NnY2NjY3N/c2tra3N/g4d7c29vb3NrZ3N3g6N/a1tbW2NjX2Nzf4N/e29nc4ubp4NjW1dXW1dTX3N/m4NvY19fZ2trb3ePj4ePi4uHh4OTk3dvY2NnZ2tvg5Ojy6+jo6evr6urw+Pz59/r8/v4CAO/m5uXl5ubo6+/y9DIsKCkpKywrKykoKzM1NC0mHhsdHRsZGRkbHB4iIyIjU0xKS0tOTk1NSFFnbm5kVUc3JxokJycmJicoKCkoKy4TDQoLDg8PDxAcPllfamtiUjspCQYFAwICBAYGBQQEB97Z19na293d4fYaKi06RUpCPDMM5djW1dXW19fX1dbb3dnV2dvd4eb4EigbAgMLDhEjQTIC5uLj29jX2Nvb2t7f2tzc3ePwBRAeIRAGCxINDAskQSkM8Nzi4eDc2dXW3ODX2dfe7v4SEx0uLjpTZWBVOjA1MCMI6OHd1t3Vz9PY4NnV3O3+DxojNklETWBpbW9dSj85PCIA7N/U2tXOz9Xi2Nzs/QkVIjRIQy4uKycqRE1JPz1DOhcA7dfX1c7N0uTZ7QAGDBspQUIlDRAJ9fkXLTIyMz1ALRAC5djTz9HR49/7CwcMHC8/NBL8BREaGBkWIyYnMzsxHhL439PS0dTi6QUMBAscL0E7HBULLFRAEwUnOysuLycfIQfs1dLR2eTzDAv+BxosSkYzOy83RDgzJkFQPTAkGBYmEPbZ0NLa6/YMCPkAFilKR0g0UEE5JEc4SkBKNBwHBCAX+9vT09rk7w0TERQZJj1RTEE6Vn9qRyRFak8vJCYpKhTz2NXV1+Lc8wcSFxsdISMiJiYmLiAVIUNHLiMmKygO+d/R0tLa4Nnm9QYUHyUnIhUTGQ0JDR4yOS8lKSwlEfnm19DQ1Nng2dzrABEeKS8yLCUxLScrPEM7NC4xLx0H7trT0dHQ1d7V0tvvCBciKjM7PkpQTUpJPjY5Li0fC/Tg09HR0NHU3dPQ1NvwCBQbJjQ7RE5ORzkqMjooGQny39TU0NDR0dbb1NLT1N30BgoYHRwkKykoIR8zMhgC8+DR0dTP0NDQ2dzV0tPV2OHz/w4TBv4DCQ4THjQjAe3f1dDR0s7Oz9Pf5d3Y19na2uTwABcJ9wANHCMmJgvv4dXT09PU09TV3O3r5ePk5OXi5u3/FBYIDRorMSkeAO3h3Nvc3t3d3d7k9Q==",SIDE_D="4uPh4OHh4ODe3d3a2trZ2NjZ3OHg4OHi4uHh5OTe3N3l4Nvb29zb2tnZ2tjX2NfW1tba3NrY2NnZ2dne497c3eni3N3e397c3N3f3Nra2djY2t3g4N/f4ODg3+Pl4ePo5ujn5+bl4+Li5ujl5OXk4+Pj5OXl5OXo6Ofk5eXl6e7n4+Hh4eHh4ODh4+Pg3uDg4+Xl4+Dg4OHh4eDg4eLp8uPd29zd3d7e3+Lk5OTj4N/h5Ofl4N3c3Nzd3N3f4Obt497c3N3d3dze4OXl5OPi4+Lj4+Pi3d3d3d3f3+Dg5u3y7+7t7u7t7Ozx9/r4+Pj5+/z/+/Dq6evr6+rr7Ovw9x4aGRscHBsaGRgbHCElJiQeFhIVFBMTExQTEhMUEhQaPDg5Ozs7OTk5NjtMUVFHOzIlGA8SFBMREhEQEBERFBsODAwNDQwMDQ8aM0dLTlBKOSsgBgD//fv7/Pz9/v3/BuXh4eHh4OLj6PkTFxYlMDY1LSMH6uDe3dzd3d3f3+Ts5OLh5Obk5Ov4DBUM+fb5/gsfMyIC6ufm4N/f3uLh5e7p4uTn5ejxAwoQD/b09fbw8/kVLxoK8ODm4uPj4d/l8Ofg4+Tl8P0ICgMCDBkuRD0iBgIZIhYH7ePj4OXf2uPu4+Hh5Oz9BQkSFCAzQlJjZVU2GhMlKBMC7uTf4d7a4evk3+Pt+AYFEB8ySVVRSkNOYF1LLCQwKQ8B7d7e3dre6Obg7PsDBQkeMUxlYTsaAxc8XG5RKSgxJA0A6N7c2t7l5+b4CAf/ESpDYGhEEPHx9RE2a245IiYpGQ365d3c4Obp7gELAfwUM1NlSSMI/P7y/xlSdUwgGBwgGAXx397e5+z2Bgn9+hU7WVgzGhEGAgAHCEpwVSMQChUiC/vi3d7n8foIBvf1GjxUSzgTCgH6+wUCSWZTJAv9AxwRAOXc3uTq8QsPBggXLkpaSRsBAQT/AQ9KdFgjFBomIxH5497e4ubk9gYLDRMaLlFjQQnx7O4JOG96RxsaIyAM++bd3Nzj5+Pq9wUNExwhNlJkRyAKGkJqf1spHyIdCfrs4Nzb3uLn4uHt/wwWGR8jMkhWUUZKW19LMSElJBED8ePf3tzc3+bi4OXyABAWGBUSHj1RWFJELBQVICITB/Xl397d3Nzf5OLi4ePvAg4PEgoKFSg0LxsEECgdEAT25d7g3dzc3eDm4uPh4ObzAwkSEgH9AQgHBgomMBIA9efe3uHc3t3c4+fj4uPk5Oj3BA0TCfzy8PwOIDciBfPo4d/f3t3e3d/o5+bm5+nm5Or1BxYPAgEGEx4mKxf46N/f4ODh4eHg5O/t7O3v8u/r7PEAFRsSFh4iJygnD/fq5OXl5ujn5+bo8g==";
+const sideT=s=>{const b=atob(s),v=new Float32Array(b.length);let n=0;for(let i=0;i<b.length;i++){let x=b.charCodeAt(i);if(x>127)x-=256;v[i]=x;n+=x*x}n=Math.sqrt(n)||1;for(let i=0;i<v.length;i++)v[i]/=n;return v};
+let SIDE_T=null;const icCv=document.createElement("canvas");icCv.width=icCv.height=32;const icX=icCv.getContext("2d",{willReadFrequently:true});
+function iconVec(fx){const W=video.videoWidth,H=video.videoHeight,N=32;icX.drawImage(video,W*fx,H*0.01326,W*0.028125,H*0.05,0,0,N,N);
+  const d=icX.getImageData(0,0,N,N).data,s=new Float32Array(N*N);for(let k=0;k<N*N;k++){const r=d[k*4],g=d[k*4+1],b=d[k*4+2];s[k]=Math.max(r,g,b)-Math.min(r,g,b)}
+  const v=new Float32Array(N*N);let m=0;
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){const at=(yy,xx)=>s[yy*N+xx];
+    const gx=x===0?at(y,1)-at(y,0):x===N-1?at(y,N-1)-at(y,N-2):(at(y,x+1)-at(y,x-1))/2,gy=y===0?at(1,x)-at(0,x):y===N-1?at(N-1,x)-at(N-2,x):(at(y+1,x)-at(y-1,x))/2;
+    v[y*N+x]=Math.hypot(gx,gy);m+=v[y*N+x]}
+  m/=N*N;let n=0;for(let k=0;k<v.length;k++){v[k]-=m;n+=v[k]*v[k]}n=Math.sqrt(n)||1;for(let k=0;k<v.length;k++)v[k]/=n;return v}
+// >0: the left (own) team is attacking at this moment
+function sideNow(){if(!SIDE_T)SIDE_T={A:sideT(SIDE_A),D:sideT(SIDE_D)};const dot=(a,b)=>{let t=0;for(let k=0;k<a.length;k++)t+=a[k]*b[k];return t};
+  const l=iconVec(0.20396),r=iconVec(0.77167);return dot(l,SIDE_T.A)-dot(l,SIDE_T.D)+dot(r,SIDE_T.D)-dot(r,SIDE_T.A)}
+async function iconSides(segs,samples){const votes=segs.map(()=>({attack:0,defense:0}));
+  for(let si=0;si<segs.length;si++)for(const r of segs[si]){await seek(Math.min(duration-0.5,firstBuy(r,samples)+3));const j=sideNow();if(Math.abs(j)<0.02)continue;votes[si][startFrom(r.n,j>0?"attack":"defense")]++}
+  return votes.map(v=>{const n=v.attack+v.defense,top=Math.max(v.attack,v.defense);return n>=3&&top>=n*0.8?(v.attack>v.defense?"attack":"defense"):null})}
 function sideOf(n,start){const sw=start==="attack"?"defense":"attack";return n<=12?start:n<=24?sw:((n-25)%2===0?start:sw)}
 function buildRounds(samples,start){
   // stabilise scores
@@ -1241,10 +1259,11 @@ async function runAnalysis(){
     const compsBy=await readCompsFor(buildRounds(samples,"attack"));lastCompsBy=compsBy;const comps=compsBy[0]||{left:[],right:[]};
     let segs=buildRounds(samples,"attack");
     prog(0.95,"攻守を判定しています…");
-    const cands=[];segs.forEach((rs,si)=>rs.filter(r=>r.n<=3||(r.n>=13&&r.n<=15)).forEach(r=>cands.push({si,n:r.n,t:firstBuy(r,samples)})));
-    const sides=await readSides(cands.slice(0,12));const votes={};
+    const byIcon=await iconSides(segs,samples);
+    const cands=[];segs.forEach((rs,si)=>{if(!byIcon[si])rs.filter(r=>r.n<=3||(r.n>=13&&r.n<=15)).forEach(r=>cands.push({si,n:r.n,t:firstBuy(r,samples)}))});
+    const sides=cands.length?await readSides(cands.slice(0,12)):[];const votes={};
     cands.slice(0,12).forEach((c,k)=>{const v=sides[k];if(v==="attack"||v==="defense"){const st=startFrom(c.n,v);(votes[c.si]=votes[c.si]||{attack:0,defense:0})[st]++}});
-    const starts=segs.map((rs,si)=>{const v=votes[si];if(v&&v.attack!==v.defense)return{side:v.attack>v.defense?"attack":"defense",auto:true};return{side:$("mSide").value,auto:false}});
+    const starts=segs.map((rs,si)=>{if(byIcon[si])return{side:byIcon[si],auto:true};const v=votes[si];if(v&&v.attack!==v.defense)return{side:v.attack>v.defense?"attack":"defense",auto:true};return{side:$("mSide").value,auto:false}});
     segs=buildRounds(samples,"attack").map((rs,si)=>rs.map(r=>({...r,side:sideOf(r.n,starts[si].side)})));
     prog(0.955,"最後のラウンドの勝敗を確認しています…");
     await readFinals(segs);
