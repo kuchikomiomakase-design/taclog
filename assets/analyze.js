@@ -1154,7 +1154,7 @@ async function sparseScores(loc,readFn,onProg){
     }
   }
   loc.forEach((l,i)=>{
-    const own=reads.get(i),x=own&&own.x!=null?own.x:(l.spike?"S":null);
+    const own=reads.get(i),x=l.spike?"S":own&&own.x!=null?own.x:null;   // the red spike icon seen on this PC wins over an AI reading of the same moment (it can misread the icon as a time)
     samples.push({t:l.t,L:sc[i]?sc[i].L:null,R:sc[i]?sc[i].R:null,x,ai:!!own,oL:own?own.L:null,oR:own?own.R:null});
   });
   return{samples,reads:reads.size};
