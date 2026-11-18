@@ -165,7 +165,7 @@
       h("p", { class: "small muted" }, "人数はバリアが消えてからの生存人数(自分たちv相手)。攻めの速さは、アタックで設置したときの残り時間で分けています。"),
       sub("アタック"),
       h("div", { class: "dgrid" }, t("ポストプラント(設置後)", o.postPlant), t("速攻(残り60秒以上で設置)", o.pace.fast), t("ふつう(残り30〜59秒で設置)", o.pace.mid), t("ゆっくり(残り30秒未満で設置)", o.pace.slow)),
-      h("div", { class: "dgrid" }, t("設置しなかったラウンド", o.pace.none, [av(nr.atkWin) && "勝ち:" + av(nr.atkWin), av(nr.atkLoss) && "負け:" + av(nr.atkLoss)].filter(Boolean).join(" ・ "))),
+      h("div", { class: "dgrid" }, t("設置する前に決着したラウンド", o.pace.none, [av(nr.atkWin) && "勝ち:" + av(nr.atkWin), av(nr.atkLoss) && "負け:" + av(nr.atkLoss)].filter(Boolean).join(" ・ "))),
       sub("ディフェンス"),
       h("div", { class: "dgrid" }, t("リテイク(設置された後)", o.retake), t("設置させなかったラウンド", o.defNone, av(nr.defWin.concat(nr.defLoss)))),
       sub("人数(アタック・ディフェンス合計)"),
