@@ -103,7 +103,7 @@ async function readComps(){
 
 function firstBuy(r,samples){const it=samples.filter(x=>x.t>=r.start&&typeof x.x==="number");return it.length?it[0].t:r.start+2}
 async function gridOf(cells,cw,chh,cols,draw){const cv=document.createElement("canvas");const rows=Math.ceil(cells.length/cols);cv.width=cols*cw;cv.height=rows*chh;const x=cv.getContext("2d");x.fillStyle="#000";x.fillRect(0,0,cv.width,cv.height);x.font="bold 18px monospace";x.textBaseline="top";
-  for(let i=0;i<cells.length;i++){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(cells[i].t);const ox=(i%cols)*cw,oy=Math.floor(i/cols)*chh;draw(x,ox,oy,cells[i]);x.fillStyle="#F2B33D";x.fillRect(ox,oy,34,24);x.fillStyle="#000";x.fillText(String(i+1),ox+4,oy+3)}
+  for(let i=0;i<cells.length;i++){if(ctl.signal.aborted)throw{code:"cancelled"};if(!cells[i].loc)await seek(cells[i].t);const ox=(i%cols)*cw,oy=Math.floor(i/cols)*chh;draw(x,ox,oy,cells[i]);x.fillStyle="#F2B33D";x.fillRect(ox,oy,34,24);x.fillStyle="#000";x.fillText(String(i+1),ox+4,oy+3)}
   return await new Promise(r=>cv.toBlob(r,"image/jpeg",0.88))}
 async function readSides(cands){
   if(!cands.length)return[];const W=video.videoWidth,H=video.videoHeight;
@@ -776,6 +776,117 @@ async function mmRotSetup(times){
   let ok=0,n=0;for(const t of times.slice(1,9)){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);n++;if(alignNow())ok++}
   if(!n||ok/n<0.6){MMROT=null;return false}return true;
 }
+// ---------- places of deaths, from the minimap, without AI ----------
+// The AI named a death marker's place wrongly too often (even A for B on a turned minimap). Instead, per map:
+//  1) many minimap moments are fitted together into one picture of the whole map (turned and moved; a fixed minimap as it is),
+//  2) at moments where the player is alive, the game writes the player's location name, and the player's own icon (yellow)
+//     shows where that is on the map picture -> labelled spots,
+//  3) a new death marker (X) is put on the same picture and named after the labelled spots right around it.
+// Too far from any labelled spot, or the spots around disagree -> "?" (no guessing).
+const PN=64,PC=128;
+const plCv=document.createElement("canvas");plCv.width=plCv.height=PC;const plX=plCv.getContext("2d",{willReadFrequently:true});
+const pmCv=document.createElement("canvas"),pmX=pmCv.getContext("2d",{willReadFrequently:true});
+let PLACEMAPS={};
+// connected spots of pixels passing test(i) in an s x h picture -> [{n,x,y,w,h}] (x,y = centre)
+function spots(d,s,h,test){
+  const seen=new Uint8Array(s*h),out=[],st=[];
+  for(let p=0;p<s*h;p++){if(seen[p]||!test(p*4))continue;seen[p]=1;st.push(p);let n=0,sx=0,sy=0,x0=1e9,x1=-1,y0=1e9,y1=-1;
+    while(st.length){const q=st.pop(),x=q%s,y=(q-x)/s;n++;sx+=x;sy+=y;if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=s||yy>=h)continue;const r=yy*s+xx;if(!seen[r]&&test(r*4)){seen[r]=1;st.push(r)}}}
+    out.push({n,x:sx/n,y:sy/n,w:x1-x0+1,h:y1-y0+1})}
+  return out;
+}
+// one minimap moment: a small copy (turned later), the death markers and the player's own icon, in fractions of the minimap
+function mmMoment(t,withLoc){
+  const W=video.videoWidth,H=video.videoHeight,r=mmRatio();
+  const cv=document.createElement("canvas");cv.width=128;cv.height=Math.round(128*r);cv.getContext("2d").drawImage(video,W*MM.x,H*MM.y,W*MM.w,H*MM.h,0,0,cv.width,cv.height);
+  const s=256,h=Math.round(s*r);pmCv.width=s;pmCv.height=h;pmX.drawImage(video,W*MM.x,H*MM.y,W*MM.w,H*MM.h,0,0,s,h);const d=pmX.getImageData(0,0,s,h).data;
+  const blue=i=>{const R=d[i],B=d[i+2];return B>170&&R<80&&B-R>110},red=i=>{const R=d[i],G=d[i+1],B=d[i+2];return R>165&&R-G>60&&R-B>60};
+  const xs=[];[["b",blue],["r",red]].forEach(([c,f])=>spots(d,s,h,f).forEach(o=>{if(o.n>=5&&o.w>=4&&o.h>=4&&o.w<=16&&o.h<=16)xs.push({c,u:o.x/s,v:o.y/h})}));
+  let own=null;
+  if(withLoc){const yl=i=>{const R=d[i],G=d[i+1],B=d[i+2];return R>215&&G>195&&R-B>45&&Math.abs(R-G)<35};
+    const c=spots(d,s,h,yl).filter(o=>o.n>=8&&o.w>=6&&o.h>=6&&o.w<=24&&o.h<=24&&Math.max(o.w,o.h)<=1.8*Math.min(o.w,o.h));
+    if(c.length===1)own={u:c[0].x/s,v:c[0].y/h}}
+  let loc=null;if(withLoc){loc=document.createElement("canvas");loc.width=296;loc.height=48;loc.getContext("2d").drawImage(video,W*0.03,H*0.004,W*0.16,H*0.036,0,0,296,48)}
+  return{t,cv,xs,own,loc};
+}
+function plMask(cv,deg){
+  plX.setTransform(1,0,0,1,0,0);plX.fillStyle="#000";plX.fillRect(0,0,PC,PC);plX.translate(PC/2,PC/2);plX.rotate(deg*Math.PI/180);
+  const nh=PN*cv.height/cv.width;plX.drawImage(cv,-PN/2,-nh/2,PN,nh);plX.setTransform(1,0,0,1,0,0);
+  const d=plX.getImageData(0,0,PC,PC).data,m=new Float64Array(PC*PC);
+  for(let i=0;i<PC*PC;i++){const r=d[i*4],g=d[i*4+1],b=d[i*4+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b);m[i]=mx-mn<22&&mn>120&&mx<215?1:0}return m;
+}
+function plSpec(m,cap){const n=PC*PC,re=new Float64Array(n),im=new Float64Array(n);let s=0;for(let i=0;i<n;i++){re[i]=cap?Math.min(m[i],cap)/cap:m[i];s+=re[i]}s/=n;for(let i=0;i<n;i++)re[i]-=s;fft2(re,im,PC,false);return{re,im}}
+function plCorr(A,B){
+  const n=PC*PC,re=new Float64Array(n),im=new Float64Array(n);
+  for(let i=0;i<n;i++){const xr=A.re[i]*B.re[i]+A.im[i]*B.im[i],xi=A.im[i]*B.re[i]-A.re[i]*B.im[i],m=Math.hypot(xr,xi)+1e-9;re[i]=xr/m;im[i]=xi/m}
+  fft2(re,im,PC,true);let bi=0;for(let i=1;i<n;i++)if(re[i]>re[bi])bi=i;
+  let dy=Math.floor(bi/PC),dx=bi%PC;if(dy>PC/2)dy-=PC;if(dx>PC/2)dx-=PC;return{score:re[bi],dy,dx};
+}
+// best turn (1°) and shift of a moment onto the map picture; around = a known angle to search near
+function plFit(ref,cv,around){
+  let best={score:-1};const tryD=d=>{const c=plCorr(ref,plSpec(plMask(cv,d)));if(c.score>best.score)best={...c,deg:d}};
+  if(around==null){for(let d=0;d<360;d+=10)tryD(d);const d0=best.deg;for(let d=d0-5;d<=d0+5;d++)if(d!==d0)tryD(d)}
+  else{const w=arguments[3]||3;for(let d=around-w;d<=around+w;d++)tryD(d)}
+  return best;
+}
+function plAdd(acc,m,dy,dx){for(let y=0;y<PC;y++){const yy=y+dy;if(yy<0||yy>=PC)continue;for(let x=0;x<PC;x++){const xx=x+dx;if(xx<0||xx>=PC||!m[y*PC+x])continue;acc[yy*PC+xx]+=1}}}
+// a point of the minimap (fractions) on the map picture
+function plTo(m,u,v){const f=m.fit;if(!f)return null;const x=(u-0.5)*PN,y=(v-0.5)*PN*m.cv.height/m.cv.width,a=f.deg*Math.PI/180,c=Math.cos(a),s=Math.sin(a);
+  return{x:x*c-y*s+PC/2+f.dx,y:x*s+y*c+PC/2+f.dy}}
+// fit all moments of one map together (a fixed minimap needs no turning)
+async function plBuild(ms,fixed){
+  if(fixed){ms.forEach(m=>{m.fit={deg:0,dy:0,dx:0,score:1}});return}
+  const order=ms.slice().sort((a,b)=>a.t-b.t);if(!order.length)return;
+  const acc=new Float64Array(PC*PC);plAdd(acc,plMask(order[0].cv,0),0,0);let ref=plSpec(acc,4),k=0;
+  for(let i=0;i<order.length;i++){if(ctl.signal.aborted)throw{code:"cancelled"};const m=order[i];
+    if(i%10===0){prog(0.994,"ミニマップから地図を組み立てています…("+i+"/"+order.length+")");await new Promise(r=>setTimeout(r,0))}
+    // a moment 2-4 s after a fitted one is turned about the same: look near that angle first
+    const pv=order[i-1];let f=pv&&pv.fit0&&pv.fit0.score>=0.15&&m.t-pv.t<=4?plFit(ref,m.cv,pv.fit0.deg,10):null;if(!f||f.score<0.15)f=plFit(ref,m.cv,null);m.fit0=f;if(f.score>=0.12){plAdd(acc,plMask(m.cv,f.deg),f.dy,f.dx);if(++k%8===0)ref=plSpec(acc,4)}}
+  ref=plSpec(acc,4);
+  for(let i=0;i<order.length;i++){if(ctl.signal.aborted)throw{code:"cancelled"};const m=order[i];
+    if(i%10===0){prog(0.995,"ミニマップの向きを合わせています…("+i+"/"+order.length+")");await new Promise(r=>setTimeout(r,0))}
+    let f=plFit(ref,m.cv,m.fit0&&m.fit0.score>=0.12?m.fit0.deg:null);if(f.score<0.12&&m.fit0&&m.fit0.score>=0.12)f=plFit(ref,m.cv,null);
+    m.fit=f.score>=0.1?f:null;delete m.fit0}
+}
+// name of a map-picture point from the labelled spots around it
+function plName(pts,p){
+  if(!p||!pts.length)return null;const near=pts.map(q=>({q,d:Math.hypot(q.x-p.x,q.y-p.y)})).sort((a,b)=>a.d-b.d).slice(0,6).filter(o=>o.d<=6);
+  if(!near.length||near[0].d>4)return null;const w={};let tot=0;near.forEach(o=>{const v=1/(1+o.d);w[o.q.key]=(w[o.q.key]||0)+v;tot+=v});
+  const top=Object.entries(w).sort((a,b)=>b[1]-a[1])[0];if(top[1]/tot<0.6)return null;return pts.find(q=>q.key===top[0]).name;
+}
+// the deaths of one map: every kill feed kill gets the place of its new X (blue X = our player died, red X = an enemy)
+function plKills(jobsOfMap,pts){
+  for(const j of jobsOfMap){const F=j.r._feed,ms=j.mm||[];if(!F||!ms.length)continue;
+    const groups={};F.kills.forEach(k=>{(groups[k.at]=groups[k.at]||[]).push(k)});
+    for(const at of Object.keys(groups).map(Number).sort((a,b)=>a-b)){
+      const before=ms.filter(m=>m.t<=at-1&&m.t>=at-4&&m.fit).pop(),after=ms.find(m=>m.t>=at+0.5&&m.t<=at+3&&m.fit);if(!before||!after)continue;
+      const later=ms.find(m=>m.t>=after.t+1&&m.t<=at+6&&m.fit);
+      const P=(m)=>m.xs.map(x=>({c:x.c,p:plTo(m,x.u,x.v)})).filter(x=>x.p);
+      const B=P(before),L=later?P(later):null,near=(arr,x,r)=>arr.some(y=>y.c===x.c&&Math.hypot(y.p.x-x.p.x,y.p.y-x.p.y)<=r);
+      const fresh=P(after).filter(x=>!near(B,x,2.5)&&(!L||near(L,x,2.5)));
+      // every kill between the two moments counts: two quick kills give two new markers
+      const inWin=F.kills.filter(k=>k.at>before.t&&k.at<=after.t);
+      for(const c of ["r","b"]){const ks=groups[at].filter(k=>(k.team==="us")===(c==="r"));if(!ks.length)continue;
+        const xs=fresh.filter(x=>x.c===c),need=inWin.filter(k=>(k.team==="us")===(c==="r")).length;
+        if(!xs.length||xs.length!==need)continue;
+        const names=xs.map(x=>plName(pts,x.p));if(names.some(n=>!n))continue;
+        if(xs.length===1){ks.forEach(k=>{k._p=names[0];k._xy=xs[0].p})}
+        else if(names.every(n=>n===names[0]))ks.forEach(k=>{k._p=names[0]})}
+    }
+  }
+}
+// picture of the fitted map with the labelled spots and the placed deaths (for checking, kept in the teaching material)
+async function plPicture(ms,pts,kills){
+  const S=4,cv=document.createElement("canvas");cv.width=cv.height=PC*S;const x=cv.getContext("2d");x.fillStyle="#000";x.fillRect(0,0,cv.width,cv.height);
+  for(const m of ms.filter(m=>m.fit&&m.loc).slice(0,60)){const f=m.fit;x.save();x.globalAlpha=0.25;x.translate((PC/2+f.dx)*S,(PC/2+f.dy)*S);x.rotate(f.deg*Math.PI/180);
+    const nh=PN*m.cv.height/m.cv.width;x.drawImage(m.cv,-PN/2*S,-nh/2*S,PN*S,nh*S);x.restore()}
+  const keys=[...new Set(pts.map(p=>p.key))],col=k=>"hsl("+(keys.indexOf(k)*137%360)+",90%,60%)";
+  pts.forEach(p=>{x.fillStyle=col(p.key);x.fillRect(p.x*S-2,p.y*S-2,4,4)});
+  x.font="bold 11px sans-serif";keys.forEach(k=>{const q=pts.filter(p=>p.key===k),cx=q.reduce((a,p)=>a+p.x,0)/q.length,cy=q.reduce((a,p)=>a+p.y,0)/q.length;x.fillStyle="#fff";x.fillText(q[0].name,cx*S+4,cy*S)});
+  kills.forEach(k=>{if(!k._xy)return;x.strokeStyle=k.team==="us"?"#ff4040":"#40a0ff";x.lineWidth=2;const X=k._xy.x*S,Y=k._xy.y*S;x.beginPath();x.moveTo(X-5,Y-5);x.lineTo(X+5,Y+5);x.moveTo(X+5,Y-5);x.lineTo(X-5,Y+5);x.stroke()});
+  return await new Promise(r=>cv.toBlob(r,"image/jpeg",0.85));
+}
 // Small pictures of every round kept on this PC (so the recording itself can be deleted): every 2 seconds from the barrier drop,
 // the whole screen (small) + minimap + kill feed, 8 moments per image. Used later when a question needs to look at a round.
 let SNAPS={};
@@ -814,8 +925,11 @@ async function readKit(segs,me,maps,known,comps){
   for(const j of jobs){
     prog(0.99,"ラウンドの流れとスキルを確認しています… ("+(++done)+"/"+jobs.length+"ラウンド)");
     const S=[];
-    const snap=snapStart();
-    for(let t=j.a;t<=j.end;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);let al=aliveNow();if(al[0]===0&&al[1]===0){const pv=S[S.length-1];al=pv?[pv.us,pv.en]:[5,5]}S.push({t,us:al[0],en:al[1],...(hud&&j.b!=null&&t<=j.b?kitNow(KIT_KX):{ok:false,bars:[],held:null})});snapAdd(snap,j.r.n,t-j.base)}
+    const snap=snapStart(),kAt=j.r._feed?j.r._feed.kills.map(k=>k.at):[],fresh=!(known&&known[j.si]);j.mm=[];
+    for(let t=j.a;t<=j.end;t+=KSTEP){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(t);let al=aliveNow();if(al[0]===0&&al[1]===0){const pv=S[S.length-1];al=pv?[pv.us,pv.en]:[5,5]}S.push({t,us:al[0],en:al[1],...(hud&&j.b!=null&&t<=j.b?kitNow(KIT_KX):{ok:false,bars:[],held:null})});snapAdd(snap,j.r.n,t-j.base);
+      // minimap moments for the places: the player alive (every 8 s, with the location name) and around each kill
+      const ownT=fresh&&j.b!=null&&t<=j.b&&Math.round((t-j.a)/KSTEP)%4===1,nearK=fresh&&kAt.some(a=>t>=a-4&&t<=a+5.5);
+      if(ownT||nearK)j.mm.push(mmMoment(t,ownT))}
     try{const blobs=await snapEnd(snap);if(blobs.length)((SNAPS[j.si]=SNAPS[j.si]||{})[j.r.n]=blobs)}catch(e){}
     // An attack win without a plant needs kills: if nobody died in the window, the start was probably wrong - look wider (earlier)
     {const atkWin=(j.r.side==="attack")===(j.r.win===true);
@@ -839,7 +953,6 @@ async function readKit(segs,me,maps,known,comps){
     const kr=known&&known[j.si]?(known[j.si].rounds||[]).find(x=>x.n===j.r.n):null;
     if(kr&&Array.isArray(kr.fights)){j.r.fights=kr.fights.map(f=>({...f}));dropMine()}   // already read from a teammate's recording of the same match
     // a couple of moments per round where the player is alive in their own view: minimap + location name, for the reference sheet
-    if(j.b!=null&&!(known&&known[j.si]))[8,24,40].forEach(d=>{if(j.a+d<=j.b)refs.push({si:j.si,t:j.a+d})});
     if(j.b==null||!hud)continue;
     const A=S.filter(x=>x.t<=j.b);
     for(let i=1;i<A.length-1;i++)if(A[i].ok&&A[i].held==null&&A[i-1].held!=null&&A[i-1].held===A[i+1].held)A[i].held=A[i-1].held;   // one missed look in the middle of a hold
@@ -854,85 +967,33 @@ async function readKit(segs,me,maps,known,comps){
   const W=video.videoWidth,H=video.videoHeight;
   // 1) location names of the reference moments (cheap text reading), per map
   const refBy={};
+  jobs.forEach(j=>(j.mm||[]).forEach(m=>{if(m.loc)refs.push({si:j.si,t:m.t,loc:m.loc,m})}));
   for(let i=0;i<refs.length;i+=30){
     const part=refs.slice(i,i+30);prog(0.993,"マップの場所の名前を読み取っています…");
-    const blob=await gridOf(part,330,52,3,(x,ox,oy)=>x.drawImage(video,W*0.03,H*0.004,W*0.16,H*0.036,ox+34,oy+2,296,48));
+    const blob=await gridOf(part,330,52,3,(x,ox,oy,c)=>x.drawImage(c.loc,ox+34,oy+2,296,48));
     try{
       const r=await SAMPLE.json("Each numbered cell is the top-left corner of a VALORANT screen, where the game shows the name of the player's current location (e.g. 'A Main', 'Mid Courtyard', 'Defender Side Spawn'). Ignore any 'Client FPS' text. Copy the location name exactly as written for each cell (English or Japanese as shown), or \"-\" if there is none. Reply only JSON: {\"p\":[\"A Main\",\"-\"]}",{images:[blob],signal:ctl.signal,modelTier:"fast",task:"places"});
       const arr=Array.isArray(r.p)?r.p:[];
-      part.forEach((c,k)=>{const v=String(arr[k]||"").trim().slice(0,40);if(!v||v==="-")return;const L=(refBy[c.si]=refBy[c.si]||new Map());const key=v.toLowerCase().replace(/\s+/g,"");if(!L.has(key))L.set(key,{t:c.t,name:v})});
+      part.forEach((c,k)=>{const v=String(arr[k]||"").trim().slice(0,40);if(!v||v==="-")return;c.m.name=v;const L=(refBy[c.si]=refBy[c.si]||new Map());const key=v.toLowerCase().replace(/\s+/g,"");if(!L.has(key))L.set(key,{t:c.t,name:v})});
     }catch(e){if(e&&e.code==="cancelled")throw e}
   }
   // the location names the game showed also tell which map it is (more reliable than the minimap shape, e.g. with a rotating minimap)
   if(window.TLKit&&maps)Object.keys(refBy).forEach(si=>{const g=TLKit.guessMap([...refBy[si].values()].map(x=>x.name));if(g&&g.hits>=2&&g.hits>g.second&&maps[si]!==g.map)maps[si]=g.map});
-  // 2) reference sheet per map: minimap with the player's own icon, labelled with the place name (drawn here, no AI)
-  const sheetOf=async(si)=>{
-    const L=[...((refBy[si]||new Map()).values())].slice(0,24);if(!L.length)return null;
-    const s=170,ch=Math.round(s*H*MM.h/(W*MM.w))+22,cols=6,cv=document.createElement("canvas");cv.width=cols*s;cv.height=Math.ceil(L.length/cols)*ch;
-    const x=cv.getContext("2d");x.fillStyle="#000";x.fillRect(0,0,cv.width,cv.height);x.font="bold 14px sans-serif";x.textBaseline="top";
-    for(let i=0;i<L.length;i++){if(ctl.signal.aborted)throw{code:"cancelled"};await seek(L[i].t);const ox=(i%cols)*s,oy=Math.floor(i/cols)*ch;drawMMx(x,ox,oy+22,s);x.fillStyle="#F2B33D";x.fillText(L[i].name.slice(0,22),ox+4,oy+4)}
-    return await new Promise(r=>cv.toBlob(r,"image/jpeg",0.85));
-  };
-  // 3) every death: minimap 2 s before / at the moment + kill feed -> who killed whom, and where (new X marker on the minimap)
-  const bySeg={};events.forEach(e=>{(bySeg[e.j.si]=bySeg[e.j.si]||[]).push(e)});
-  for(const si of Object.keys(bySeg)){
-    const evs=bySeg[si],pick=evs.filter((_,k)=>k%Math.max(1,Math.floor(evs.length/10))===0).map(e=>e.t);MMROT=null;
-    // fixed minimap as before; a rotating one is turned back picture by picture (no setting needed from the player)
-    const fixed=await mmFixed(pick)||await mmRotSetup([evs[0].j.a].concat(pick));
-    const sheet=fixed?await sheetOf(+si):null;
-    const names=sheet?[...refBy[si].values()].map(x=>x.name):[];
-    const dict=window.TLKit&&maps&&maps[si]&&TLKit.CALLOUTS[maps[si]]?TLKit.CALLOUTS[maps[si]]:"";
-    const cs=(lastCompsBy&&lastCompsBy[si])||comps,L=(cs&&cs.left)||[],Rr=(cs&&cs.right)||[];
-    const who=L.length||Rr.length?" The kill feed may show PLAYER names instead of agents: always answer with the AGENT (from the portrait). Agents in this match: recording team = "+(L.join(", ")||"?")+"; enemy team = "+(Rr.join(", ")||"?")+(me[si]?"; the recording player plays "+me[si]+" (an entry named 'Me' or the player's own name is "+me[si]+")":"")+". "+LOOK:"";
-    for(let i=0;i<evs.length;i+=36){
-      const part=evs.slice(i,i+36),blobs=[];prog(0.996,"撃ち合いの場所と相手を読み取っています…("+Math.min(evs.length,i+36)+"/"+evs.length+")");
-      const s=fixed?200:0,mh=fixed?Math.round(s*H*MM.h/(W*MM.w)):0;
-      for(let g=0;g<part.length;g+=12){
-        const cells=part.slice(g,g+12),cw=34+s+260,chh=Math.max(mh,120),cols=fixed?2:3,cv=document.createElement("canvas");cv.width=cols*cw;cv.height=Math.ceil(cells.length/cols)*chh;
-        const x=cv.getContext("2d");x.fillStyle="#000";x.fillRect(0,0,cv.width,cv.height);x.font="bold 18px monospace";x.textBaseline="top";
-        for(let k=0;k<cells.length;k++){const c=cells[k],ox=(k%cols)*cw,oy=Math.floor(k/cols)*chh;
-          if(fixed){
-            await seek(Math.max(c.j.a,c.t-KSTEP));const before=mmPixelsX(s,mh);
-            await seek(Math.min(c.j.end,c.t+KSTEP));const later=mmPixelsX(s,mh);
-            await seek(c.t);const after=mmPixelsX(s,mh);drawMMx(x,ox+34,oy,s);
-            if(before&&after)newMarks(before,after,s,mh,later,MMROT?4:2).forEach(([px,py])=>{x.strokeStyle="#FF00FF";x.lineWidth=3;x.beginPath();x.arc(ox+34+px,oy+py,13,0,Math.PI*2);x.stroke()});
-          }else await seek(c.t);
-          x.drawImage(video,W*0.68,H*0.05,W*0.32,H*0.2,ox+34+s,oy,260,Math.round(260*H*0.2/(W*0.32)));
-          x.fillStyle="#F2B33D";x.fillRect(ox,oy,34,24);x.fillStyle="#000";x.fillText(String(i+g+k+1),ox+4,oy+3)}
-        blobs.push(await new Promise(r=>cv.toBlob(r,"image/jpeg",0.85)));
-      }
-      try{
-        const fightPrompt=!fixed?"Each numbered cell is the kill feed (top-right of a VALORANT screen) right after someone died. For each cell give the newest death(s): killer agent > victim agent (identify AGENTS from the portraits; names may be player names or hidden; green/teal entry = killer on the recording team, red = enemy). Reply only JSON, one list per cell in order (usually 1 death, sometimes 2): {\"f\":[[{\"k\":\"Jett\",\"v\":\"Sova\",\"g\":true}],[]]} (g = true if the killer is on the recording team; use \"?\" for anything you cannot tell)."+who:(sheet?"Image 1 is a reference sheet from the SAME match: each tile is the minimap with the recording player's own icon, labelled with the name of the place where that player stood at that moment. ":"")+
-          "The other images have numbered cells. Each cell shows the minimap and the kill feed (top-right of the screen) right after someone died. Each death leaves an X marker on the minimap (blue/teal X = a player of the recording team, red X = an enemy); a magenta circle marks where a NEW X appeared in the last 2 seconds (found automatically, it can be missing or slightly off: then use the newest kill feed entry and the X closest to it). "+
-          "For each cell give the newest death(s): killer agent > victim agent (identify AGENTS from the kill feed portraits; green/teal entry = killer on the recording team, red = enemy), and the place of the NEW X marker (the circled one)"+(sheet?", named by comparing its position with the reference tiles (use those names; for a spot between tiles pick the nearest)":"")+(dict?". Known place names on this map: "+dict:"")+
-          ". Reply only JSON, one list per cell in order (usually 1 death, sometimes 2): {\"f\":[[{\"k\":\"Jett\",\"v\":\"Sova\",\"g\":true,\"p\":\"A Main\"}],[]]} (g = true if the killer is on the recording team; use \"?\" for anything you cannot tell)."+who;
-        const r=await SAMPLE.json(fightPrompt,
-          {images:(sheet?[sheet]:[]).concat(blobs),signal:ctl.signal,modelTier:"fast",task:"fights"});
-        let arr=Array.isArray(r.f)?r.f:[];
-        // the cheap model found (almost) nothing although people died: ask the better model once
-        if(arr.filter(x=>Array.isArray(x)&&x.length).length<part.length*0.5){try{const r2=await SAMPLE.json(fightPrompt,{images:(sheet?[sheet]:[]).concat(blobs),signal:ctl.signal,modelTier:"default",task:"fights2"});if(Array.isArray(r2.f))arr=r2.f}catch(e){if(e&&e.code==="cancelled")throw e}}
-        part.forEach((c,k)=>{const list=Array.isArray(arr[k])?arr[k]:[];list.slice(0,Math.max(1,c.n)+1).forEach(e=>{if(!e||typeof e!=="object")return;
-          const canon=(n)=>{n=String(n||"?").trim();if(/^(me|自分)$/i.test(n)&&me[si])return me[si];return agentOf(n)||"?"};
-          const kk=canon(e.k),vv=canon(e.v);let g=e.g===true?true:e.g===false?false:null;
-          if(g==null){if(L.some(a=>a===kk))g=true;else if(Rr.some(a=>a===kk))g=false;else if(Rr.some(a=>a===vv))g=true;else if(L.some(a=>a===vv))g=false}
-          const f={t:Math.max(0,Math.round(c.t-c.j.base)),k:kk,v:vv,g,p:String(e.p||"?").slice(0,40)};
-          if(!fixed)f.p="?";f._t=c.t;
-          if(!c.j.r.fights.some(x=>agentKey(x.v)===agentKey(f.v)&&agentKey(f.v)))c.j.r.fights.push(f)})});
-      }catch(e){if(e&&e.code==="cancelled")throw e}
+  // 2) places of the deaths from the minimap (no AI): see plBuild / plKills
+  const bySi={};jobs.forEach(j=>{(bySi[j.si]=bySi[j.si]||[]).push(j)});PLACEMAPS={};
+  for(const si of Object.keys(bySi)){const js=bySi[si],ms=[].concat(...js.map(j=>j.mm||[]));
+    if(ms.length>=6){
+      const fixed=await mmFixed(ms.filter(m=>m.loc).slice(0,10).map(m=>m.t));
+      await plBuild(ms,fixed);
+      const pts=[];ms.forEach(m=>{if(m.own&&m.name&&m.fit){const p=plTo(m,m.own.u,m.own.v);if(p)pts.push({...p,name:m.name,key:m.name.toLowerCase().replace(/\s+/g,"")})}});
+      plKills(js,pts);
+      try{PLACEMAPS[si]=await plPicture(ms,pts,[].concat(...js.map(j=>j.r._feed?j.r._feed.kills:[])))}catch(e){}
     }
-  }
-  MMROT=null;   // the turned-back minimap is only for the fights above
-  // who killed whom: the kill feed reading (player names voted across the whole map, colours read from the pixels) is exact,
-  // the fight reader above often is not ("?"). Each fight takes the killer, victim and team of the kill feed line at the same moment;
-  // a kill feed line no fight matched becomes a fight of its own (place unknown).
-  for(const j of jobs){const F=j.r._feed;if(!F||!F.kills.length)continue;const fs=j.r.fights||(j.r.fights=[]),used=new Set();
-    F.kills.forEach(k=>{if(!k.by&&!k.vic)return;const g=k.team==="us",at=k.at;
-      let best=null,bd=1e9;fs.forEach(f=>{if(used.has(f)||f._t==null)return;const d=Math.abs(f._t-at);
-        const fits=(f.g==null||f.g===g)&&(agentKey(f.v)===agentKey(k.vic)||f.v==="?"||!k.vic);if(fits&&d<=3&&d<bd){bd=d;best=f}});
-      if(best){used.add(best);best.k=k.by||best.k;best.v=k.vic||best.v;best.g=g}
-      else{const f={t:Math.max(0,Math.round(at-j.base)),k:k.by||"?",v:k.vic||"?",g,p:"?"};f._t=at;fs.push(f);used.add(f)}});
-    // a fight the kill feed never showed (a misread of the fight reader) is dropped when it names nobody
-    j.r.fights=fs.filter(f=>used.has(f)||(f.k!=="?"&&f.v!=="?")).sort((a,b)=>a.t-b.t)}
+    js.forEach(j=>{delete j.mm})}
+  // who killed whom: straight from the kill feed reading (player names voted across the whole map, colours read from the pixels),
+  // one fight per kill feed line, never more (the old AI fight reader added the same death twice with different places)
+  for(const j of jobs){const F=j.r._feed;if(!F||!F.kills.length)continue;if(known&&known[j.si]&&(j.r.fights||[]).length)continue;
+    j.r.fights=F.kills.filter(k=>k.by||k.vic).map(k=>{const f={t:Math.max(0,Math.round(k.at-j.base)),k:k.by||"?",v:k.vic||"?",g:k.team==="us",p:k._p||"?"};f._t=k.at;return f}).sort((x,y)=>x.t-y.t)}
   // the recording player's own fights: the place is the location name the game shows for them (exact, even with a rotating minimap)
   const own=[];
   for(const j of jobs){if(!j.me||j.b==null)continue;const mine=agentKey(j.me);(j.r.fights||[]).forEach(f=>{if(f._t==null)return;
@@ -1010,6 +1071,7 @@ async function collectTraining(segs,maps,comps,me){
     names:TRAIN_NAMES,feed:segs.map(rs=>rs.map(r=>({n:r.n,score:r.score||null,win:r.win,side:r.side||null,planted:r.planted||null,site:r.site||null,st:r._st!=null?Math.round(r._st):null,how:r._stHow||(r._noStart?"conflict":r._st==null?"none":"timer"),fk:r.fk,fkBy:r.fkBy||null,fkVictim:r.fkVictim||null,kills:r._feed?r._feed.kills.map(k=>({t:k.t,team:k.team,read:k.read||null,by:k.by||null,vic:k.vic||null})):null})))}};
   const all=[];segs.forEach((rs,si)=>rs.forEach(r=>{if(r._st!=null&&Array.isArray(r.alv))all.push({si,r})}));
   let done=0;
+  Object.keys(PLACEMAPS).forEach(si=>{if(PLACEMAPS[si])TRAIN.items.push({kind:"placemap",map:+si,label:{map:maps&&maps[si]||null},blob:PLACEMAPS[si]})});
   for(const {si,r} of all){
     prog(0.999,"精度向上の教材を作っています…("+(++done)+"/"+all.length+")");
     const end=Math.min(r._next!=null?r._next-1:r._st+100,r._st+145,duration-0.3);
@@ -1021,7 +1083,7 @@ async function collectTraining(segs,maps,comps,me){
     // kill feed (+ minimap) at each fight read from the kill feed
     for(const f of (r.fights||[])){const t=r._st+f.t+0.5;if(t>=duration-0.3)continue;await seek(t);
       TRAIN.items.push({kind:"killfeed",t:Math.round(t*10)/10,map:si,round:r.n,label:{k:f.k,v:f.v,g:f.g},blob:await cropBlob(0.68,0.035,0.32,0.22)});
-      if(f.p&&f.p!=="?")TRAIN.items.push({kind:"minimap",t:Math.round(t*10)/10,map:si,round:r.n,label:{place:f.p,map:maps&&maps[si]||null},blob:await cropBlob(MM.x,MM.y,MM.w,MM.h)})}
+      TRAIN.items.push({kind:"minimap",t:Math.round(t*10)/10,map:si,round:r.n,label:{place:f.p,map:maps&&maps[si]||null},blob:await cropBlob(MM.x,MM.y,MM.w,MM.h)})}
   }
 }
 async function trainingZip(){
